@@ -1,0 +1,30 @@
+# Dependencies and build output (web/ has its own .gitignore too)
+node_modules/
+.next/
+.next-*/
+out/
+*.tsbuildinfo
+
+# Environment files: never commit secrets (examples are fine)
+.env*
+!.env.example
+
+# Tooling and planning artifacts
+.claude/
+.planning/
+*.bak
+
+# Archify delivery receipts and review captures (the journey maps themselves are kept)
+.archify/**/*.finalize.json
+.archify/**/*.finalize-summary.json
+.archify/**/*.browser-check.json
+.archify/**/*.delivery.json
+.archify/**/review-*/
+.archify/**/visual-check/
+
+# Third-party research paper: reference only, not ours to publish (the repo must go public for judging)
+v1RTL generation with LLMs.pdf
+
+# OS
+.DS_Store
+Thumbs.db

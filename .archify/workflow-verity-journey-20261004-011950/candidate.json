@@ -1,0 +1,628 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Verity User Journey: AI Co-Planning Canvas",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-verity-journey-20261004-011950/verity-journey.html",
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "User action"
+        },
+        "frontend": {
+          "label": "Canvas / screen"
+        },
+        "backend": {
+          "label": "Nemotron agent step"
+        },
+        "database": {
+          "label": "Recorded run"
+        },
+        "cloud": {
+          "label": "Sandbox tool"
+        },
+        "security": {
+          "label": "Trust gate"
+        },
+        "messagebus": {
+          "label": "Decision to make"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "choices",
+      "label": "Team decides"
+    },
+    {
+      "id": "user",
+      "label": "User"
+    },
+    {
+      "id": "canvas",
+      "label": "UI"
+    },
+    {
+      "id": "agent",
+      "label": "AI"
+    },
+    {
+      "id": "tools",
+      "label": "Sandbox + locked truth"
+    }
+  ],
+  "phases": [
+    {
+      "id": "arrive",
+      "label": "Arrive + describe",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "coplan",
+      "label": "Plan together",
+      "fromCol": 2,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "build",
+      "label": "Build + self-fix",
+      "fromCol": 3,
+      "toCol": 3
+    },
+    {
+      "id": "improve",
+      "label": "Evolve",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "prove",
+      "label": "Prove + export",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "c_hero",
+    "c_spec",
+    "c_board",
+    "c_rail",
+    "c_tree",
+    "c_summary"
+  ],
+  "nodes": [
+    {
+      "id": "ch_entry",
+      "lane": "choices",
+      "col": 0,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Entry mode",
+      "sublabel": "replay, pick, or spec",
+      "tag": "rec: auto-replay",
+      "width": 138
+    },
+    {
+      "id": "ch_input",
+      "lane": "choices",
+      "col": 1,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Spec input",
+      "sublabel": "presets or free text",
+      "tag": "rec: presets live",
+      "width": 138
+    },
+    {
+      "id": "ch_edit",
+      "lane": "choices",
+      "col": 2,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Edit power",
+      "sublabel": "view, pins, or rewire",
+      "tag": "rec: pins + countdown",
+      "width": 138
+    },
+    {
+      "id": "ch_fail",
+      "lane": "choices",
+      "col": 3,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Failure view",
+      "sublabel": "table, waveform, log",
+      "tag": "rec: expected vs got",
+      "width": 138
+    },
+    {
+      "id": "ch_loop",
+      "lane": "choices",
+      "col": 4,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Loop shape",
+      "sublabel": "chain or population",
+      "tag": "rec: tree if Oct 18 ok",
+      "width": 138
+    },
+    {
+      "id": "ch_winner",
+      "lane": "choices",
+      "col": 5,
+      "type": "messagebus",
+      "icon": "flag",
+      "label": "Winner + output",
+      "sublabel": "AI, Pareto, override",
+      "tag": "rec: AI + override",
+      "width": 138
+    },
+    {
+      "id": "u_land",
+      "lane": "user",
+      "col": 0,
+      "type": "external",
+      "icon": "person",
+      "label": "Opens URL",
+      "sublabel": "no install, 3 min",
+      "width": 138
+    },
+    {
+      "id": "u_describe",
+      "lane": "user",
+      "col": 1,
+      "type": "external",
+      "icon": "person",
+      "label": "Describes chip",
+      "sublabel": "preset + goal",
+      "width": 138
+    },
+    {
+      "id": "u_plan",
+      "lane": "user",
+      "col": 2,
+      "type": "external",
+      "icon": "person",
+      "label": "Drags + pins",
+      "sublabel": "optional steering",
+      "width": 138
+    },
+    {
+      "id": "u_watch",
+      "lane": "user",
+      "col": 3,
+      "type": "external",
+      "icon": "person",
+      "label": "Watches self-fix",
+      "sublabel": "opens block code",
+      "width": 138
+    },
+    {
+      "id": "u_steer",
+      "lane": "user",
+      "col": 4,
+      "type": "external",
+      "icon": "person",
+      "label": "Pins + explores",
+      "sublabel": "or keeps Autopilot",
+      "width": 138
+    },
+    {
+      "id": "u_export",
+      "lane": "user",
+      "col": 5,
+      "type": "external",
+      "icon": "person",
+      "label": "Exports design",
+      "sublabel": "zip or share link",
+      "width": 138
+    },
+    {
+      "id": "c_hero",
+      "lane": "canvas",
+      "col": 0,
+      "type": "frontend",
+      "label": "Hero canvas",
+      "sublabel": "replay auto-plays",
+      "width": 138
+    },
+    {
+      "id": "c_spec",
+      "lane": "canvas",
+      "col": 1,
+      "type": "frontend",
+      "label": "Spec card",
+      "sublabel": "ports, widths, priority",
+      "width": 138
+    },
+    {
+      "id": "c_board",
+      "lane": "canvas",
+      "col": 2,
+      "type": "frontend",
+      "label": "Plan Board",
+      "sublabel": "draggable AI blocks",
+      "width": 138
+    },
+    {
+      "id": "c_rail",
+      "lane": "canvas",
+      "col": 3,
+      "type": "frontend",
+      "label": "Blocks light up",
+      "sublabel": "stage rail + diff",
+      "width": 138
+    },
+    {
+      "id": "c_tree",
+      "lane": "canvas",
+      "col": 4,
+      "type": "frontend",
+      "label": "Evolution Tree",
+      "sublabel": "version cards + PPA",
+      "width": 138
+    },
+    {
+      "id": "c_summary",
+      "lane": "canvas",
+      "col": 5,
+      "type": "frontend",
+      "label": "Summary card",
+      "sublabel": "Human inputs: 1",
+      "width": 138
+    },
+    {
+      "id": "a_replay",
+      "lane": "agent",
+      "col": 0,
+      "type": "database",
+      "label": "Golden run log",
+      "sublabel": "op log, $0 replay",
+      "width": 138
+    },
+    {
+      "id": "a_parse",
+      "lane": "agent",
+      "col": 1,
+      "type": "backend",
+      "label": "Parse spec",
+      "sublabel": "Nemotron Super",
+      "width": 138
+    },
+    {
+      "id": "a_arch",
+      "lane": "agent",
+      "col": 2,
+      "type": "backend",
+      "label": "Draft blocks",
+      "sublabel": "Nemotron Ultra",
+      "width": 138
+    },
+    {
+      "id": "a_rtl",
+      "lane": "agent",
+      "col": 3,
+      "type": "backend",
+      "label": "Write + fix RTL",
+      "sublabel": "self-debug loop",
+      "width": 138
+    },
+    {
+      "id": "a_evolve",
+      "lane": "agent",
+      "col": 4,
+      "type": "backend",
+      "label": "Evolve versions",
+      "sublabel": "Improve, Fusion",
+      "width": 138
+    },
+    {
+      "id": "a_pack",
+      "lane": "agent",
+      "col": 5,
+      "type": "backend",
+      "label": "Rank + package",
+      "sublabel": "fitness + report",
+      "width": 138
+    },
+    {
+      "id": "t_lock",
+      "lane": "tools",
+      "col": 2,
+      "type": "security",
+      "label": "Golden model",
+      "sublabel": "locked, AI cannot edit",
+      "width": 138
+    },
+    {
+      "id": "t_sim",
+      "lane": "tools",
+      "col": 3,
+      "type": "cloud",
+      "label": "Lint + simulate",
+      "sublabel": "Verilator, iverilog",
+      "width": 138
+    },
+    {
+      "id": "t_synth",
+      "lane": "tools",
+      "col": 4,
+      "type": "cloud",
+      "label": "Synthesize",
+      "sublabel": "Yosys area, Fmax",
+      "width": 138
+    },
+    {
+      "id": "t_eqy",
+      "lane": "tools",
+      "col": 5,
+      "type": "security",
+      "label": "EQY proof",
+      "sublabel": "best equals v1",
+      "width": 138
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_hero_spec",
+      "from": "c_hero",
+      "to": "c_spec",
+      "label": "Try live",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_spec_board",
+      "from": "c_spec",
+      "to": "c_board",
+      "label": "Build",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_board_rail",
+      "from": "c_board",
+      "to": "c_rail",
+      "label": "approved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_rail_tree",
+      "from": "c_rail",
+      "to": "c_tree",
+      "label": "v1 passes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_tree_summary",
+      "from": "c_tree",
+      "to": "c_summary",
+      "label": "winner",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d_entry",
+      "from": "ch_entry",
+      "to": "u_land",
+      "variant": "dashed"
+    },
+    {
+      "id": "d_input",
+      "from": "ch_input",
+      "to": "u_describe",
+      "variant": "dashed"
+    },
+    {
+      "id": "d_edit",
+      "from": "ch_edit",
+      "to": "u_plan",
+      "variant": "dashed"
+    },
+    {
+      "id": "d_fail",
+      "from": "ch_fail",
+      "to": "u_watch",
+      "variant": "dashed"
+    },
+    {
+      "id": "d_loop",
+      "from": "ch_loop",
+      "to": "u_steer",
+      "variant": "dashed"
+    },
+    {
+      "id": "d_winner",
+      "from": "ch_winner",
+      "to": "u_export",
+      "variant": "dashed"
+    },
+    {
+      "id": "u1",
+      "from": "u_land",
+      "to": "c_hero"
+    },
+    {
+      "id": "u2",
+      "from": "u_describe",
+      "to": "c_spec"
+    },
+    {
+      "id": "u3",
+      "from": "u_plan",
+      "to": "c_board",
+      "label": "drag, pin"
+    },
+    {
+      "id": "u4",
+      "from": "u_watch",
+      "to": "c_rail",
+      "label": "inspect"
+    },
+    {
+      "id": "u5",
+      "from": "u_steer",
+      "to": "c_tree",
+      "label": "pin, note"
+    },
+    {
+      "id": "u6",
+      "from": "u_export",
+      "to": "c_summary"
+    },
+    {
+      "id": "a1",
+      "from": "a_replay",
+      "to": "c_hero",
+      "label": "replays ops"
+    },
+    {
+      "id": "a2",
+      "from": "a_parse",
+      "to": "c_spec",
+      "label": "spec JSON"
+    },
+    {
+      "id": "a3",
+      "from": "a_arch",
+      "to": "c_board",
+      "label": "draws, replans"
+    },
+    {
+      "id": "a4",
+      "from": "a_rtl",
+      "to": "c_rail",
+      "label": "status ops"
+    },
+    {
+      "id": "a5",
+      "from": "a_evolve",
+      "to": "c_tree",
+      "label": "grows tree"
+    },
+    {
+      "id": "a6",
+      "from": "a_pack",
+      "to": "c_summary",
+      "label": "report"
+    },
+    {
+      "id": "t1",
+      "from": "a_rtl",
+      "to": "t_sim",
+      "label": "run tests"
+    },
+    {
+      "id": "t1r",
+      "from": "t_sim",
+      "to": "a_rtl",
+      "label": "fail: fix",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "t0",
+      "from": "t_lock",
+      "to": "t_sim",
+      "label": "checks against",
+      "variant": "security"
+    },
+    {
+      "id": "t2",
+      "from": "a_evolve",
+      "to": "t_synth",
+      "label": "score PPA"
+    },
+    {
+      "id": "t3",
+      "from": "t_synth",
+      "to": "t_eqy",
+      "label": "best version"
+    },
+    {
+      "id": "t4",
+      "from": "t_eqy",
+      "to": "a_pack",
+      "label": "proven equal",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Recommended: Plan Board + Evolution Tree",
+      "items": [
+        "One React Flow canvas, two zones: AI-drafted blocks on the left, version tree on the right",
+        "The agent pipeline is a thin status rail, not the canvas",
+        "Autopilot on by default; every human touch has a default that proceeds",
+        "Steering hints queue for the next generation and never block the run",
+        "Summary proves autonomy: Human inputs: 1"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "The 6 decisions (rec = recommended)",
+      "items": [
+        "1 Entry: auto-play replay (rec), pick replay or live, or spec box first",
+        "2 Spec input: presets only in live mode (rec), free text, or editable presets",
+        "3 Edit power: view and approve, pins + variant toggles (rec), or full rewire; auto-continue countdown (rec)",
+        "4 Failure view: expected vs got table (rec), waveform viewer, or log only",
+        "5 Loop shape: single refine chain, or population tree (rec if the Oct 18 PPA gate passes)",
+        "6 Winner: AI picks, user picks from the Pareto front, or AI picks + user override (rec); output as zip (rec)"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Three canvas concepts",
+      "items": [
+        "A, Architecture canvas: sketch the chip with AI. Effort M. Risk: edits that change nothing",
+        "B, Pipeline canvas: mission control for the loop. Effort S. Reordering stages is fake freedom",
+        "C, Evolution canvas: steer the design search. Effort M. Needs the population loop",
+        "Hybrid of A-lite + C, with B as a rail, is the recommendation"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Canvas tech",
+      "items": [
+        "React Flow (@xyflow/react, MIT) + Zustand + dagre",
+        "tldraw ruled out: production license key, not open source",
+        "Excalidraw ruled out: no typed custom nodes",
+        "AI edits through a closed op set: add_node, connect, move_node, update_status, remove",
+        "Live SSE and golden replay share one reducer",
+        "Once a user moves a node, the AI may update its data but never its position"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Demo guardrails",
+      "items": [
+        "Never open on a blank canvas",
+        "12 visible nodes or fewer; collapse the rest",
+        "Every AI change shows a diff",
+        "Clicks alone must finish the story; dragging is optional",
+        "No live LLM call on the replay path"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Ship by Oct 25 vs stretch",
+      "items": [
+        "Ship: replay landing, Plan Board with countdown, Evolution Tree, diff drawer, EQY badge, preset live mode, zip export",
+        "Stretch: pins that truly replan the RTL, drag to fuse, fork a live run, waveform viewer, free-text specs"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Not yet confirmed",
+      "items": [
+        "Nemotron structured JSON output on Nebius (tool calling is documented)",
+        "Chipmind, Overture and Miro features come from press or listing pages only",
+        "Make one real Nebius tool call this week"
+      ]
+    }
+  ]
+}

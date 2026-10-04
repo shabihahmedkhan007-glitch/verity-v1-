@@ -1,0 +1,269 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------- Verity tokens: brand.md 1.5 ---------- */
+:root {
+  /* Fixed brand colors. Do not change. */
+  --verity-navy: #050A12;   /* Deep Space Navy */
+  --verity-blue: #0B1220;   /* Dark Blue */
+  --verity-green: #39FF88;  /* Verity Green */
+
+  --radius: 0.375rem;
+
+  /* Surfaces (depth = lightness, no shadows) */
+  --background: var(--verity-navy);
+  --surface: var(--verity-blue);
+  --surface-2: oklch(22.5% 0.032 262);
+  --surface-3: oklch(27% 0.034 262);
+
+  /* Text */
+  --foreground: oklch(95% 0.012 255);
+  --fg-muted: oklch(76% 0.026 257);
+  --fg-subtle: oklch(67% 0.028 258);
+  --fg-disabled: oklch(50% 0.022 258);
+
+  /* Lines */
+  --border: oklch(29% 0.03 262);
+  --border-strong: oklch(52% 0.035 260);
+
+  /* Accent */
+  --primary: var(--verity-green);
+  --primary-foreground: var(--verity-navy);
+  --primary-hover: oklch(91% 0.15 152);
+  --primary-press: oklch(82% 0.2 151);
+  --primary-muted: oklch(29% 0.07 156);
+
+  /* Status */
+  --pass: var(--verity-green);
+  --pass-muted: var(--primary-muted);
+  --fail: oklch(70% 0.19 22);
+  --fail-muted: oklch(27% 0.075 22);
+  --warn: oklch(84% 0.145 78);
+  --warn-muted: oklch(28% 0.055 78);
+  --info: oklch(80% 0.11 232);
+  --info-muted: oklch(28% 0.06 240);
+
+  /* shadcn semantic mapping */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--surface-3); /* shadcn "accent" is a hover/selected background, NOT the brand accent */
+  --accent-foreground: var(--foreground);
+  --destructive: var(--fail);
+  --destructive-foreground: var(--verity-navy);
+  --input: var(--border-strong);
+  --ring: var(--verity-green);
+  --chart-1: var(--verity-green);
+  --chart-2: var(--info);
+  --chart-3: oklch(74% 0.12 300);
+  --chart-4: var(--warn);
+  --chart-5: oklch(64% 0.03 258);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--verity-green);
+  --sidebar-primary-foreground: var(--verity-navy);
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--verity-green);
+
+  /* Code */
+  --code-bg: var(--verity-navy);
+  --syn-plain: var(--foreground);
+  --syn-punct: var(--fg-muted);
+  --syn-keyword: oklch(82% 0.1 165);
+  --syn-type: oklch(79% 0.095 255);
+  --syn-number: oklch(85% 0.11 80);
+  --syn-comment: oklch(66% 0.03 258);
+  --syn-string: oklch(81% 0.09 45);
+  --diff-add: oklch(25% 0.06 156);
+  --diff-del: oklch(25% 0.07 22);
+  --selection: oklch(35% 0.08 156);
+
+  /* Canvas */
+  --canvas-dot: oklch(31% 0.03 262);
+  --edge: var(--border-strong);
+  --edge-active: var(--info);
+  --edge-proof: var(--verity-green);
+
+  /* Elevation: overlays only (tooltip, popover, sheet) */
+  --shadow-overlay: 0 8px 24px oklch(8% 0.02 256 / 0.55);
+  /* The one glow in the system: winner moment only */
+  --glow-pass: 0 0 0 1px var(--verity-green), 0 0 24px oklch(88% 0.2 151 / 0.35);
+
+  /* Layout constants (Studio) */
+  --topbar-h: 3.5rem;
+  --rail-h: 3.25rem;
+  --bottombar-h: 3.5rem;
+  --inspector-w: 25rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Verity additions: bg-surface-2, text-fg-muted, border-border-strong, text-pass, bg-fail-muted ... */
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-border-strong: var(--border-strong);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-press: var(--primary-press);
+  --color-primary-muted: var(--primary-muted);
+  --color-pass: var(--pass);
+  --color-pass-muted: var(--pass-muted);
+  --color-fail: var(--fail);
+  --color-fail-muted: var(--fail-muted);
+  --color-warn: var(--warn);
+  --color-warn-muted: var(--warn-muted);
+  --color-info: var(--info);
+  --color-info-muted: var(--info-muted);
+  --color-code-bg: var(--code-bg);
+  --color-syn-plain: var(--syn-plain);
+  --color-syn-punct: var(--syn-punct);
+  --color-syn-keyword: var(--syn-keyword);
+  --color-syn-type: var(--syn-type);
+  --color-syn-number: var(--syn-number);
+  --color-syn-comment: var(--syn-comment);
+  --color-syn-string: var(--syn-string);
+  --color-diff-add: var(--diff-add);
+  --color-diff-del: var(--diff-del);
+
+  /* Fonts: variables are set by next/font in app/layout.tsx */
+  --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@theme {
+  /* Product type scale = Tailwind defaults (xs 12, sm 14, base 16, xl 20, 2xl 24, 3xl 30).
+     Light-on-dark: open up line-height on reading sizes. */
+  --text-sm--line-height: calc(1.375 / 0.875);
+  --text-base--line-height: calc(1.625 / 1);
+
+  /* Brand (landing) fluid scale */
+  --text-display: clamp(3rem, 1.6rem + 3.6vw, 6rem);
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 800;
+  --text-headline: clamp(2rem, 1.5rem + 1.6vw, 3rem);
+  --text-headline--line-height: 1.1;
+  --text-headline--letter-spacing: -0.015em;
+  --text-headline--font-weight: 700;
+  --text-lead: 1.25rem;
+  --text-lead--line-height: 1.6;
+
+  /* Motion */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-toggle: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --animate-status-blink: status-blink 1.2s ease-in-out infinite;
+  --animate-node-enter: node-enter 220ms cubic-bezier(0.25, 1, 0.5, 1) both;
+  --animate-status-pop: status-pop 320ms cubic-bezier(0.25, 1, 0.5, 1);
+  --animate-diff-outline: diff-outline 4s ease-out forwards;
+  --animate-winner-glow: winner-glow 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  @keyframes status-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @keyframes node-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @keyframes status-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+  @keyframes diff-outline { 0%, 70% { outline-color: var(--verity-green); } 100% { outline-color: transparent; } }
+  @keyframes winner-glow { 0% { box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 0 1px var(--verity-green), 0 0 40px oklch(88% 0.2 151 / 0.5); } 100% { box-shadow: var(--glow-pass); } }
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { color-scheme: dark; }
+  body { @apply bg-background text-foreground font-sans antialiased; font-kerning: normal; }
+  ::selection { background: var(--selection); color: var(--foreground); }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  code, kbd, pre, samp { font-variant-ligatures: none; }
+}
+
+/* React Flow theming. ReactFlow gets className="verity-flow" so these beat the library defaults
+   regardless of stylesheet order (the library CSS is imported in components/canvas/RunCanvas.tsx).
+   The library reads var(--xy-name, var(--xy-name-default)), so we set the non-default names.
+   Custom nodes draw their own cards, so the built-in node color variables are not needed. */
+.react-flow.verity-flow {
+  --xy-background-color: var(--background);
+  --xy-background-pattern-color: var(--canvas-dot);
+  --xy-edge-stroke: var(--edge);
+  --xy-edge-stroke-width: 1;
+  --xy-edge-stroke-selected: var(--foreground);
+  --xy-edge-label-color: var(--fg-muted);
+  --xy-edge-label-background-color: var(--background);
+  --xy-connectionline-stroke: var(--edge);
+  --xy-handle-background-color: var(--surface-2);
+  --xy-handle-border-color: var(--border-strong);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: none;
+  --xy-attribution-background-color: transparent;
+}
+/* The library sets outline: none on focused nodes. Restore a visible keyboard focus ring. */
+.react-flow.verity-flow .react-flow__node.selectable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.react-flow.verity-flow .react-flow__attribution a { color: var(--fg-subtle); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

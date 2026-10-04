@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nebius Hackathon Game Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F3F5F7;--surface:#FFFFFF;--ink:#15202B;--muted:#5B6875;--line:#D5DCE3;--soft:#E8EDF2;
+  --accent:#2B59C3;--nv:#4E8A12;--gap:#A8327A;--ok:#1E7F55;--warn:#A86B12;--bad:#B8322A;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F151C;--surface:#16202A;--ink:#E6ECF2;--muted:#93A1AF;--line:#2A3744;--soft:#1D2934;
+    --accent:#7FA2F0;--nv:#8BC34A;--gap:#E07AB8;--ok:#4CC38A;--warn:#E0A84A;--bad:#EF6B61;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F151C;--surface:#16202A;--ink:#E6ECF2;--muted:#93A1AF;--line:#2A3744;--soft:#1D2934;
+  --accent:#7FA2F0;--nv:#8BC34A;--gap:#E07AB8;--ok:#4CC38A;--warn:#E0A84A;--bad:#EF6B61;color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
+h1,h2,h3{font-family:var(--display);font-stretch:85%;line-height:1.1;text-wrap:balance;margin:0}
+h1{font-size:clamp(34px,6vw,54px);font-weight:800}
+h2{font-size:26px;font-weight:700}
+h3{font-size:16px;font-weight:700;font-stretch:90%}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono)}
+a{color:var(--accent)}
+a:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header.top{display:grid;gap:14px;padding-block:8px 22px;border-bottom:2px solid var(--ink)}
+.partno{display:flex;flex-wrap:wrap;gap:8px 18px;font:500 12px var(--mono);color:var(--muted)}
+.lede{font-size:18px;max-width:64ch;margin:0}
+.nav{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;padding-block:10px;border-bottom:1px solid var(--line)}
+.nav a{font:500 13px var(--mono);color:var(--ink);text-decoration:none;padding:6px 10px;border-radius:4px;white-space:nowrap}
+.nav a:hover{background:var(--soft)}
+section{display:grid;gap:18px;padding-block:44px 8px;scroll-margin-top:56px}
+.sechead{display:grid;gap:6px}
+.sechead p{margin:0;color:var(--muted);max-width:66ch}
+.chip{font:600 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:6px 8px;border-radius:4px;border:1.5px solid currentColor;white-space:nowrap}
+.c-ok{color:var(--ok)}.c-warn{color:var(--warn)}.c-bad{color:var(--bad)}.c-gap{color:var(--gap)}.c-nv{color:var(--nv)}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px}
+figcaption{font-size:13px;color:var(--muted);margin-top:10px;max-width:78ch}
+.scroll{overflow-x:auto}
+svg.diag{width:100%;min-width:780px;height:auto;display:block;color:var(--ink)}
+svg text{font-family:var(--mono);fill:currentColor}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px;display:grid;gap:4px;align-content:start}
+.tile .big{font:700 30px/1 var(--display);font-stretch:85%;font-variant-numeric:tabular-nums}
+.tile small{color:var(--muted);font-size:12.5px}
+
+/* track cards */
+.tracks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:820px){.tracks{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:460px){.tracks{grid-template-columns:1fr}}
+.track{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:grid;gap:6px;align-content:start;font-size:13px}
+.track.pick{border:2px solid var(--accent)}
+.track .fit{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em}
+
+/* prizes */
+.prizes{display:grid;gap:6px}
+.pz{display:grid;grid-template-columns:170px minmax(0,1fr) 90px;gap:10px;align-items:center;font-size:13px}
+.pz .t{height:14px;background:var(--soft);border-radius:3px;overflow:hidden}
+.pz .v{height:100%;background:var(--accent)}
+.pz .n{font:500 13px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:560px){.pz{grid-template-columns:120px minmax(0,1fr) 70px}}
+
+/* checklist */
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.ck{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:13.5px;align-items:start}
+.ck .box{width:18px;height:18px;border:2px solid var(--ink);border-radius:3px;margin-top:2px}
+.ck small{display:block;color:var(--muted);font-size:12px}
+.ck.fatal .box{border-color:var(--bad)}
+
+/* scoring */
+.score{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:820px){.score{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:460px){.score{grid-template-columns:1fr}}
+.crit{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px;display:grid;gap:8px;align-content:start}
+.crit .pct{font:700 28px/1 var(--display);font-stretch:85%}
+.crit .dots{display:flex;gap:4px}
+.crit .dots i{width:14px;height:14px;border-radius:3px;background:var(--soft)}
+.crit .dots i.on{background:var(--accent)}
+.crit p{margin:0;font-size:13px}
+.crit.key{border:2px solid var(--nv)}
+
+/* difficulty cards */
+.diffs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.diff{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--sev);border-radius:4px 6px 6px 4px;padding:14px;display:grid;gap:8px;align-content:start}
+.diff.hi{--sev:var(--bad)}.diff.md{--sev:var(--warn)}.diff.lo{--sev:var(--muted)}
+.diff .row{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.diff .sev{font:600 11px var(--mono);text-transform:uppercase;color:var(--sev);letter-spacing:.05em}
+.diff .num{font:600 14px var(--mono)}
+.diff p{margin:0;font-size:13.5px}
+.diff .fix{color:var(--muted)}
+.diff .fix::before{content:"Fix: ";font-weight:600;color:var(--ok)}
+
+/* gantt */
+.gantt{display:grid;gap:8px}
+.ph{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:center}
+.ph .lab{display:grid;font-size:13px}
+.ph .lab b{font-family:var(--mono);font-weight:500}
+.ph .lane{position:relative;height:34px;background:var(--soft);border-radius:4px}
+.ph .blk{position:absolute;top:4px;bottom:4px;border-radius:3px;background:var(--accent);color:var(--surface);font:500 12px/26px var(--mono);padding-inline:8px;white-space:nowrap;overflow:hidden}
+.ph .blk.nv{background:var(--nv)}.ph .blk.g{background:var(--gap)}.ph .blk.w{background:var(--warn)}
+.ph .gate{position:absolute;top:-3px;bottom:-3px;width:0;border-left:2px dashed var(--bad)}
+.axis{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;font:12px var(--mono);color:var(--muted)}
+.axis .ticks{position:relative;height:16px}
+.axis .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.axis .ticks span:first-child{transform:none}
+.axis .ticks span:last-child{transform:translateX(-100%);color:var(--bad);font-weight:500}
+@media (max-width:560px){.ph,.axis{grid-template-columns:1fr}.axis>span:first-child{display:none}}
+.gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.gt{background:var(--surface);border:1px dashed var(--bad);border-radius:6px;padding:10px 12px;font-size:13px;display:grid;gap:4px}
+.gt b{font-family:var(--mono);font-weight:500;color:var(--bad)}
+
+/* storyboard */
+.story{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+@media (max-width:820px){.story{grid-template-columns:1fr}}
+.sb{padding:12px 14px;display:grid;gap:6px;align-content:start;border-right:1px solid var(--line);font-size:13px}
+.sb:last-child{border-right:0}
+@media (max-width:820px){.sb{border-right:0;border-bottom:1px solid var(--line)}}
+.sb .tc{font:500 12px var(--mono);color:var(--accent)}
+.sb b{font-family:var(--display);font-stretch:90%;font-size:15px}
+
+/* roles */
+.scrolltbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font:600 11px/1.25 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+td .mono{font-size:12px}
+
+/* questions + sources */
+.qs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.q{background:var(--surface);border:1px solid var(--accent);border-radius:6px;padding:12px 14px;font-size:13.5px;display:grid;gap:4px}
+.q b{font-family:var(--display);font-stretch:90%;font-size:15px}
+.cnv{background:var(--surface);border:1px dashed var(--warn);border-radius:6px;padding:14px}
+.cnv ul{margin:8px 0 0;padding-left:18px;font-size:13.5px;display:grid;gap:5px}
+.src{font-size:13px;margin:0;padding-left:18px;display:grid;gap:4px}
+.src a{word-break:break-word}
+.twocol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.twocol{grid-template-columns:1fr}}
+footer{margin-top:40px;font:12px var(--mono);color:var(--muted)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* approach */
+.duo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:720px){.duo{grid-template-columns:1fr}}
+.part{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:6px;padding:14px 16px;display:grid;gap:8px;align-content:start}
+.part.brain{--c:var(--nv)}.part.window{--c:var(--accent)}
+.part ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13.5px}
+.part .role{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--c)}
+.ff{display:grid;gap:8px}
+.ffr{display:grid;grid-template-columns:34px minmax(0,1.2fr) minmax(0,2fr) auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px;font-size:13.5px}
+.ffr .rk{font:700 22px/1 var(--display);font-stretch:85%;color:var(--muted)}
+.ffr.win{border:2px solid var(--accent)}
+.ffr.win .rk{color:var(--accent)}
+.ffr .chip{justify-self:end}
+@media (max-width:640px){.ffr{grid-template-columns:28px minmax(0,1fr)}.ffr>span:nth-child(3),.ffr .chip{grid-column:2}.ffr .chip{justify-self:start}}
+.why{display:flex;flex-wrap:wrap;gap:8px}
+.why span{font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+.mock{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px}
+.pn{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:8px 10px;display:grid;gap:6px;align-content:start;min-height:64px}
+.pn .pt{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.04em}
+.pn .tool{font:11px var(--mono);color:var(--muted)}
+.s12{grid-column:span 12}.s8{grid-column:span 8}.s6{grid-column:span 6}.s4{grid-column:span 4}.s3{grid-column:span 3}
+@media (max-width:720px){.mock>.pn{grid-column:span 12}}
+.inp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.inp .field{flex:1 1 220px;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font:12.5px var(--mono);color:var(--muted);background:var(--bg)}
+.btn{font:600 12px var(--mono);padding:6px 10px;border-radius:4px;background:var(--accent);color:var(--surface)}
+.btn.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent)}
+.steps{display:flex;gap:4px;flex-wrap:wrap}
+.steps span{font:500 11.5px var(--mono);padding:4px 8px;border-radius:3px;background:var(--soft)}
+.steps .dn{background:var(--ok);color:var(--surface)}.steps .ac{background:var(--accent);color:var(--surface)}
+.lines{display:grid;gap:4px}
+.lines i{display:block;height:6px;border-radius:3px;background:var(--soft)}
+.lines i.ok{background:color-mix(in srgb,var(--ok) 45%,transparent)}.lines i.bad{background:color-mix(in srgb,var(--bad) 45%,transparent)}
+.wave{height:34px;display:block;width:100%}
+.mini{display:flex;align-items:flex-end;gap:6px;height:42px}
+.mini i{flex:1;background:var(--accent);border-radius:2px 2px 0 0;opacity:.85}
+.stack td:first-child{white-space:nowrap}
+.host{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:720px){.host{grid-template-columns:1fr}}
+.hopt{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:grid;gap:8px;align-content:start}
+.hopt .big{font:700 28px/1 var(--display);font-stretch:85%}
+.hopt ul{margin:0;padding-left:18px;font-size:13.5px;display:grid;gap:4px}
+.hopt .pro::marker{color:var(--ok)}.hopt .con::marker{color:var(--bad)}
+.cut{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
+.pill{font:500 12px var(--mono);padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="partno"><span>DOC AIHE-02</span><span>Hackathon game plan</span><span>Researched 2026-09-28</span></div>
+  <h1>Nebius Hackathon Game Plan</h1>
+  <p class="lede">Enter <b>AI Hardware Engineer</b> in the <b>Coding &amp; Agentic Engineering</b> track. Build an <b>agent</b> (the brain) inside a <b>website with a live dashboard</b> (the window judges look through). Nemotron runs every agent role, Token Factory Sandboxes run the chip tools. <b>Biggest risks: $50 of credits and undocumented sandbox limits.</b></p>
+</header>
+
+<nav class="nav" aria-label="Sections">
+  <a href="#event">Event</a><a href="#rules">Must-pass rules</a><a href="#scoring">Scoring</a><a href="#approach">Approach</a><a href="#arch">Architecture</a><a href="#limits">Hard limits</a><a href="#timeline">Timeline</a><a href="#video">Video</a><a href="#you">Your call</a><a href="#sources">Sources</a>
+</nav>
+
+<!-- EVENT -->
+<section id="event">
+  <div class="sechead"><span class="eyebrow">The event</span><h2>Nebius x NVIDIA Global AI Hackathon</h2><p>Online, Devpost, 12,954 registered.</p></div>
+  <div class="tiles">
+    <div class="tile"><span class="eyebrow">Deadline</span><span class="big">Oct 30</span><small>10:00 AM Pacific, 2026. No edits after.</small></div>
+    <div class="tile"><span class="eyebrow">Time left</span><span class="big">32 days</span><small>Counted from Sep 28.</small></div>
+    <div class="tile"><span class="eyebrow">Free credits</span><span class="big">$50</span><small>$25 promo code + $25 Builders Program, Token Factory only.</small></div>
+    <div class="tile"><span class="eyebrow">Top prize</span><span class="big">$20,000</span><small>Cash. $50,000+ total pool.</small></div>
+  </div>
+
+  <div class="tracks">
+    <div class="track pick"><span class="fit c-ok">Our track</span><h3>Coding &amp; Agentic Engineering</h3><span class="muted">"agents that write, run, and test code in Token Factory Sandboxes"</span></div>
+    <div class="track"><span class="fit muted">Backup</span><h3>Best Apps &amp; Agents</h3><span class="muted">Multi-step autonomous workflows. Also fits.</span></div>
+    <div class="track"><span class="fit muted">No fit</span><h3>Personal AI</h3><span class="muted">Always-on private assistant.</span></div>
+    <div class="track"><span class="fit muted">No fit</span><h3>Physical AI</h3><span class="muted">Needs real hardware on video.</span></div>
+  </div>
+
+  <figure>
+    <div class="prizes">
+      <div class="pz"><span>Grand Prize</span><div class="t"><div class="v" style="width:100%"></div></div><span class="n">$20,000</span></div>
+      <div class="pz"><span>2nd Place</span><div class="t"><div class="v" style="width:50%"></div></div><span class="n">$10,000</span></div>
+      <div class="pz"><span>3rd Place</span><div class="t"><div class="v" style="width:30%"></div></div><span class="n">$6,000</span></div>
+      <div class="pz"><span>Best Use of Tavily</span><div class="t"><div class="v" style="width:15%;background:var(--gap)"></div></div><span class="n">$3,000</span></div>
+      <div class="pz"><span>City Winner (x20)</span><div class="t"><div class="v" style="width:2.5%"></div></div><span class="n">$500</span></div>
+      <div class="pz"><span>Track Winner (x4)</span><div class="t"><div class="v" style="width:0"></div></div><span class="n">Jetson</span></div>
+      <div class="pz"><span>Best Feedback (x10)</span><div class="t"><div class="v" style="width:.5%"></div></div><span class="n">$100</span></div>
+    </div>
+    <figcaption>One project wins <b>one overall award</b>, or <b>one track award plus one bonus</b>. Target: overall prize, fallback Coding track + Tavily bonus. Track winners get an NVIDIA Jetson Orin Nano.</figcaption>
+  </figure>
+</section>
+
+<!-- RULES -->
+<section id="rules">
+  <div class="sechead"><span class="eyebrow">Stage 1 is pass / fail</span><h2>Must-pass rules</h2><p>Miss one and judges never score the project. Red boxes disqualify outright.</p></div>
+  <div class="checks">
+    <div class="ck fatal"><span class="box"></span><span>Runs on <b>Nebius Token Factory</b> or <b>Nebius AI Cloud</b></span></div>
+    <div class="ck fatal"><span class="box"></span><span>Uses at least one <b>NVIDIA open model</b><small>Nemotron, GR00T, Cosmos or Sonic</small></span></div>
+    <div class="ck fatal"><span class="box"></span><span><b>Hosted demo URL</b>, free for judges<small>must stay up until judging ends</small></span></div>
+    <div class="ck fatal"><span class="box"></span><span><b>Public repo</b> with an open source license<small>MIT, Apache 2.0 or MPL 2.0; README with setup</small></span></div>
+    <div class="ck"><span class="box"></span><span><b>Video under 3 min</b>, public YouTube<small>say Nebius + NVIDIA out loud</small></span></div>
+    <div class="ck"><span class="box"></span><span><b>Feedback</b> on Nebius and NVIDIA tools<small>required; be specific</small></span></div>
+    <div class="ck"><span class="box"></span><span><b>New work</b>, or significantly updated after Aug 26 2026</span></div>
+    <div class="ck"><span class="box"></span><span>All materials in <b>English</b></span></div>
+    <div class="ck fatal"><span class="box"></span><span><b>No API keys</b> in the repo<small>.env in .gitignore</small></span></div>
+    <div class="ck"><span class="box"></span><span>Eligible country<small>excluded: Brazil, Quebec, Russia, Crimea, Cuba, Iran, North Korea, other OFAC-sanctioned</small></span></div>
+  </div>
+</section>
+
+<!-- SCORING -->
+<section id="scoring">
+  <div class="sechead"><span class="eyebrow">Stage 2</span><h2>How you get scored</h2><p>Four criteria, equal weight, 1 to 5 each. Judges want "an agent that plans, writes, tests, and iterates on a real repo with minimal human input".</p></div>
+  <div class="score">
+    <div class="crit key"><span class="eyebrow c-nv">Technological implementation</span><span class="pct">25%</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><p>Scored on <b>how well you use Token Factory and the NVIDIA model</b>. Nemotron must be the brain, not a side call.</p></div>
+    <div class="crit"><span class="eyebrow">Design</span><span class="pct">25%</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><p>Live dashboard: agent steps, waveform, PPA chart across versions.</p></div>
+    <div class="crit"><span class="eyebrow">Potential impact</span><span class="pct">25%</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><p>Chip design is slow and expert-only. Show hours of engineer work done in minutes.</p></div>
+    <div class="crit"><span class="eyebrow">Quality of the idea</span><span class="pct">25%</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><p>The novelty is the <b>PPA loop</b>: the agent makes the chip faster and smaller, not just correct.</p></div>
+  </div>
+  <p class="muted" style="margin:0;font-size:13px">Dots show our expected strength per criterion, not official weights.</p>
+</section>
+
+<!-- APPROACH -->
+<section id="approach">
+  <div class="sechead"><span class="eyebrow">App or agent?</span><h2>Both: an agent inside a website</h2><p>The agent does the chip designer's job. The website lets judges watch it happen, with nothing to install.</p></div>
+
+  <div class="duo">
+    <div class="part brain"><span class="role">The brain · agent</span><h3>Does the work by itself</h3><ul>
+      <li>Reads the request in plain English</li>
+      <li>Writes the chip code (Verilog)</li>
+      <li>Tests it, fixes its own mistakes</li>
+      <li>Measures speed, size, power</li>
+      <li>Tries versions, keeps the best</li>
+    </ul><span class="muted" style="font-size:12.5px">Thinks with NVIDIA Nemotron · tools run on Nebius</span></div>
+    <div class="part window"><span class="role">The window · website</span><h3>Judges open a link and watch</h3><ul>
+      <li>Every step, live</li>
+      <li>The code, and what changed between versions</li>
+      <li>Signal graphs of the chip working</li>
+      <li>A picture of the finished layout</li>
+      <li>A chart of each version getting better</li>
+    </ul><span class="muted" style="font-size:12.5px">Judges get a few minutes and a URL</span></div>
+  </div>
+
+  <div class="ff">
+    <div class="ffr win"><span class="rk">1</span><b>Website with live dashboard</b><span class="muted">Main entry. Works with nothing installed.</span><span class="chip c-ok">Build</span></div>
+    <div class="ffr"><span class="rk">2</span><b>GitHub bot</b><span class="muted">Spec as an issue, agent opens a pull request. Show one finished example.</span><span class="chip c-warn">Extra</span></div>
+    <div class="ffr"><span class="rk">3</span><b>Command-line tool</b><span class="muted">The engine under the website. Judges would need to install it.</span><span class="chip c-warn">Engine only</span></div>
+    <div class="ffr"><span class="rk">4</span><b>Editor plugin / MCP server</b><span class="muted">Needs VS Code, Cursor or Claude Code installed.</span><span class="chip c-bad">Skip</span></div>
+  </div>
+
+  <div class="why">
+    <span>Past winners: mostly web apps with dashboards</span>
+    <span>Rules: "a complete, coherent product experience"</span>
+    <span>Judges may score from the video alone</span>
+    <span>Chip people already use browser tools (EDA Playground)</span>
+    <span>chip-harness ships a dashboard too</span>
+  </div>
+
+  <figure>
+    <p class="chart-title" style="font:600 14px var(--body);margin:0 0 10px">What the judge sees (sketch)</p>
+    <div class="mock">
+      <div class="pn s12"><div class="inp"><span class="field">"A 4x4 matrix multiplier, 8-bit, as fast as possible"</span><span class="btn">Run live</span><span class="btn ghost">Replay saved run</span></div></div>
+      <div class="pn s12"><div class="steps"><span class="dn">Spec</span><span class="dn">Plan</span><span class="dn">Write RTL</span><span class="dn">Test</span><span class="ac">Synthesize</span><span>Layout</span><span>Best version</span></div></div>
+      <div class="pn s4"><span class="pt">Agent log</span><div class="lines"><i style="width:90%"></i><i class="bad" style="width:70%"></i><i style="width:85%"></i><i class="ok" style="width:60%"></i><i style="width:75%"></i></div><span class="tool">live stream</span></div>
+      <div class="pn s8"><span class="pt">Code, v1 vs v2</span><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="lines"><i style="width:80%"></i><i class="bad" style="width:60%"></i><i style="width:70%"></i></div><div class="lines"><i style="width:80%"></i><i class="ok" style="width:65%"></i><i style="width:70%"></i></div></div><span class="tool">Monaco diff</span></div>
+      <div class="pn s6"><span class="pt">Signals</span><svg class="wave" viewBox="0 0 300 34" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,26 20,26 20,8 40,8 40,26 60,26 60,8 80,8 80,26 100,26 100,8 120,8 120,26 140,26 140,8 160,8 160,26 180,26 180,8 200,8 200,26 220,26 220,8 240,8 240,26 260,26 260,8 280,8 280,26 300,26"/></svg><span class="tool">Surfer viewer</span></div>
+      <div class="pn s3"><span class="pt">Circuit</span><svg class="wave" viewBox="0 0 120 34" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="8" y="8" width="26" height="18" rx="2"/><rect x="50" y="8" width="26" height="18" rx="2"/><rect x="92" y="8" width="22" height="18" rx="2"/><line x1="34" y1="17" x2="50" y2="17"/><line x1="76" y1="17" x2="92" y2="17"/></g></svg><span class="tool">netlistsvg</span></div>
+      <div class="pn s3"><span class="pt">Layout</span><svg class="wave" viewBox="0 0 120 34" aria-hidden="true"><rect x="30" y="2" width="60" height="30" fill="var(--soft)" stroke="currentColor"/><g stroke="var(--gap)" stroke-width="1.5"><line x1="34" y1="8" x2="86" y2="8"/><line x1="34" y1="16" x2="86" y2="16"/><line x1="34" y1="24" x2="86" y2="24"/></g><g stroke="var(--accent)" stroke-width="1.5"><line x1="44" y1="4" x2="44" y2="30"/><line x1="60" y1="4" x2="60" y2="30"/><line x1="76" y1="4" x2="76" y2="30"/></g></svg><span class="tool">OpenROAD image</span></div>
+      <div class="pn s8"><span class="pt">Better every version</span><div class="mini"><i style="height:40%"></i><i style="height:58%"></i><i style="height:70%"></i><i style="height:88%"></i></div><span class="tool">speed per version · v1 → v4</span></div>
+      <div class="pn s4"><span class="pt">Credits used</span><div class="lines"><i class="ok" style="width:34%"></i></div><span class="tool">capped per run</span></div>
+    </div>
+    <figcaption>Sketch only, not real data. Every panel uses a free, existing tool, named under each panel.</figcaption>
+  </figure>
+
+  <div class="scrolltbl"><table class="stack">
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><b>Agent</b></td><td>Small Python loop of our own</td><td>Full control, clear live trace</td></tr>
+      <tr><td><b>AI model</b></td><td>Nemotron 3 Ultra + Super on Token Factory</td><td>Required, and 25% of score</td></tr>
+      <tr><td><b>Tool runner</b></td><td>Token Factory Sandboxes (<span class="mono">contree_sdk</span>)</td><td>Branch per design version: a Nebius feature judges will notice</td></tr>
+      <tr><td><b>Backend</b></td><td>FastAPI, streams each step</td><td>Team already knows it; page updates live</td></tr>
+      <tr><td><b>Website</b></td><td>Next.js + Tailwind (static export)</td><td>Team already knows it; custom dashboard for the Design score</td></tr>
+      <tr><td><b>Datasheet lookup</b></td><td>Tavily</td><td>Eligible for the $3,000 bonus</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="sechead"><h3>Next.js + FastAPI: how it fits</h3><p>Keep the stack you know. One container, one URL, all on Nebius.</p></div>
+  <figure>
+    <div class="scroll">
+    <svg class="diag" viewBox="0 0 980 250" role="img" aria-label="Judge's browser loads the Next.js pages from FastAPI and opens a live event stream straight to FastAPI. FastAPI, inside one Docker container on a Nebius endpoint, calls Nemotron on Token Factory, runs tools in Sandboxes, and calls Tavily.">
+      <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <rect x="20" y="95" width="140" height="60" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.4"/>
+      <text x="90" y="121" font-size="13" font-weight="600" text-anchor="middle">Judge's browser</text>
+      <text x="90" y="139" font-size="10.5" text-anchor="middle" opacity=".75">EventSource</text>
+      <rect x="230" y="20" width="360" height="210" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="244" y="40" font-size="11" font-weight="600" style="fill:var(--accent)">ONE DOCKER CONTAINER · NEBIUS ENDPOINT</text>
+      <rect x="250" y="60" width="150" height="150" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.4"/>
+      <text x="325" y="120" font-size="13" font-weight="600" text-anchor="middle">Next.js</text>
+      <text x="325" y="138" font-size="10.5" text-anchor="middle" opacity=".75">static pages</text>
+      <text x="325" y="154" font-size="10.5" text-anchor="middle" opacity=".75">(output: export)</text>
+      <rect x="420" y="60" width="150" height="150" rx="4" fill="var(--surface)" stroke="var(--nv)" stroke-width="1.6"/>
+      <text x="495" y="112" font-size="13" font-weight="600" text-anchor="middle">FastAPI</text>
+      <text x="495" y="130" font-size="10.5" text-anchor="middle" opacity=".75">agent loop</text>
+      <text x="495" y="146" font-size="10.5" text-anchor="middle" opacity=".75">live stream (SSE)</text>
+      <text x="495" y="162" font-size="10.5" text-anchor="middle" opacity=".75">API keys here only</text>
+      <line x1="400" y1="135" x2="418" y2="135" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <text x="409" y="200" font-size="10" text-anchor="middle" opacity=".7">serves</text>
+      <g stroke="currentColor" stroke-width="1.5" fill="none">
+        <path d="M160 112 H200 V85 H248" marker-end="url(#a2)"/>
+        <path d="M160 140 H210 V222 H495 V212" marker-start="url(#a2)" marker-end="url(#a2)"/>
+      </g>
+      <text x="204" y="79" font-size="10" text-anchor="middle">loads page</text>
+      <text x="350" y="240" font-size="10" text-anchor="middle">live steps, straight to FastAPI</text>
+      <g stroke-width="1.6">
+        <rect x="680" y="30" width="270" height="50" rx="4" fill="var(--surface)" stroke="var(--nv)"/>
+        <rect x="680" y="100" width="270" height="50" rx="4" fill="var(--surface)" stroke="var(--accent)"/>
+        <rect x="680" y="170" width="270" height="50" rx="4" fill="var(--surface)" stroke="var(--gap)"/>
+      </g>
+      <g font-size="12.5" font-weight="600" text-anchor="middle">
+        <text x="815" y="51" style="fill:var(--nv)">Token Factory · Nemotron</text>
+        <text x="815" y="121" style="fill:var(--accent)">Token Factory Sandboxes</text>
+        <text x="815" y="191" style="fill:var(--gap)">Tavily</text>
+      </g>
+      <g font-size="10.5" text-anchor="middle" opacity=".8">
+        <text x="815" y="68">OpenAI Python SDK</text>
+        <text x="815" y="138">contree_sdk · chip tools image</text>
+        <text x="815" y="208">datasheet lookup</text>
+      </g>
+      <g stroke="currentColor" stroke-width="1.5" fill="none">
+        <path d="M572 90 H620 V55 H678" marker-end="url(#a2)"/>
+        <path d="M572 125 H678" marker-end="url(#a2)"/>
+        <path d="M572 160 H620 V195 H678" marker-end="url(#a2)"/>
+      </g>
+    </svg>
+    </div>
+    <figcaption>The browser opens the live stream straight to FastAPI, never through Next.js API routes, because a design run takes minutes. Nebius and Tavily keys stay in FastAPI; never in <span class="mono">NEXT_PUBLIC_*</span>.</figcaption>
+  </figure>
+
+  <div class="duo">
+    <div class="part brain"><span class="role">Backend · FastAPI</span><ul>
+      <li>OpenAI Python SDK → Token Factory (<span class="mono">api.tokenfactory.nebius.com/v1</span>)</li>
+      <li><span class="mono">contree_sdk</span>: chip tools image, a branch per version</li>
+      <li>Live stream: built-in SSE in recent FastAPI, or <span class="mono">sse-starlette</span></li>
+      <li>Tavily client</li>
+      <li>Saved demo run = a JSON file of events, replayed</li>
+    </ul></div>
+    <div class="part window"><span class="role">Frontend · Next.js</span><ul>
+      <li>Tailwind (+ shadcn/ui if you use it)</li>
+      <li><span class="mono">@monaco-editor/react</span> with <span class="mono">dynamic(..., {ssr:false})</span></li>
+      <li>Surfer viewer in an iframe, VCD by URL</li>
+      <li>netlistsvg in the browser</li>
+      <li>Any chart library you know (e.g. Recharts)</li>
+      <li>Browser <span class="mono">EventSource</span> for the live stream</li>
+    </ul></div>
+  </div>
+  <div class="cut"><span class="muted">Skip:</span><span class="pill">database (JSON / SQLite is enough)</span><span class="pill">user accounts (one token for judges)</span><span class="pill">LangGraph (plain loop is simpler)</span></div>
+
+  <div class="duo">
+    <div class="part window"><span class="role">Safety trick 1</span><h3>Saved run</h3><p style="margin:0;font-size:13.5px">One full run is recorded. Judges replay it instantly, no waiting, no credits spent.</p></div>
+    <div class="part window"><span class="role">Safety trick 2</span><h3>Capped live runs</h3><p style="margin:0;font-size:13.5px">Live runs on a few preset requests, with a spending limit per run. Protects the $50.</p></div>
+  </div>
+
+  <div class="sechead"><h3>Hosting: your choice</h3><p>The website must stay online until judging ends. A forum post says judging may run Dec 1-15; not confirmed.</p></div>
+  <div class="host">
+    <div class="hopt"><span class="eyebrow">Option A · recommended</span><h3>Host on Nebius</h3><span class="big">$100-250</span><ul><li class="pro">Looks best to judges: all on Nebius</li><li class="pro">Managed HTTPS link</li><li class="con">Unclear if hackathon credits cover it</li><li class="con">Link needs an access token for judges</li></ul></div>
+    <div class="hopt"><span class="eyebrow">Option B · cheapest</span><h3>Website elsewhere, AI on Nebius</h3><span class="big">$0-low</span><ul><li class="pro">Still allowed by the rules</li><li class="pro">Next.js on Vercel also works, if the stream goes straight to FastAPI</li><li class="pro">Render free tier works with the saved run</li><li class="con">Free tier sleeps after 15 min idle, ~1 min to wake</li><li class="con">Slightly weaker "uses Nebius" story</li></ul></div>
+  </div>
+  <p class="muted" style="margin:0;font-size:13px">Cost range is our estimate for a small Nebius machine running until mid-December.</p>
+</section>
+
+<!-- ARCH -->
+<section id="arch">
+  <div class="sechead"><span class="eyebrow">What to build</span><h2>Architecture on Nebius</h2><p>Every agent role is a Nemotron call. Every chip tool runs in a Sandbox. Heavy place-and-route moves out only if the sandbox can't hold it.</p></div>
+  <figure>
+    <div class="scroll">
+    <svg class="diag" viewBox="0 0 980 440" role="img" aria-label="Judge's browser sends an English spec to the orchestrator. The orchestrator calls Nemotron 3 Ultra and Nemotron 3 Super on Token Factory, runs lint, simulation and synthesis in a Token Factory Sandbox, sends place-and-route to a Nebius AI Cloud job, and looks up datasheets with Tavily.">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+      </defs>
+      <!-- token factory enclosure -->
+      <rect x="452" y="10" width="236" height="268" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="464" y="28" font-size="11" style="fill:var(--accent)" font-weight="600">NEBIUS TOKEN FACTORY</text>
+      <!-- browser -->
+      <rect x="20" y="198" width="130" height="64" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.4"/>
+      <text x="85" y="224" font-size="13" font-weight="600" text-anchor="middle">Judge's browser</text>
+      <text x="85" y="242" font-size="10.5" text-anchor="middle" opacity=".75">hosted demo URL</text>
+      <!-- orchestrator -->
+      <rect x="210" y="40" width="170" height="380" rx="4" fill="var(--surface)" stroke="currentColor" stroke-width="1.4"/>
+      <text x="295" y="210" font-size="14" font-weight="600" text-anchor="middle">Orchestrator</text>
+      <text x="295" y="229" font-size="10.5" text-anchor="middle" opacity=".75">Python agent loop</text>
+      <text x="295" y="245" font-size="10.5" text-anchor="middle" opacity=".75">+ web dashboard</text>
+      <text x="295" y="270" font-size="10.5" text-anchor="middle" opacity=".75">cost cap per run</text>
+      <!-- browser <-> orch -->
+      <line x1="150" y1="220" x2="208" y2="220" stroke="currentColor" stroke-width="1.5" marker-end="url(#a)"/>
+      <line x1="208" y1="244" x2="152" y2="244" stroke="currentColor" stroke-width="1.5" marker-end="url(#a)"/>
+      <text x="179" y="214" font-size="10" text-anchor="middle">spec</text>
+      <text x="179" y="258" font-size="10" text-anchor="middle">progress</text>
+      <!-- right boxes -->
+      <g stroke-width="1.6">
+        <rect x="470" y="40" width="200" height="56" rx="4" fill="var(--surface)" stroke="var(--nv)"/>
+        <rect x="470" y="110" width="200" height="56" rx="4" fill="var(--surface)" stroke="var(--nv)"/>
+        <rect x="470" y="190" width="200" height="72" rx="4" fill="var(--surface)" stroke="var(--accent)"/>
+        <rect x="470" y="296" width="200" height="56" rx="4" fill="var(--surface)" stroke="currentColor" stroke-dasharray="4 3"/>
+        <rect x="470" y="366" width="200" height="56" rx="4" fill="var(--surface)" stroke="var(--gap)"/>
+      </g>
+      <g font-size="13" font-weight="600" text-anchor="middle">
+        <text x="570" y="63" style="fill:var(--nv)">Nemotron 3 Ultra</text>
+        <text x="570" y="133" style="fill:var(--nv)">Nemotron 3 Super</text>
+        <text x="570" y="213" style="fill:var(--accent)">Sandbox</text>
+        <text x="570" y="319">AI Cloud job</text>
+        <text x="570" y="389" style="fill:var(--gap)">Tavily search</text>
+      </g>
+      <g font-size="10.5" text-anchor="middle" opacity=".8">
+        <text x="570" y="81">plan · write RTL · critique</text>
+        <text x="570" y="151">testbenches · read logs</text>
+        <text x="570" y="231">iverilog · Verilator · cocotb</text>
+        <text x="570" y="247">Yosys · locked golden model</text>
+        <text x="570" y="337">OpenROAD place+route</text>
+        <text x="570" y="407">datasheets, protocol specs</text>
+      </g>
+      <!-- orch <-> right boxes -->
+      <g stroke="currentColor" stroke-width="1.5" fill="none">
+        <line x1="382" y1="68" x2="468" y2="68" marker-start="url(#a)" marker-end="url(#a)"/>
+        <line x1="382" y1="138" x2="468" y2="138" marker-start="url(#a)" marker-end="url(#a)"/>
+        <line x1="382" y1="226" x2="468" y2="226" marker-start="url(#a)" marker-end="url(#a)"/>
+        <line x1="382" y1="324" x2="468" y2="324" marker-start="url(#a)" marker-end="url(#a)" stroke-dasharray="4 3"/>
+        <line x1="382" y1="394" x2="468" y2="394" marker-start="url(#a)" marker-end="url(#a)"/>
+      </g>
+      <g font-size="10" text-anchor="middle">
+        <text x="425" y="62">prompts</text>
+        <text x="425" y="132">prompts</text>
+        <text x="425" y="220">run tools</text>
+        <text x="425" y="318">milestones</text>
+        <text x="425" y="388">lookup</text>
+      </g>
+      <!-- cost notes -->
+      <g font-size="11">
+        <text x="700" y="64">$1 in / $3 out per 1M tokens*</text>
+        <text x="700" y="80" opacity=".7">main spend</text>
+        <text x="700" y="134">$0.30 / $0.90 per 1M*</text>
+        <text x="700" y="150" opacity=".7">cheap volume work</text>
+        <text x="700" y="222">free in beta*</text>
+        <text x="700" y="238" style="fill:var(--bad)">CPU, RAM, max time: undocumented</text>
+        <text x="700" y="320">own money, ~$0.012/vCPU-h</text>
+        <text x="700" y="336" opacity=".7">only if sandbox too small</text>
+        <text x="700" y="390" style="fill:var(--gap)">$3,000 bonus prize</text>
+        <text x="700" y="406" opacity=".7">free credits via Builders</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>Green: NVIDIA models (scored). Blue: Token Factory sandbox. Dashed: fallback. * Prices from a third-party listing; sandbox "free in beta" from a search snippet. Confirm both in your Nebius dashboard.</figcaption>
+  </figure>
+
+  <div class="scrolltbl"><table>
+    <thead><tr><th>Agent role</th><th>Model</th><th>Tool it drives</th><th>Signal back</th></tr></thead>
+    <tbody>
+      <tr><td><b>Planner</b></td><td>Nemotron 3 Ultra, thinking on</td><td>Tavily</td><td>module plan, interfaces</td></tr>
+      <tr><td><b>RTL writer</b></td><td>Nemotron 3 Ultra</td><td class="mono">verilator --lint-only</td><td>lint errors</td></tr>
+      <tr><td><b>Test writer</b></td><td>Nemotron 3 Super</td><td class="mono">cocotb + Python golden model</td><td>pass / fail, waveform</td></tr>
+      <tr><td><b>Optimizer</b></td><td>Nemotron 3 Ultra</td><td class="mono">yosys stat · OpenROAD</td><td>area, timing slack, power</td></tr>
+      <tr><td><b>Critic</b></td><td>Nemotron 3 Ultra</td><td class="mono">Yosys EQY</td><td>optimized = verified?</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- LIMITS -->
+<section id="limits">
+  <div class="sechead"><span class="eyebrow">What can sink it</span><h2>Hard limitations</h2><p>Ranked by how likely each is to hurt the submission.</p></div>
+  <div class="diffs">
+    <div class="diff hi"><div class="row"><h3>Only $50 of model credit</h3><span class="sev">high</span></div><p>At our estimate of ~$0.03 per agent step with Ultra, that's about 1,500 steps total.</p><div class="row"><span class="muted" style="font-size:12.5px">full design runs it covers (est.)</span><span class="num">~50</span></div><p class="fix">Super for cheap steps, short prompts, cache results.</p></div>
+    <div class="diff hi"><div class="row"><h3>Judges run the demo on your bill</h3><span class="sev">high</span></div><p>Demo must be free and live until judging ends. Every judge run spends your credits.</p><div class="row"><span class="muted" style="font-size:12.5px">judges and dates</span><span class="num">unknown</span></div><p class="fix">Replay of recorded runs + capped live run on preset specs.</p></div>
+    <div class="diff hi"><div class="row"><h3>Sandbox limits undocumented</h3><span class="sev">high</span></div><p>No published CPU, RAM, disk or max timeout. Internet access during runs unknown. Beta.</p><div class="row"><span class="muted" style="font-size:12.5px">default timeout</span><span class="num">30-120 s</span></div><p class="fix">Spike in week 1. Bake tools into one image. Ask on Discord.</p></div>
+    <div class="diff hi"><div class="row"><h3>OpenROAD may not fit</h3><span class="sev">med-high</span></div><p>Multi-GB image, minutes per run. Each sandbox call is a fresh microVM.</p><div class="row"><span class="muted" style="font-size:12.5px">timeout shown in docs</span><span class="num">30 min</span></div><p class="fix">Fallback: Nebius Serverless Job. P&amp;R only at milestones.</p></div>
+    <div class="diff md"><div class="row"><h3>Nemotron's Verilog is unproven for you</h3><span class="sev">med</span></div><p>Strong score is NVIDIA's own claim, inside NVIDIA's own agent harness.</p><div class="row"><span class="muted" style="font-size:12.5px">Ultra on CVDP (NVIDIA claim)</span><span class="num">97.1%</span></div><p class="fix">Test 20 problems in week 1. The feedback loop does the heavy lifting.</p></div>
+    <div class="diff md"><div class="row"><h3>Using a non-NVIDIA brain costs points</h3><span class="sev">med</span></div><p>Allowed by the rules, but 25% of the score is how well you use Nemotron.</p><div class="row"><span class="muted" style="font-size:12.5px">score tied to NVIDIA/Nebius use</span><span class="num">25%</span></div><p class="fix">Nemotron in every role. Any other model: second opinion only.</p></div>
+    <div class="diff md"><div class="row"><h3>Models get retired</h3><span class="sev">med</span></div><p>Nemotron Nano Omni was deprecated Aug 31 2026. Tool support differs per model.</p><div class="row"><span class="muted" style="font-size:12.5px">check with</span><span class="num mono">/v1/models</span></div><p class="fix">Pin model IDs; confirm tool calling on day 1.</p></div>
+    <div class="diff md"><div class="row"><h3>32 days, 3-minute video</h3><span class="sev">med</span></div><p>Scope creep kills hackathon builds. Big designs fail anyway.</p><div class="row"><span class="muted" style="font-size:12.5px">demo design size</span><span class="num">&lt; 300 lines</span></div><p class="fix">Freeze features Oct 25. One small showcase chip.</p></div>
+    <div class="diff lo"><div class="row"><h3>No edits after deadline</h3><span class="sev">low · fatal</span></div><p>Broken link or leaked key at 10:00 AM PT stays broken.</p><div class="row"><span class="muted" style="font-size:12.5px">submit by</span><span class="num">Oct 29</span></div><p class="fix">Submit a day early; re-test the hosted URL from another network.</p></div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<section id="timeline">
+  <div class="sechead"><span class="eyebrow">Sep 28 → Oct 30</span><h2>32-day plan</h2><p>Each week ends with a go / no-go gate. Durations are our plan, not measured.</p></div>
+  <figure>
+    <div class="gantt">
+      <div class="axis"><span></span><div class="ticks"><span style="left:0">Sep 28</span><span style="left:21.9%">Oct 5</span><span style="left:43.8%">Oct 12</span><span style="left:65.6%">Oct 19</span><span style="left:87.5%">Oct 26</span><span style="left:100%">Oct 30</span></div></div>
+      <div class="ph"><div class="lab"><b>1 · Setup + spikes</b><span class="muted">credits, sandbox image, 20-problem test</span></div><div class="lane"><div class="blk w" style="left:0;width:21.9%">7 days</div><span class="gate" style="left:21.9%"></span></div></div>
+      <div class="ph"><div class="lab"><b>2 · Core loop</b><span class="muted">spec → RTL → sim → fix</span></div><div class="lane"><div class="blk nv" style="left:21.9%;width:21.9%">7 days</div><span class="gate" style="left:43.8%"></span></div></div>
+      <div class="ph"><div class="lab"><b>3 · PPA loop</b><span class="muted">area, timing, versions, EQY</span></div><div class="lane"><div class="blk g" style="left:43.8%;width:21.9%">7 days</div><span class="gate" style="left:65.6%"></span></div></div>
+      <div class="ph"><div class="lab"><b>4 · Demo app</b><span class="muted">dashboard, hosting, cost caps, Tavily</span></div><div class="lane"><div class="blk" style="left:65.6%;width:21.9%">7 days</div><span class="gate" style="left:87.5%"></span></div></div>
+      <div class="ph"><div class="lab"><b>5 · Ship</b><span class="muted">video, README, feedback, submit</span></div><div class="lane"><div class="blk" style="left:87.5%;width:9.4%;background:var(--ink)">3 d</div><span class="gate" style="left:96.9%"></span></div></div>
+    </div>
+    <figcaption>Red dashed lines are decision gates. Submission target Oct 29, one day before the deadline.</figcaption>
+  </figure>
+  <div class="gates">
+    <div class="gt"><b>Oct 4</b>Sandbox runs iverilog + Yosys? OpenROAD fits? Nemotron passes 10 of 20 test problems?</div>
+    <div class="gt"><b>Oct 11</b>Agent turns 3 English specs into passing RTL with no human help?</div>
+    <div class="gt"><b>Oct 18</b>Agent shows a measurable PPA gain on the showcase chip?</div>
+    <div class="gt"><b>Oct 25</b>Hosted URL works from a clean browser? Feature freeze.</div>
+    <div class="gt"><b>Oct 29</b>Submitted. Video public, repo public, license in.</div>
+  </div>
+</section>
+
+<!-- VIDEO -->
+<section id="video">
+  <div class="sechead"><span class="eyebrow">3 minutes, pitch not tutorial</span><h2>Video storyboard</h2><p>Judges don't have to watch past 3:00. Say "Nebius Token Factory" and "Nemotron" out loud.</p></div>
+  <div class="story">
+    <div class="sb"><span class="tc">0:00-0:20</span><b>Problem</b><span>Custom chips need rare engineers and months.</span></div>
+    <div class="sb"><span class="tc">0:20-1:30</span><b>Live run</b><span>Type English spec. Agent plans, writes RTL, a test fails, agent fixes it, tests pass.</span></div>
+    <div class="sb"><span class="tc">1:30-2:15</span><b>It optimizes</b><span>Versions 1 → 3 on a chart: faster, smaller, still proven equal.</span></div>
+    <div class="sb"><span class="tc">2:15-2:45</span><b>How</b><span>Nemotron roles + Token Factory Sandboxes on screen.</span></div>
+    <div class="sb"><span class="tc">2:45-3:00</span><b>Impact</b><span>Hours of engineer work in minutes. Repo + demo link.</span></div>
+  </div>
+</section>
+
+<!-- YOUR CALL -->
+<section id="you">
+  <div class="sechead"><span class="eyebrow">Decisions only you can make</span><h2>Your call</h2></div>
+  <div class="qs">
+    <div class="q"><b>Team</b><span>How many people, and who knows Verilog? Someone must read RTL and synthesis logs.</span></div>
+    <div class="q"><b>Own money</b><span>Host on Nebius (~$100-250, est.) or the free option? Plus a few dollars if place-and-route won't fit a sandbox.</span></div>
+    <div class="q"><b>City award</b><span>Which city are you in? The $500 city prize is tied to participating event cities.</span></div>
+    <div class="q"><b>Showcase chip</b><span>Recommend a small MAC array or 4x4 matrix multiply, not 8x8, to stay under 300 lines.</span></div>
+  </div>
+</section>
+
+<!-- SOURCES -->
+<section id="sources">
+  <div class="sechead"><span class="eyebrow">Evidence</span><h2>Sources &amp; limits</h2></div>
+  <div class="cnv">
+    <h3 class="c-warn">Could not verify</h3>
+    <ul>
+      <li>Token Factory prices come from a third-party listing (mastra.ai); Nebius's own price page needs JavaScript and did not load.</li>
+      <li>Sandboxes "free in beta" is from a search snippet only.</li>
+      <li>Sandbox CPU, RAM, disk, max timeout and runtime internet access are not documented anywhere we found.</li>
+      <li>Nemotron 3 Ultra's 97.1% CVDP score is NVIDIA's own claim, in its own harness, compared only with open models.</li>
+      <li>Builders &amp; Brews event dates did not render on Luma; the resources page says Sep 9 to Oct 13.</li>
+      <li>$0.03 per step, ~1,500 steps and ~50 runs are our estimates (about 20k input + 4k output tokens per step with Ultra, ~30 steps per run).</li>
+      <li>Judging window "Dec 1-15" comes from one forum post. Hosting cost $100-250 is our estimate; whether hackathon credits cover Nebius compute is an open forum question.</li>
+      <li>Surfer's EUPL license should allow embedding the unmodified viewer; not legally confirmed. OpenROAD's new web image export was merged Sep 22 2026, so pin the version.</li>
+      <li>"Past winners were mostly web apps" is based on AWS AI Agent and GitLab 2026 winners, not a full survey. Vercel was not checked as a host.</li>
+    </ul>
+  </div>
+  <div class="twocol">
+    <ol class="src">
+      <li><a href="https://nebiusglobalaihackathon.devpost.com/">Hackathon overview</a></li>
+      <li><a href="https://nebiusglobalaihackathon.devpost.com/rules">Official rules</a></li>
+      <li><a href="https://nebiusglobalaihackathon.devpost.com/resources">Resources and credits</a></li>
+      <li><a href="https://nebiusglobalaihackathon.devpost.com/updates/46204-here-s-how-judging-works">Here's how judging works</a></li>
+      <li><a href="https://nebiusglobalaihackathon.devpost.com/updates/46205-how-to-build-a-winning-project">How to build a winning project</a></li>
+      <li><a href="https://dev.nebius.com/builders">Nebius Builders Program</a> · <a href="https://discord.gg/eXYTGhgnhK">Nebius Discord</a></li>
+      <li><a href="https://docs.tokenfactory.nebius.com/sandboxes/overview">Token Factory Sandboxes</a></li>
+      <li><a href="https://docs.tokenfactory.nebius.com/sandboxes/sdk/python_sdk/images.md">Sandbox images (OCI import)</a></li>
+      <li><a href="https://docs.tokenfactory.nebius.com/sandboxes/cli/commands/run.md">Sandbox run and timeouts</a></li>
+    </ol>
+    <ol class="src" start="10">
+      <li><a href="https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling.md">Token Factory function calling</a></li>
+      <li><a href="https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice.md">Aug 2026 model deprecations</a></li>
+      <li><a href="https://docs.nebius.com/serverless/jobs/manage">Nebius Serverless Jobs</a> · <a href="https://docs.nebius.com/compute/resources/pricing">AI Cloud pricing</a></li>
+      <li><a href="https://mastra.ai/models/providers/nebius">Token Factory model prices (third party)</a></li>
+      <li><a href="https://developer.nvidia.com/blog/nvidia-nemotron-3-ultra-leads-open-models-on-accuracy-and-efficiency-in-agentic-rtl-coding/">Nemotron 3 Ultra RTL results (NVIDIA)</a></li>
+      <li><a href="https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16">Nemotron 3 Ultra model card</a></li>
+      <li><a href="https://nebius.com/services/token-factory/nemotron">Nemotron on Token Factory</a></li>
+      <li><a href="https://github.com/nebius/token-factory-cookbook/blob/main/models/nemotron/README.md">Token Factory cookbook: Nemotron</a></li>
+      <li><a href="https://docs.tokenfactory.nebius.com/sandboxes/sdk/integrations">Sandbox SDK integrations</a> · <a href="https://github.com/nebius/token-factory-cookbook/blob/main/agents/README.md">cookbook agents</a></li>
+      <li><a href="https://docs.nebius.com/serverless/quickstart/endpoints">Serverless Endpoints</a> · <a href="https://docs.nebius.com/serverless/pricing-quotas">pricing</a> · <a href="https://render.com/docs/free">Render free tier</a></li>
+      <li><a href="https://aws-agent-hackathon.devpost.com/updates/38140-congratulations-to-the-winners-of-the-aws-ai-agent-global-hackathon">AWS agent hackathon winners</a> · <a href="https://about.gitlab.com/blog/gitlab-ai-hackathon-2026-meet-the-winners/">GitLab 2026 winners</a></li>
+      <li><a href="https://www.edaplayground.com/">EDA Playground</a> · <a href="https://tinytapeout.com/hdl/testing/">Tiny Tapeout testing</a></li>
+      <li><a href="https://gitlab.com/surfer-project/surfer">Surfer</a> · <a href="https://github.com/nturley/netlistsvg">netlistsvg</a> · <a href="https://github.com/suren-atoyan/monaco-react">Monaco React</a></li>
+      <li><a href="https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts/blob/master/flow/scripts/save_images.tcl">ORFS layout images</a> · <a href="https://fastapi.tiangolo.com/tutorial/server-sent-events/">FastAPI live streaming</a></li>
+    </ol>
+  </div>
+</section>
+
+<footer>AIHE-02 · companion to AI_Hardware_Engineer_Report.html · researched 2026-09-28</footer>
+</div>
+</body>
+</html>
