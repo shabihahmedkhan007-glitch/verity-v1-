@@ -148,6 +148,12 @@ _Last updated: 2026-10-04_
 - **Not verified:** live mode UI (countdown actions, steering, stop, credit cap banner, reconnect) because there is no agent backend; a real browser file download (agent-browser cancels downloads, so the zip was checked from the app's blob); 200% zoom; the 1024 to 1279px rail rule; the over-12-node visibility path.
 - **Known gaps:** footer and nav links (GitHub, Devpost, demo video) are empty until `NEXT_PUBLIC_GITHUB_URL`, `NEXT_PUBLIC_DEVPOST_URL` and `NEXT_PUBLIC_DEMO_VIDEO_URL` are set; `next dev` re-adds em dashes to the generated `web/AGENTS.md`; `AI_Hardware_Engineer_Project.md` (pre-existing) contains em dashes, so the dash grep in `ARCHITECTURE.md` section 13 still matches it; a forward Tab through Studio takes many presses because every canvas node is focusable (no skip link yet).
 
+### 2026-10-05: Backend architecture document
+- **Cloned** the repo from github.com/Sahir619/verity and ran the web app locally (`npm ci`, `validate:fixture` OK, `typecheck` clean, `next dev` serves `/` with HTTP 200).
+- **Added** `agent/ARCHITECTURE.md`: backend contract for the future `agent/` service. One FastAPI process with a deterministic orchestrator; Nemotron on Nebius Token Factory behind an `LLMProvider` interface; the model gets no tools or shell; chip tools (Verilator lint, Icarus + cocotb, Yosys, OpenSTA, EQY) run through fixed tool functions in Nebius Sandboxes or local Docker; locked, hashed task packs as the golden reference; REvolution-lite search (v1, 3 children, optional round of 2, elites = best 2); per-run budget ledger and rate limits; access-code login with stream tokens for SSE; SQLite + immutable artifacts; evals suites; Celery and Redis deferred. Emits the existing frontend `RunEvent` contract with no new event types.
+- **Kept separate** from the frontend `ARCHITECTURE.md` at the user's request. Conflicts with existing docs are listed in section 27 of the new file (no auth in the frontend's proposed API, waveforms vs failing cases in repair, old population size, single `LLM_MODEL`). Open decisions O1 to O12 are in its section 23.
+- **Verified by:** WebFetch of the official rules page, the Nebius model catalog and the Sandboxes docs (2026-10-05); scanned the new file for em and en dashes (none). Nothing was implemented; claims tagged [ASSUME] still need the M0 spike.
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/
@@ -177,3 +183,4 @@ _Last updated: 2026-10-04_
 | `ARCHITECTURE.md` | Frontend stack, structure, data contracts |
 | `v1RTL generation with LLMs.pdf` | REvolution paper (reference only) |
 | `web/` | Next.js frontend (static export; replays a sample run) |
+| `agent/ARCHITECTURE.md` | Backend architecture contract (not built) |

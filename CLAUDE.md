@@ -12,6 +12,7 @@ Hackathon entry (Nebius x NVIDIA Global AI Hackathon). Describe a chip in plain 
 | `brand.md` | Colors, tokens, type, motion, icons, voice. Source of truth for styling |
 | `UI_UX_SPEC.md` | Pages, states, copy, reusable component inventory |
 | `ARCHITECTURE.md` | Stack, `web/` structure, data contracts, reducer, store, verification commands |
+| `agent/ARCHITECTURE.md` | Backend (agent) architecture: orchestrator, Nebius LLM boundary, sandbox tools, task packs, budgets, auth, evals. Kept separate from the frontend doc |
 | `UI_CANVAS_RESEARCH.md` | Canvas research behind the UI decisions |
 | `.archify/workflow-verity-journey-v2-*/` | Approved user journey map |
 
