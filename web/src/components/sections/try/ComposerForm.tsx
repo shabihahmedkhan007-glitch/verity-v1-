@@ -10,6 +10,7 @@ import { PRESETS } from "@/lib/contracts/presets";
 import type { Priority } from "@/lib/contracts/types";
 import type { LiveHealth } from "@/lib/contracts/view-types";
 import { formatUsd } from "@/lib/format";
+import { AccessCodePrompt, type AccessCodePromptProps } from "./AccessCodePrompt";
 import { LiveUnavailable } from "./LiveUnavailable";
 
 export type ComposerFormProps = {
@@ -22,6 +23,8 @@ export type ComposerFormProps = {
   startError: string | null;
   onStart(): void;
   onRetry(): void;
+  /** Set when the agent asks for an access code: the prompt replaces the Start button. */
+  accessCode?: AccessCodePromptProps | null;
 };
 
 function StepLabel({ n, children }: { n: number; children: string }) {
@@ -45,6 +48,7 @@ export function ComposerForm({
   startError,
   onStart,
   onRetry,
+  accessCode,
 }: ComposerFormProps) {
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
   const available = health.status === "ready" || health.status === "checking";
@@ -61,7 +65,7 @@ export function ComposerForm({
       className="space-y-8"
       onSubmit={(e) => {
         e.preventDefault();
-        if (health.status === "ready" && !starting) onStart();
+        if (health.status === "ready" && !starting && !accessCode) onStart();
       }}
     >
       <section className="space-y-4">
@@ -83,7 +87,9 @@ export function ComposerForm({
         <PriorityRadio value={priority} onChange={onPriorityChange} disabled={starting} />
       </section>
 
-      {available ? (
+      {available && accessCode ? (
+        <AccessCodePrompt {...accessCode} />
+      ) : available ? (
         <section className="space-y-4">
           <p className="text-base text-fg-muted">
             Credit cap for this run: {cap}. About {preset.approxMinutes} minutes. You can stop at any time.

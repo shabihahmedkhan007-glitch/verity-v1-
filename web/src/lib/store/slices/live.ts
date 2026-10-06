@@ -5,7 +5,11 @@ import type { LiveConnection, SteerRequest } from "@/lib/contracts/view-types";
 import type { Store } from "../types";
 
 /** Compatible with the contract type; `reason` lets the Try page pick the busy or budget message. */
-export type StartLiveResult = { runId: string } | { error: string; reason?: "busy" | "budget_exhausted" | "maintenance" };
+export type StartLiveResult =
+  | { runId: string }
+  | { error: string; reason?: "busy" | "budget_exhausted" | "maintenance" | "unauthorized" };
+
+const SESSION_EXPIRED = "Your session expired. Open the Try page and enter the access code again.";
 
 export type LiveSlice = {
   connection: LiveConnection;
@@ -18,7 +22,7 @@ export type LiveSlice = {
   /** Replay only: a local human + winner event pair through the reducer. */
   overrideWinnerLocal(candidateId: string): void;
   setConnection(c: LiveConnection, error?: string | null): void;
-  /** Live events arrive here: logged for the zip export, applied through the one reducer, echoes clear pending steers. */
+  /** Live events arrive here: logged for the zip export, applied through the one reducer, echoes (and a closed gate) clear pending steers. */
   ingestLive(e: RunEvent): void;
   /** Begins listening to a live run that was not started from this page (fresh load of /studio?run=id). */
   adoptLiveRun(runId: string): void;
@@ -92,11 +96,11 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
     const tracked = isTrackedSteer(req);
     if (tracked) set({ pendingSteers: [...get().pendingSteers, req] });
     const live = await import("@/lib/sources/live");
-    const ok = await live.postSteer(runId, req);
-    if (!ok) {
+    const result = await live.postSteer(runId, req);
+    if (result !== "ok") {
       set({
         pendingSteers: get().pendingSteers.filter((p) => p !== req),
-        error: "Could not send your change. The run keeps going.",
+        error: result === "unauthorized" ? SESSION_EXPIRED : "Could not send your change. The run keeps going.",
       });
     }
   },
@@ -105,8 +109,9 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
     const { source, runId } = get();
     if (source !== "live" || !runId) return;
     const live = await import("@/lib/sources/live");
-    const ok = await live.postStop(runId);
-    if (!ok) set({ error: "Could not stop the run. Try again." });
+    const result = await live.postStop(runId);
+    if (result === "unauthorized") set({ error: SESSION_EXPIRED });
+    else if (result !== "ok") set({ error: "Could not stop the run. Try again." });
   },
 
   overrideWinnerLocal(candidateId) {
@@ -128,6 +133,12 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
     const st = get();
     st.applyEvents([e]);
     const patch: Partial<Store> = { log: [...st.log, e] };
+    // Gate steers (build_now, hold, resume, autopilot) are never tracked as pending: the backend answers them with a gate
+    // event, not a human echo. A pin or toggle the backend ignored (unknown block or option) never gets an echo either, so
+    // anything still pending when the gate closes, or the run ends, can no longer be answered.
+    const gateClosed = e.t === "gate" && e.state === "closed";
+    const runEnded = e.t === "run" && (e.phase === "done" || e.phase === "error" || e.phase === "cap_reached" || e.phase === "stopped");
+    if (gateClosed || runEnded) patch.pendingSteers = [];
     if (e.t === "human") {
       const i = st.pendingSteers.findIndex((p) => {
         const input = e.input;

@@ -1,6 +1,8 @@
-// Validates public/runs/golden.json. Run with: npm run validate:fixture
+// Validates public/runs/golden.json, or the run log at the path given as the first argument.
+// Run with: npm run validate:fixture [-- path/to/runlog.json]
 // Relies on Node 24 type stripping: erasable TypeScript only, relative import with the .ts extension.
 import { readFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RunLogSchema } from "../src/lib/contracts/schemas.ts";
 
@@ -25,29 +27,40 @@ const WEIGHTS = {
   power: { area: 0.25, timing: 0.15, power: 0.6 },
 } as const;
 
-/** ARCHITECTURE 8.3: weighted gain vs the baseline; a missing metric is dropped and the weights renormalized. */
-function recompute(base: Ppa, c: Ppa, priority: "area" | "speed" | "power"): number {
+/**
+ * ARCHITECTURE 8.3: weighted gain vs the baseline; a missing metric is dropped and the weights renormalized.
+ * Returns the score and the effective (renormalized) weights, 0 for a dropped metric (agent/CONTRACTS S8).
+ */
+function recompute(
+  base: Ppa,
+  c: Ppa,
+  priority: "area" | "speed" | "power",
+): { score: number; weights: { area: number; timing: number; power: number } } {
   const w = WEIGHTS[priority];
-  const parts: { w: number; gain: number }[] = [];
-  const add = (weight: number, b: number | null, v: number | null) => {
+  const parts: { key: "area" | "timing" | "power"; w: number; gain: number }[] = [];
+  const add = (key: "area" | "timing" | "power", b: number | null, v: number | null) => {
     if (b === null || v === null) return;
-    parts.push({ w: weight, gain: (100 * (b - v)) / b });
+    parts.push({ key, w: w[key], gain: (100 * (b - v)) / b });
   };
-  add(w.area, base.areaUm2, c.areaUm2);
-  add(w.timing, base.clockPeriodNs, c.clockPeriodNs);
-  add(w.power, base.powerMw, c.powerMw);
+  add("area", base.areaUm2, c.areaUm2);
+  add("timing", base.clockPeriodNs, c.clockPeriodNs);
+  add("power", base.powerMw, c.powerMw);
   const total = parts.reduce((s, p) => s + p.w, 0);
-  if (total === 0) return 0;
-  return parts.reduce((s, p) => s + (p.w / total) * p.gain, 0);
+  const weights = { area: 0, timing: 0, power: 0 };
+  if (total === 0) return { score: 0, weights };
+  for (const p of parts) weights[p.key] = p.w / total;
+  return { score: parts.reduce((s, p) => s + (p.w / total) * p.gain, 0), weights };
 }
 
 const problems: string[] = [];
 const fail = (msg: string) => problems.push(msg);
 
-const path = fileURLToPath(new URL("../public/runs/golden.json", import.meta.url));
+const arg = process.argv[2];
+const path = arg ? resolve(arg) : fileURLToPath(new URL("../public/runs/golden.json", import.meta.url));
+const name = basename(path);
 const parsed = RunLogSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
 if (!parsed.success) {
-  console.error("golden.json does not match RunLogSchema:");
+  console.error(`${name} does not match RunLogSchema:`);
   for (const issue of parsed.error.issues) console.error(`  ${issue.path.join(".")}: ${issue.message}`);
   process.exit(1);
 }
@@ -92,13 +105,17 @@ if (!baseline || !baseline.ppa) {
     if (c.status === "measured" && !c.fitness) fail(`${c.id} is measured but has no fitness`);
     if (c.status !== "measured" && c.fitness) fail(`${c.id} has fitness but status ${c.status}`);
     if (!c.fitness || !c.ppa) continue;
-    const expected = c.id === baseline.id ? 0 : recompute(baseline.ppa, c.ppa, c.fitness.priority);
+    const re = recompute(baseline.ppa, c.ppa, c.fitness.priority);
+    const expected = c.id === baseline.id ? 0 : re.score;
     if (Math.abs(expected - c.fitness.score) > 0.01) {
       fail(`${c.id} fitness ${c.fitness.score} does not match recomputed ${expected.toFixed(3)}`);
     }
-    const w = WEIGHTS[c.fitness.priority];
-    if (c.fitness.weights.area !== w.area || c.fitness.weights.timing !== w.timing || c.fitness.weights.power !== w.power) {
-      fail(`${c.id} stored weights do not match priority ${c.fitness.priority}`);
+    // Stored weights are the effective weights: the priority weights renormalized over the metrics both versions have
+    // (power weight 0 when power is null). Weights are recorded rounded to 4 decimals.
+    const sw = c.fitness.weights;
+    const ew = re.weights;
+    if (Math.abs(sw.area - ew.area) > 0.0005 || Math.abs(sw.timing - ew.timing) > 0.0005 || Math.abs(sw.power - ew.power) > 0.0005) {
+      fail(`${c.id} stored weights do not match the effective weights for priority ${c.fitness.priority}`);
     }
   }
 }
@@ -117,10 +134,10 @@ for (const c of last.values()) {
 }
 
 if (problems.length > 0) {
-  console.error("golden.json validation failed:");
+  console.error(`${name} validation failed:`);
   for (const p of problems) console.error(`  ${p}`);
   process.exit(1);
 }
 console.log(
-  `golden.json OK: ${last.size} versions, winner ${winner && winner.t === "winner" ? winner.candidateId : "none"}, ${contentNodes} nodes, fitness checks passed`,
+  `${name} OK: ${last.size} versions, winner ${winner && winner.t === "winner" ? winner.candidateId : "none"}, ${contentNodes} nodes, fitness checks passed`,
 );

@@ -30,4 +30,4 @@ export type RunSummary = {
   credits: Credits; recordedUsd: number | null; priority: Priority | null;
   candidates: CandidateListItem[];
 };
-export type LiveHealth = { status: "checking" | "ready" | "not_configured" | "budget_exhausted" | "busy" | "error"; capUsd: number | null };
+export type LiveHealth = { status: "checking" | "ready" | "not_configured" | "budget_exhausted" | "busy" | "error"; capUsd: number | null; authRequired?: boolean };

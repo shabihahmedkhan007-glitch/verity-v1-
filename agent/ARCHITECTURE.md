@@ -758,7 +758,7 @@ Budget config per run (defaults [REC]):
 [budget.run]
 max_llm_calls            = 16
 max_input_tokens         = 150_000
-max_output_tokens        = 60_000     # includes any reasoning tokens the API reports
+max_output_tokens        = 200_000    # includes any reasoning tokens the API reports
 max_usd                  = 0.50
 max_candidates           = 6          # v1 + 3 (round 1) + 2 (round 2)
 max_repairs_baseline     = 3
@@ -767,8 +767,8 @@ max_rounds               = 2
 max_wall_s               = 900
 
 [budget.call]
-plan_max_output          = 1_500
-rtl_max_output           = 4_000
+plan_max_output          = 6_000
+rtl_max_output           = 12_000
 max_prompt_tokens        = 12_000
 ```
 

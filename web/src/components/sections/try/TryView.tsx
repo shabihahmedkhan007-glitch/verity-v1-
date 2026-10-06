@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/sections/shared/AppHeader";
 import { PRESETS } from "@/lib/contracts/presets";
 import type { Priority } from "@/lib/contracts/types";
 import { useLiveHealth } from "@/lib/hooks/use-live-health";
+import { useLiveSession } from "@/lib/hooks/use-live-session";
 import { useLive } from "@/lib/store";
 import { ComposerForm } from "./ComposerForm";
 import { SpecPreview } from "./SpecPreview";
@@ -20,6 +21,10 @@ export function TryView() {
   const [priority, setPriority] = useState<Priority>(PRESETS[0].spec.priority);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const hasSession = useLiveSession();
+  // Set when POST /runs answered 401: the stored session (if any) was rejected, whatever /health said.
+  const [rejected, setRejected] = useState(false);
+  const needsCode = (health.authRequired === true || rejected) && !hasSession;
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
 
@@ -32,7 +37,20 @@ export function TryView() {
       return;
     }
     setStarting(false);
+    if (result.reason === "unauthorized") {
+      setRejected(true);
+      return;
+    }
     setStartError(result.error);
+  };
+
+  const submitCode = async (code: string): Promise<string | null> => {
+    const { createSession } = await import("@/lib/sources/live");
+    const result = await createSession(code);
+    if (!result.ok) return result.error;
+    setRejected(false);
+    setStartError(null);
+    return null;
   };
 
   return (
@@ -65,6 +83,11 @@ export function TryView() {
             startError={startError}
             onStart={() => void start()}
             onRetry={() => void start()}
+            accessCode={
+              needsCode
+                ? { onSubmit: submitCode, notice: rejected ? "Your session was not accepted. Enter the access code again." : null }
+                : null
+            }
           />
           <SpecPreview spec={{ ...preset.spec, priority }} />
         </div>

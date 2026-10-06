@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""/verity/bin/measure: Yosys synthesis on Nangate45 (area, cells), OpenSTA timing, and the circuit graph.
+
+Contract: agent/CONTRACTS.md section 3.6 (stdout is one JSON object, schema verity.measure/1).
+One Yosys run does both the pre-techmap `write_json` (for the circuit graph) and the full synthesis, then OpenSTA
+reads the written netlist. Area comes from `stat -liberty`; the minimum clock period is target period minus the
+worst setup slack, post-synthesis, no wires.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Any
+
+LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
+sys.path.insert(0, str(LIB_DIR))
+import verity_circuit as vcirc  # noqa: E402
+import verity_common as vc  # noqa: E402
+
+LOG_CAP = 4_000
+
+
+# ---------- synthesis ----------
+def yosys_script(top: str, dut: Path, lib: Path, pre: Path, stat_txt: Path, stat_json: Path, netlist: Path) -> str:
+    return "\n".join(
+        [
+            f"read_verilog {dut}",
+            f"hierarchy -check -top {top}",
+            "proc",
+            "opt",
+            f"write_json {pre}",
+            f"synth -top {top} -flatten",
+            f"dfflibmap -liberty {lib}",
+            f"abc -liberty {lib}",
+            "opt_clean",
+            f"tee -o {stat_txt} stat -liberty {lib}",
+            f"tee -o {stat_json} stat -liberty {lib} -json",
+            f"write_verilog -noattr -nohex -nodec {netlist}",
+            "",
+        ]
+    )
+
+
+def _find_stat(node: Any) -> dict[str, Any] | None:
+    """First dict with an area and cell counts. Prefers the 'design' summary, then any module entry."""
+    if not isinstance(node, dict):
+        return None
+    design = node.get("design")
+    if isinstance(design, dict) and "area" in design:
+        return design
+    modules = node.get("modules")
+    if isinstance(modules, dict):
+        for entry in modules.values():
+            if isinstance(entry, dict) and "area" in entry:
+                return entry
+    return node if "area" in node else None
+
+
+def parse_stat_json(path: Path) -> tuple[float, int, dict[str, int]] | None:
+    # UNVERIFIED: the JSON layout of `stat -liberty -json` for the pinned Yosys (design or modules, num_cells_by_type).
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    stat = _find_stat(data)
+    if stat is None:
+        return None
+    try:
+        area = float(stat["area"])
+        by_type = {str(k): int(v) for k, v in (stat.get("num_cells_by_type") or {}).items()}
+        count = int(stat.get("num_cells", sum(by_type.values())))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return area, count, by_type
+
+
+def parse_stat_text(text: str) -> tuple[float, int, dict[str, int]] | None:
+    areas = re.findall(r"Chip area for (?:top )?module '[^']*':\s*([0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)", text)
+    if not areas:
+        return None
+    count_match = re.search(r"Number of cells:\s+(\d+)", text)
+    cells: dict[str, int] = {}
+    in_table = False
+    for line in text.splitlines():
+        if "Number of cells" in line:
+            in_table = True
+            continue
+        if in_table:
+            match = re.match(r"^\s+([A-Za-z_][\w$.]*)\s+(\d+)(?:\s+[0-9.]+)?\s*$", line)
+            if match:
+                cells[match.group(1)] = int(match.group(2))
+            elif not line.strip():
+                in_table = False
+    count = int(count_match.group(1)) if count_match else sum(cells.values())
+    return float(areas[-1]), count, cells
+
+
+def stage_synth(task: dict[str, Any], dut: Path, scratch: Path, result: dict[str, Any], versions: dict[str, str]) -> str | None:
+    top = task["top"]
+    lib = vc.liberty_path()
+    if not lib.is_file():
+        raise RuntimeError(f"liberty file missing: {lib}")
+    out = vc.out_dir()
+    pre = scratch / "pre.json"
+    stat_txt, stat_json, netlist = scratch / "stat.txt", scratch / "stat.json", out / "netlist.v"
+    for stale in (pre, stat_txt, stat_json, netlist):
+        stale.unlink(missing_ok=True)
+    script = scratch / "measure.ys"
+    script.write_text(yosys_script(top, dut, lib, pre, stat_txt, stat_json, netlist), encoding="ascii")
+    timeout = vc.env_float("VERITY_SYNTH_TIMEOUT_S", 120)
+    proc = vc.run(["yosys", "-l", str(scratch / "yosys.log"), "-s", str(script)], timeout_s=timeout)
+    tool = f"Yosys {versions.get('yosys', 'unknown')}"
+    if proc.timed_out:
+        result["message"] = f"synthesis timed out after {timeout:g} s"
+        return "timeout"
+    if proc.rc != 0:
+        text = vc.scrub_paths(proc.output)
+        reason = vc.first_line_matching(text, r"^ERROR|error", "Yosys synthesis failed")
+        result["synth"] = {"ok": False, "area_um2": None, "cell_count": None, "cells": {}, "log": vc.tail(text, LOG_CAP), "tool": tool}
+        result["message"] = reason
+        return "synth_fail"
+
+    report = stat_txt.read_text(encoding="utf-8", errors="replace") if stat_txt.is_file() else ""
+    parsed = parse_stat_json(stat_json) or parse_stat_text(report)
+    if parsed is None or parsed[0] <= 0 or not netlist.is_file():
+        result["synth"] = {"ok": False, "area_um2": None, "cell_count": None, "cells": {}, "log": vc.tail(report or proc.output, LOG_CAP), "tool": tool}
+        result["message"] = "synthesis produced no area or no netlist"
+        return "synth_fail"
+    # OpenSTA's Verilog reader rejects `signed` in declarations (Yosys writes it for signed source wires).
+    # Signedness means nothing in a gate-level netlist, so drop it before STA reads the file.
+    text_nl = netlist.read_text(encoding="utf-8", errors="replace")
+    netlist.write_text(re.sub(r"(?m)^(\s*(?:input|output|inout|wire|reg)\s+)signed\s+", lambda m: m.group(1), text_nl), encoding="utf-8")
+    area, count, cells = parsed
+    result["synth"] = {
+        "ok": True,
+        "area_um2": round(area, 4),
+        "cell_count": count,
+        "cells": cells,
+        "log": vc.tail(report, LOG_CAP),
+        "tool": tool,
+    }
+    if pre.is_file():
+        try:
+            result["circuit"] = vcirc.build_circuit(json.loads(pre.read_text(encoding="utf-8")), top)
+        except Exception:  # noqa: BLE001  (a bad graph never fails the measurement)
+            traceback.print_exc(file=sys.stderr)
+            result["circuit"] = None
+    return None
+
+
+# ---------- timing ----------
+def sta_script(top: str, netlist: Path, clock: str, period: float) -> str:
+    # UNVERIFIED: OpenSTA command names (all_inputs -no_clocks, report_worst_slack) for the pinned OpenSTA commit.
+    lines = [
+        "read_liberty $::env(VERITY_LIBERTY)",
+        f"read_verilog {netlist}",
+        f"link_design {top}",
+    ]
+    if clock:
+        lines += [
+            f"create_clock -name clk -period {period} [get_ports {clock}]",
+            "if {[catch {set vins [all_inputs -no_clocks]}]} { set vins [all_inputs] }",
+            "set_input_delay 0.0 -clock clk $vins",
+            "set_output_delay 0.0 -clock clk [all_outputs]",
+        ]
+    else:
+        lines += [
+            f"create_clock -name vclk -period {period}",
+            "set_input_delay 0.0 -clock vclk [all_inputs]",
+            "set_output_delay 0.0 -clock vclk [all_outputs]",
+        ]
+    lines += [
+        "report_checks -path_delay max -format full -digits 3",
+        "report_worst_slack -max -digits 4",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def parse_worst_slack(text: str) -> float | None:
+    match = re.search(r"worst slack(?:\s+max)?\s+(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)", text)
+    if match:
+        return float(match.group(1))
+    slacks = re.findall(r"^\s*(-?\d+\.\d+)\s+slack \((?:MET|VIOLATED)\)", text, re.MULTILINE)
+    return float(slacks[0]) if slacks else None
+
+
+def stage_sta(task: dict[str, Any], scratch: Path, result: dict[str, Any], versions: dict[str, str]) -> str | None:
+    top = task["top"]
+    clock = str(task.get("clock", {}).get("name", "clk"))
+    target = float(task.get("target_clock_ns", 10.0))
+    tool = f"OpenSTA {versions.get('opensta', 'unknown')}"
+    script = scratch / "sta.tcl"
+    script.write_text(sta_script(top, vc.out_dir() / "netlist.v", clock, target), encoding="ascii")
+    timeout = vc.env_float("VERITY_STA_TIMEOUT_S", 60)
+    env = dict(os.environ)
+    env["VERITY_LIBERTY"] = str(vc.liberty_path())
+    proc = vc.run(["sta", "-no_splash", "-exit", str(script)], timeout_s=timeout, env=env)
+    base = {"clocked": bool(clock), "target_period_ns": target, "tool": tool}
+    if proc.timed_out:
+        result["sta"] = {"ok": False, "clock_period_ns": None, "wns_ns": None, "log": f"timing timed out after {timeout:g} s", **base}
+        result["message"] = "timing timed out"
+        return "sta_fail"
+    text = vc.scrub_paths(proc.output)
+    wns = parse_worst_slack(text)
+    # UNVERIFIED: OpenSTA output for a design with no timing paths and the time unit (assumed ns, Nangate45 liberty).
+    if proc.rc != 0 or wns is None:
+        reason = vc.first_line_matching(text, r"error|warning: no", "OpenSTA reported no worst slack")
+        result["sta"] = {"ok": False, "clock_period_ns": None, "wns_ns": None, "log": vc.tail(text, LOG_CAP), **base}
+        result["message"] = reason
+        return "sta_fail"
+    period = round(target - wns, 4)
+    if period <= 0:
+        result["sta"] = {"ok": False, "clock_period_ns": None, "wns_ns": wns, "log": vc.tail(text, LOG_CAP), **base}
+        result["message"] = "no timing path found"
+        return "sta_fail"
+    result["sta"] = {"ok": True, "clock_period_ns": period, "wns_ns": wns, "log": vc.tail(text, LOG_CAP), **base}
+    return None
+
+
+# ---------- main ----------
+def run_stages(task: dict[str, Any], dut: Path, result: dict[str, Any]) -> str:
+    versions = vc.tool_versions(("yosys", "opensta"))
+    result["tool_versions"] = versions
+    scratch = vc.fresh_dir(vc.scratch_dir() / "measure")
+    status = stage_synth(task, dut, scratch, result, versions)
+    if status == "synth_fail":
+        return "synth_fail"
+    if status:
+        return status
+    return stage_sta(task, scratch, result, versions) or "ok"
+
+
+def main() -> None:
+    started = time.monotonic()
+    result: dict[str, Any] = {
+        "schema": "verity.measure/1",
+        "status": "internal_error",
+        "synth": None,
+        "sta": None,
+        "circuit": None,
+        "pdk": "Nangate45",
+        "duration_ms": 0,
+        "message": "",
+        "tool_versions": {},
+    }
+    code = vc.EXIT_OK
+    try:
+        task = vc.load_task()
+        dut = vc.require_file(vc.work_dir() / "dut.v")
+        result["status"] = run_stages(task, dut, result)
+    except vc.InputError as exc:
+        result.update(status="input_error", message=str(exc))
+        code = vc.EXIT_INPUT
+    except Exception as exc:  # noqa: BLE001  (tool missing or crash: reported as internal_error, exit 3)
+        traceback.print_exc(file=sys.stderr)
+        result.update(status="internal_error", message=f"{type(exc).__name__}: {exc}"[:300])
+        code = vc.EXIT_INTERNAL
+    result["duration_ms"] = int((time.monotonic() - started) * 1000)
+    vc.emit(result, code)
+
+
+if __name__ == "__main__":
+    main()
