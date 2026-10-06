@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verity: engineer agent plan, diagrams</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #050A12; color: #E6EDF3; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 24px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  p.lead { color: #9AA7B5; margin: 0 0 32px; }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  li a { display: block; padding: 16px 18px; background: #0B1220; border: 1px solid #1C2738; border-radius: 10px; color: inherit; text-decoration: none; }
+  li a:hover, li a:focus-visible { border-color: #39FF88; outline: none; }
+  .kind { font: 12px/1 ui-monospace, Consolas, monospace; color: #9AA7B5; text-transform: uppercase; letter-spacing: .06em; }
+  .name { display: block; font-size: 17px; font-weight: 600; margin: 6px 0 4px; }
+  .desc { color: #B6C2CF; }
+  footer { margin-top: 32px; color: #9AA7B5; font-size: 13px; }
+  footer a { color: #E6EDF3; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Verity as an engineer's agent</h1>
+  <p class="lead">Diagrams for the plan in <a href="../../AGENT_RESEARCH.md" style="color:#E6EDF3">AGENT_RESEARCH.md</a> (2026-10-06): from a 3-preset demo to an open verify, debug and optimize agent that works on the engineer's own RTL and locked tests. These show a proposal, not built code.</p>
+  <ol>
+    <li><a href="architecture-agent/agent-architecture.html"><span class="kind">Architecture</span><span class="name">1. Proposed architecture</span><span class="desc">Copilot tool loop, tool gateway with locks and approvals, workspace store, Nemotron on Nebius, and the existing orchestrator as one workflow.</span></a></li>
+    <li><a href="sequence-w1-debug/w1-debug.html"><span class="kind">Sequence</span><span class="name">2. W1: Debug my failing test</span><span class="desc">Reproduce, localize with a cycle table and driver cone, propose an RTL-only fix that is re-tested before the engineer accepts it.</span></a></li>
+    <li><a href="workflow-w2-optimize/w2-optimize.html"><span class="kind">Workflow</span><span class="name">3. W2: Optimize my module</span><span class="desc">Children measured with Yosys and OpenSTA against the engineer's own v1, judged by fitness, then checked with EQY.</span></a></li>
+    <li><a href="lifecycle-proposal/proposal-lifecycle.html"><span class="kind">Lifecycle</span><span class="name">4. Edit proposal lifecycle</span><span class="desc">Lock check, auto-test, engineer review, bounded retries and honest exits, all enforced in code.</span></a></li>
+    <li><a href="workflow-reliability/reliability-fixes.html"><span class="kind">Workflow</span><span class="name">5. Reliable first design (R1 to R5)</span><span class="desc">Logic subset, one-module plan, sampled drafts, auto fixer by error tag, stall restart: the fixes for the MAC baseline failures.</span></a></li>
+    <li><a href="workflow-milestones/milestone-plan.html"><span class="kind">Workflow</span><span class="name">6. Plan to the 2026-10-25 freeze</span><span class="desc">Milestones A0 to A6, gates, fallbacks and the cut order.</span></a></li>
+  </ol>
+  <footer>Earlier journey maps: <a href="../workflow-verity-journey-v2-20261004-014852/verity-journey-v2.html">user journey v2</a>.</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "W2: Optimize my module, measured against my own v1",
+    "output": ".archify/verity-agent-plan-20261006-215405/workflow-w2-optimize/w2-optimize.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "engineer", "label": "Engineer" },
+    { "id": "engine", "label": "Workflow engine" },
+    { "id": "tools", "label": "Real tools (sandbox)" },
+    { "id": "rejected", "label": "Rejected", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "setup", "label": "Set goal", "fromCol": 0, "toCol": 1 },
+    { "id": "search", "label": "Generate and measure", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "proof", "label": "Prove and adopt", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["module", "budget", "baseline", "children", "tests", "measure", "judge", "eqy", "adopt"],
+  "nodes": [
+    { "id": "module", "lane": "engineer", "col": 0, "type": "external", "label": "Passing module", "sublabel": "own RTL, locked tests", "width": 140 },
+    { "id": "budget", "lane": "engineer", "col": 1, "type": "security", "label": "Approve budget", "sublabel": "goal: area or timing", "width": 140 },
+    { "id": "adopt", "lane": "engineer", "col": 5, "type": "frontend", "label": "Adopt winner", "sublabel": "becomes a new version", "width": 140 },
+    { "id": "baseline", "lane": "engine", "col": 2, "type": "backend", "label": "v1 = their RTL", "sublabel": "measured first", "width": 140 },
+    { "id": "children", "lane": "engine", "col": 3, "type": "backend", "label": "3 children", "sublabel": "SIMPLIFY, OPTIMIZE, EXPLORE", "width": 150 },
+    { "id": "judge", "lane": "engine", "col": 4, "type": "backend", "label": "Judge", "sublabel": "fitness vs v1, keep 2", "width": 140 },
+    { "id": "tests", "lane": "tools", "col": 3, "type": "cloud", "label": "Lint + tests", "sublabel": "Verilator, cocotb", "width": 140 },
+    { "id": "measure", "lane": "tools", "col": 4, "type": "cloud", "label": "Synth + timing", "sublabel": "Yosys, OpenSTA", "width": 140 },
+    { "id": "eqy", "lane": "tools", "col": 5, "type": "cloud", "label": "EQY vs v1", "sublabel": "equivalence check", "width": 140 },
+    { "id": "dropped", "lane": "rejected", "col": 3, "type": "security", "label": "Rejected child", "sublabel": "fails after 1 repair", "width": 140 }
+  ],
+  "edges": [
+    { "id": "module-budget", "from": "module", "to": "budget" },
+    { "id": "budget-baseline", "from": "budget", "to": "baseline", "label": "launch", "variant": "emphasis" },
+    { "id": "baseline-children", "from": "baseline", "to": "children", "label": "parent" },
+    { "id": "children-tests", "from": "children", "to": "tests", "label": "each child" },
+    { "id": "tests-measure", "from": "tests", "to": "measure", "label": "pass" },
+    { "id": "measure-judge", "from": "measure", "to": "judge", "label": "area, clock" },
+    { "id": "judge-eqy", "from": "judge", "to": "eqy", "label": "winner", "variant": "emphasis" },
+    { "id": "eqy-adopt", "from": "eqy", "to": "adopt", "label": "label shown", "variant": "emphasis" },
+    { "id": "tests-dropped", "from": "tests", "to": "dropped", "label": "fail", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Measured, not claimed", "items": ["Area from Yosys with Nangate45, clock period from OpenSTA post-synthesis", "Every delta is relative to the engineer's own v1 and labeled with tool and stage"] },
+    { "dot": "amber", "title": "Honest proof labels", "items": ["EQY proven, not_equivalent, or inconclusive", "Inconclusive is shown as tested, not proven", "A not_equivalent winner is demoted and the next best is checked"] },
+    { "dot": "cyan", "title": "Search budget", "items": ["Round 1: 3 children; optional round 2 with 2 children only if round 1 improved", "Launching above the dollar threshold needs approval"] }
+  ]
+}

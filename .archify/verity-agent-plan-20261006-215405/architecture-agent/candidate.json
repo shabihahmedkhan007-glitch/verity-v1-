@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Verity as an engineer's agent: proposed architecture",
+    "output": ".archify/verity-agent-plan-20261006-215405/architecture-agent/agent-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "engineer", "type": "external", "label": "RTL engineer", "sublabel": "own RTL and tests", "pos": [40, 300], "size": [140, 64] },
+    { "id": "dashboard", "type": "frontend", "label": "Dashboard", "sublabel": "files, diffs, evidence", "pos": [300, 300], "size": [140, 64], "tag": "A5" },
+    { "id": "api", "type": "backend", "label": "Agent API", "sublabel": "FastAPI, auth, SSE", "pos": [540, 300], "size": [140, 64] },
+    { "id": "copilot", "type": "backend", "label": "Copilot loop", "sublabel": "copilot/, closed tools", "pos": [760, 300], "size": [160, 64], "tag": "new A2" },
+    { "id": "gateway", "type": "security", "label": "Tool gateway", "sublabel": "locks, approvals, budget", "pos": [1010, 300], "size": [160, 64] },
+    { "id": "sandbox", "type": "cloud", "label": "Tool sandbox", "sublabel": "verity-tools image", "pos": [1260, 300], "size": [150, 64] },
+    { "id": "store", "type": "database", "label": "Workspace store", "sublabel": "projects, versions, proposals", "pos": [520, 120], "size": [180, 64] },
+    { "id": "nebius", "type": "cloud", "label": "Nebius Token Factory", "sublabel": "Nemotron Super, Ultra, Lightning", "pos": [745, 120], "size": [190, 64] },
+    { "id": "locked", "type": "database", "label": "Locked reference", "sublabel": "tests, golden, hashed", "pos": [1000, 120], "size": [180, 64] },
+    { "id": "orchestrator", "type": "backend", "label": "Workflow engine", "sublabel": "generate, repair, evolve, prove", "pos": [740, 490], "size": [200, 64], "tag": "kept" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "agent/: one FastAPI process", "wraps": ["api", "copilot", "gateway", "store", "locked", "orchestrator"] },
+    { "kind": "security-group", "label": "network none, non-root", "wraps": ["sandbox"] }
+  ],
+  "connections": [
+    { "id": "engineer-dashboard", "from": "engineer", "to": "dashboard", "label": "chat, approve", "variant": "emphasis" },
+    { "id": "dashboard-api", "from": "dashboard", "to": "api", "label": "REST + SSE" },
+    { "id": "api-copilot", "from": "api", "to": "copilot", "label": "turn" },
+    { "id": "copilot-gateway", "from": "copilot", "to": "gateway", "label": "tool call", "variant": "emphasis" },
+    { "id": "gateway-sandbox", "from": "gateway", "to": "sandbox", "label": "fixed cmd", "variant": "security" },
+    { "id": "api-store", "from": "api", "to": "store", "label": "versions", "fromSide": "top", "toSide": "bottom" },
+    { "id": "copilot-nebius", "from": "copilot", "to": "nebius", "label": "tools API", "fromSide": "top", "toSide": "bottom" },
+    { "id": "gateway-locked", "from": "gateway", "to": "locked", "label": "read only", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "copilot-orchestrator", "from": "copilot", "to": "orchestrator", "label": "start_workflow", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "orchestrator-gateway", "from": "orchestrator", "to": "gateway", "label": "ToolRunner", "fromSide": "right", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "New for the engineer agent", "items": ["Copilot loop: hand-rolled tool loop on Nemotron 3 Super", "About 10 fixed tools: read, lint, run tests, inspect_failure, propose_edit, start_workflow", "propose_edit creates a diff that is linted and tested before the engineer sees it"] },
+    { "dot": "cyan", "title": "Kept from today", "items": ["Deterministic orchestrator becomes one launchable workflow", "ToolRunner, sandbox image, parsers, packs", "Budget ledger, SSE, SQLite and write-once blobs"] },
+    { "dot": "rose", "title": "Safety in code, never in the model", "items": ["No shell; fixed command templates only", "Locked files are read only; writes are rejected by the gateway", "Approvals required to apply edits, lock references, or spend above a threshold"] },
+    { "dot": "violet", "title": "Models on Nebius (per 1M tokens, in/out)", "items": ["Nemotron 3 Super drives chat ($0.30 / $0.90)", "Nemotron 3 Ultra writes RTL in workflows ($1.00 / $3.00)", "Nemotron 3.5 Lightning for cheap steps ($0.06 / $0.24)"] }
+  ]
+}

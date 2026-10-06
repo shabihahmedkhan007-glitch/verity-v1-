@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Edit proposal lifecycle: locks and approvals in code",
+    "output": ".archify/verity-agent-plan-20261006-215405/lifecycle-proposal/proposal-lifecycle.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Proposal path" },
+    { "id": "review", "label": "Engineer review" },
+    { "id": "recovery", "label": "Agent retry" },
+    { "id": "terminal", "label": "Terminal exits" }
+  ],
+  "states": [
+    { "id": "drafted", "type": "start", "label": "Drafted", "sublabel": "propose_edit call", "lane": "main", "col": 0, "step": "01", "tag": "agent" },
+    { "id": "lockcheck", "type": "decision", "label": "Lock check", "sublabel": "touches a locked file?", "lane": "main", "col": 1, "step": "02", "tag": "code gate" },
+    { "id": "autotest", "type": "active", "label": "Auto-tested", "sublabel": "lint + locked tests", "lane": "main", "col": 2, "step": "03", "tag": "sandbox" },
+    { "id": "pending", "type": "waiting", "label": "Pending review", "sublabel": "diff + evidence ids", "lane": "main", "col": 3, "step": "04", "tag": "engineer" },
+    { "id": "accepted", "type": "success", "label": "Accepted", "sublabel": "new file version", "lane": "main", "col": 4, "step": "05", "tag": "applied" },
+    { "id": "changes", "type": "waiting", "label": "Changes asked", "sublabel": "engineer comment", "lane": "review", "col": 3, "tag": "pause" },
+    { "id": "revise", "type": "active", "label": "Agent revises", "sublabel": "bounded retries", "lane": "recovery", "col": 2, "tag": "budgeted" },
+    { "id": "refused", "type": "failure", "label": "Refused", "sublabel": "locked file edit", "lane": "terminal", "col": 1, "tag": "terminal" },
+    { "id": "gaveup", "type": "failure", "label": "Cannot satisfy", "sublabel": "retry budget spent", "lane": "terminal", "col": 2, "tag": "terminal" },
+    { "id": "rejected", "type": "failure", "label": "Rejected", "sublabel": "engineer said no", "lane": "terminal", "col": 3, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "from": "drafted", "to": "lockcheck" },
+    { "from": "lockcheck", "to": "autotest", "label": "RTL only" },
+    { "from": "autotest", "to": "pending", "label": "tests pass" },
+    { "from": "pending", "to": "accepted", "label": "accept", "variant": "emphasis" },
+    { "from": "lockcheck", "to": "refused", "label": "locked", "variant": "security" },
+    { "from": "autotest", "to": "revise", "label": "fails", "variant": "dashed" },
+    { "from": "revise", "to": "drafted", "label": "retry" },
+    { "from": "revise", "to": "gaveup", "label": "spent", "variant": "security" },
+    { "from": "pending", "to": "changes", "label": "comment", "variant": "dashed" },
+    { "from": "changes", "to": "revise", "label": "rework" },
+    { "from": "pending", "to": "rejected", "label": "reject", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Enforced in code", "items": ["The gateway refuses any write to a locked test, golden model or spec", "No proposal reaches the engineer before it passes lint and the locked tests", "Applying an edit always needs an explicit accept"] },
+    { "dot": "amber", "title": "Honest exits", "items": ["If only a test or spec change would make it pass, the agent stops with cannot satisfy", "Retries are bounded by the run budget", "Rejected proposals stay in the record"] },
+    { "dot": "cyan", "title": "Record", "items": ["Every version is immutable and content addressed", "Each proposal keeps its diff, tool commands, outputs and model request ids"] }
+  ]
+}

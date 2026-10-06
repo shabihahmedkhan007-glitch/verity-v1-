@@ -1,0 +1,223 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Plan to the 2026-10-25 feature freeze",
+    "output": ".archify/verity-agent-plan-20261006-215405/workflow-milestones/milestone-plan.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "backend",
+      "label": "Backend"
+    },
+    {
+      "id": "flows",
+      "label": "Engineer workflows"
+    },
+    {
+      "id": "ship",
+      "label": "UI and ship"
+    },
+    {
+      "id": "cuts",
+      "label": "Gates and cuts",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "fix",
+      "label": "Fix (10-07 to 10-09)",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "build",
+      "label": "Build (10-10 to 10-18)",
+      "fromCol": 1,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "polish",
+      "label": "Polish and ship (10-19 to 10-25)",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "a1",
+    "a2",
+    "a3",
+    "a4",
+    "a5",
+    "a6"
+  ],
+  "nodes": [
+    {
+      "id": "a1",
+      "lane": "backend",
+      "col": 0,
+      "type": "backend",
+      "label": "A0 + A1 Reliability",
+      "sublabel": "probe, R1 to R5, 9 of 10",
+      "width": 165
+    },
+    {
+      "id": "a2",
+      "lane": "backend",
+      "col": 1,
+      "type": "backend",
+      "label": "A2 Agent core",
+      "sublabel": "workspace, tool loop",
+      "width": 165
+    },
+    {
+      "id": "a3",
+      "lane": "flows",
+      "col": 2,
+      "type": "backend",
+      "label": "A3 W1 Debug",
+      "sublabel": "seeded-bug eval",
+      "width": 165
+    },
+    {
+      "id": "a4",
+      "lane": "flows",
+      "col": 3,
+      "type": "backend",
+      "label": "A4 W2 + W3",
+      "sublabel": "gate 10-18",
+      "width": 165
+    },
+    {
+      "id": "a5",
+      "lane": "ship",
+      "col": 4,
+      "type": "frontend",
+      "label": "A5 Dashboard",
+      "sublabel": "files, diffs, evidence",
+      "width": 165
+    },
+    {
+      "id": "a6",
+      "lane": "ship",
+      "col": 5,
+      "type": "security",
+      "label": "A6 Ship",
+      "sublabel": "auth, review, freeze",
+      "width": 165
+    },
+    {
+      "id": "shortfall",
+      "lane": "cuts",
+      "col": 0,
+      "type": "security",
+      "label": "Gate missed",
+      "sublabel": "record rate, user decides",
+      "width": 165
+    },
+    {
+      "id": "buttons",
+      "lane": "cuts",
+      "col": 1,
+      "type": "security",
+      "label": "Buttons fallback",
+      "sublabel": "if tool calls are flaky",
+      "width": 165
+    },
+    {
+      "id": "leadw2",
+      "lane": "cuts",
+      "col": 2,
+      "type": "security",
+      "label": "Video leads W2",
+      "sublabel": "under half fixed",
+      "width": 165
+    }
+  ],
+  "edges": [
+    {
+      "id": "a1-a2",
+      "from": "a1",
+      "to": "a2",
+      "label": "gate met",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a2-a3",
+      "from": "a2",
+      "to": "a3"
+    },
+    {
+      "id": "a3-a4",
+      "from": "a3",
+      "to": "a4"
+    },
+    {
+      "id": "a4-a5",
+      "from": "a4",
+      "to": "a5",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a5-a6",
+      "from": "a5",
+      "to": "a6"
+    },
+    {
+      "id": "a1-shortfall",
+      "from": "a1",
+      "to": "shortfall",
+      "label": "missed",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "a2-buttons",
+      "from": "a2",
+      "to": "buttons",
+      "label": "flaky",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "a3-leadw2",
+      "from": "a3",
+      "to": "leadw2",
+      "label": "weak",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Cut order if behind",
+      "items": [
+        "1 CVDP subset, 2 MCP server, 3 W4 spec drafting, 4 W5 triage",
+        "5 drafting a test for a surviving mutant, 6 driver cone (keep the cycle table)",
+        "7 chat token streaming, 8 chat itself (buttons), 9 dashboard scope"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Never cut",
+      "items": [
+        "R1 to R3, locked-file enforcement, approvals, evidence trail",
+        "Replay for judges, Nebius and Nemotron at runtime"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Budget and after the freeze",
+      "items": [
+        "About 36 person-days against 19 days, hence the tiers",
+        "Credits about $6 to $13 plus the hosted daily cap",
+        "10-26 to 10-29: video, Devpost, public repo; submit 10-29"
+      ]
+    }
+  ]
+}

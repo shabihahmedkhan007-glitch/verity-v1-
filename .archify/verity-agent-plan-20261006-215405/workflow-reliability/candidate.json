@@ -1,0 +1,227 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Reliable first design: fixes R1 to R5",
+    "output": ".archify/verity-agent-plan-20261006-215405/workflow-reliability/reliability-fixes.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "orch",
+      "label": "Orchestrator"
+    },
+    {
+      "id": "model",
+      "label": "Nemotron 3 Ultra"
+    },
+    {
+      "id": "tools",
+      "label": "Sandbox checks"
+    },
+    {
+      "id": "recovery",
+      "label": "Recovery",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "prompt",
+      "label": "Prompt (R1)",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "draft",
+      "label": "Draft and check (R2 to R4)",
+      "fromCol": 2,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "result",
+      "label": "Result",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "header",
+    "plan",
+    "sample",
+    "fixer",
+    "score",
+    "baseline"
+  ],
+  "nodes": [
+    {
+      "id": "header",
+      "lane": "orch",
+      "col": 0,
+      "type": "backend",
+      "label": "Logic header",
+      "sublabel": "R1: all ports logic",
+      "width": 165
+    },
+    {
+      "id": "plan",
+      "lane": "orch",
+      "col": 1,
+      "type": "backend",
+      "label": "One-module plan",
+      "sublabel": "R1: no generate",
+      "width": 165
+    },
+    {
+      "id": "baseline",
+      "lane": "orch",
+      "col": 5,
+      "type": "frontend",
+      "label": "Passing v1",
+      "sublabel": "baseline for search",
+      "width": 165
+    },
+    {
+      "id": "sample",
+      "lane": "model",
+      "col": 2,
+      "type": "cloud",
+      "label": "Sample 3 drafts",
+      "sublabel": "R3 + R4: capped reasoning",
+      "width": 165
+    },
+    {
+      "id": "repair",
+      "lane": "model",
+      "col": 4,
+      "type": "cloud",
+      "label": "Repair best draft",
+      "sublabel": "R2: guidance by error tag",
+      "width": 165
+    },
+    {
+      "id": "fixer",
+      "lane": "tools",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Auto fixer + lint",
+      "sublabel": "R2: no LLM call",
+      "width": 165
+    },
+    {
+      "id": "score",
+      "lane": "tools",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Score by vectors",
+      "sublabel": "Icarus + cocotb",
+      "width": 165
+    },
+    {
+      "id": "restart",
+      "lane": "recovery",
+      "col": 3,
+      "type": "security",
+      "label": "Restart from plan",
+      "sublabel": "R5: same failure twice",
+      "width": 165
+    },
+    {
+      "id": "stop",
+      "lane": "recovery",
+      "col": 5,
+      "type": "security",
+      "label": "No baseline",
+      "sublabel": "honest stop, logged",
+      "width": 165
+    }
+  ],
+  "edges": [
+    {
+      "id": "header-plan",
+      "from": "header",
+      "to": "plan"
+    },
+    {
+      "id": "plan-sample",
+      "from": "plan",
+      "to": "sample",
+      "label": "prompt",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sample-fixer",
+      "from": "sample",
+      "to": "fixer",
+      "label": "3 drafts"
+    },
+    {
+      "id": "fixer-score",
+      "from": "fixer",
+      "to": "score",
+      "label": "lint clean"
+    },
+    {
+      "id": "score-baseline",
+      "from": "score",
+      "to": "baseline",
+      "label": "all pass",
+      "variant": "emphasis"
+    },
+    {
+      "id": "score-repair",
+      "from": "score",
+      "to": "repair",
+      "label": "best fails",
+      "role": "branch"
+    },
+    {
+      "id": "score-restart",
+      "from": "score",
+      "to": "restart",
+      "label": "repeat",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "restart-stop",
+      "from": "restart",
+      "to": "stop",
+      "label": "budget spent",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Diagnosis (reproduced in the tool image)",
+      "items": [
+        "The header rendered plain output while the rules demanded output reg",
+        "The plan asked for 6 hand-built modules with generate blocks",
+        "Errors seen: unexpected endgenerate, duplicate declaration, procedural assignment to wire"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Evidence behind the fixes",
+      "items": [
+        "R1: NVIDIA VerilogEval rule, declare all ports and signals as logic",
+        "R2: RTLFixer error-tag guidance (smaller gains on strong models)",
+        "R4: AutoChip and MAGE, more candidates beat deeper repair",
+        "R5: ACE-RTL restarts when the same failure persists"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Gate for A1 (targets to measure)",
+      "items": [
+        "mac4 fast mode passes a baseline in at least 9 of 10 runs",
+        "alu8 and matmul4 in at least 4 of 5 each",
+        "Repaired drafts go back through the fixer and scoring"
+      ]
+    }
+  ]
+}

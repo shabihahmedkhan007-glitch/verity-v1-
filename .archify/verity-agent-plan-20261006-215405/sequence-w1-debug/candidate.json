@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "W1: Debug my failing test",
+    "output": ".archify/verity-agent-plan-20261006-215405/sequence-w1-debug/w1-debug.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "engineer",
+      "type": "external",
+      "label": "Engineer",
+      "sublabel": "owns RTL, tests"
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Dashboard",
+      "sublabel": "thread, diffs"
+    },
+    {
+      "id": "copilot",
+      "type": "backend",
+      "label": "Copilot loop",
+      "sublabel": "tool loop"
+    },
+    {
+      "id": "nemotron",
+      "type": "cloud",
+      "label": "Nemotron",
+      "sublabel": "3 Super, Nebius"
+    },
+    {
+      "id": "gateway",
+      "type": "security",
+      "label": "Tool gateway",
+      "sublabel": "locks + budget"
+    },
+    {
+      "id": "sandbox",
+      "type": "cloud",
+      "label": "Sandbox",
+      "sublabel": "real EDA tools"
+    },
+    {
+      "id": "workspace",
+      "type": "database",
+      "label": "Workspace",
+      "sublabel": "versions, proposals"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 386,
+      "label": "Reproduce"
+    },
+    {
+      "from": 390,
+      "to": 536,
+      "label": "Localize and explain"
+    },
+    {
+      "from": 540,
+      "to": 776,
+      "label": "Fix, re-test, approve"
+    }
+  ],
+  "messages": [
+    {
+      "id": "ask-debug",
+      "from": "engineer",
+      "to": "dashboard",
+      "y": 164,
+      "label": "debug test_random",
+      "variant": "emphasis"
+    },
+    {
+      "id": "thread-turn",
+      "from": "dashboard",
+      "to": "copilot",
+      "y": 194,
+      "label": "thread turn"
+    },
+    {
+      "id": "plan-step",
+      "from": "copilot",
+      "to": "nemotron",
+      "y": 224,
+      "label": "messages + tool specs"
+    },
+    {
+      "id": "call-tests",
+      "from": "nemotron",
+      "to": "copilot",
+      "y": 254,
+      "label": "call run_tests",
+      "variant": "return"
+    },
+    {
+      "id": "run-tests",
+      "from": "copilot",
+      "to": "gateway",
+      "y": 284,
+      "label": "run_tests",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lint-sim",
+      "from": "gateway",
+      "to": "sandbox",
+      "y": 314,
+      "label": "lint + cocotb",
+      "variant": "security"
+    },
+    {
+      "id": "tests-fail",
+      "from": "sandbox",
+      "to": "gateway",
+      "y": 344,
+      "label": "3 of 16 vectors fail",
+      "variant": "return"
+    },
+    {
+      "id": "evidence-e1",
+      "from": "gateway",
+      "to": "copilot",
+      "y": 374,
+      "label": "evidence E1",
+      "variant": "return"
+    },
+    {
+      "id": "inspect",
+      "from": "copilot",
+      "to": "gateway",
+      "y": 404,
+      "label": "inspect_failure",
+      "variant": "emphasis"
+    },
+    {
+      "id": "vcd-cone",
+      "from": "gateway",
+      "to": "sandbox",
+      "y": 434,
+      "label": "VCD window + driver cone",
+      "variant": "security"
+    },
+    {
+      "id": "cycle-table",
+      "from": "sandbox",
+      "to": "copilot",
+      "y": 464,
+      "label": "cycle table E2",
+      "variant": "return"
+    },
+    {
+      "id": "explain",
+      "from": "copilot",
+      "to": "nemotron",
+      "y": 494,
+      "label": "explain from E1, E2"
+    },
+    {
+      "id": "root-cause",
+      "from": "nemotron",
+      "to": "copilot",
+      "y": 524,
+      "label": "root cause + RTL edit",
+      "variant": "return"
+    },
+    {
+      "id": "propose",
+      "from": "copilot",
+      "to": "gateway",
+      "y": 554,
+      "label": "propose_edit (RTL only)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "lock-check",
+      "from": "gateway",
+      "to": "workspace",
+      "y": 584,
+      "label": "refuse locked files",
+      "variant": "security"
+    },
+    {
+      "id": "retest",
+      "from": "gateway",
+      "to": "sandbox",
+      "y": 614,
+      "label": "re-lint + re-test",
+      "variant": "security"
+    },
+    {
+      "id": "tests-pass",
+      "from": "sandbox",
+      "to": "gateway",
+      "y": 644,
+      "label": "16 of 16 pass",
+      "variant": "return"
+    },
+    {
+      "id": "store-proposal",
+      "from": "gateway",
+      "to": "workspace",
+      "y": 674,
+      "label": "store proposal",
+      "variant": "dashed"
+    },
+    {
+      "id": "show-diff",
+      "from": "copilot",
+      "to": "dashboard",
+      "y": 704,
+      "label": "diff + evidence",
+      "variant": "return"
+    },
+    {
+      "id": "accept",
+      "from": "engineer",
+      "to": "dashboard",
+      "y": 734,
+      "label": "accept",
+      "variant": "emphasis"
+    },
+    {
+      "id": "new-version",
+      "from": "dashboard",
+      "to": "workspace",
+      "y": 764,
+      "label": "new version v2",
+      "variant": "dashed"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "dashboard",
+      "from": 160,
+      "to": 770,
+      "type": "frontend"
+    },
+    {
+      "participant": "copilot",
+      "from": 190,
+      "to": 710,
+      "type": "backend"
+    },
+    {
+      "participant": "nemotron",
+      "from": 220,
+      "to": 260,
+      "type": "external"
+    },
+    {
+      "participant": "gateway",
+      "from": 280,
+      "to": 380,
+      "type": "security"
+    },
+    {
+      "participant": "sandbox",
+      "from": 310,
+      "to": 350,
+      "type": "external"
+    },
+    {
+      "participant": "gateway",
+      "from": 400,
+      "to": 440,
+      "type": "security"
+    },
+    {
+      "participant": "sandbox",
+      "from": 430,
+      "to": 470,
+      "type": "external"
+    },
+    {
+      "participant": "nemotron",
+      "from": 490,
+      "to": 530,
+      "type": "external"
+    },
+    {
+      "participant": "gateway",
+      "from": 550,
+      "to": 680,
+      "type": "security"
+    },
+    {
+      "participant": "sandbox",
+      "from": 610,
+      "to": 650,
+      "type": "external"
+    },
+    {
+      "participant": "workspace",
+      "from": 580,
+      "to": 770,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Evidence first",
+      "items": [
+        "Every claim in the explanation cites an evidence id (E1, E2)",
+        "Expected vs got is shown first, then the cycle table and driver lines",
+        "The diff the engineer sees has already passed lint and the tests"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Tests stay locked",
+      "items": [
+        "The agent may read locked tests, never write them",
+        "The gateway rejects any edit to a locked file in code",
+        "If the fix needs a test or spec change, the agent says cannot satisfy"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Gate for A3",
+      "items": [
+        "Seeded-bug eval across at least 3 packs: fix rate, cost, tests untouched",
+        "If fewer than half are fixed, the video leads with W2 instead"
+      ]
+    }
+  ]
+}
