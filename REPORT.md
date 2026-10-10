@@ -186,6 +186,26 @@ _Last updated: 2026-10-04_
 - **Added** six Archify diagrams of the plan under `.archify/verity-agent-plan-20261006-215405/` (open `index.html`): proposed architecture, W1 debug sequence, W2 optimize workflow, edit proposal lifecycle, reliability fixes R1 to R5, and the milestone plan to the freeze. All six passed Archify `finalize` (validate, deliver, strict check, browser check); no visual capture review was done.
 - **Pending user decisions:** U1 to U11 in `AGENT_RESEARCH.md` section 8.1; the reframe conflicts with D5, D6, D7, O9, O12 and backend ARCHITECTURE 12.3, 12.4 and 13 (section 7). No D-entries added until approved.
 
+### 2026-10-10: Repo sync and codebase map
+- **Pulled** 3 commits from origin (`abb996f..a387a47`, fast-forward): the agent backend, the engineer-agent research and plan diagrams, and `agent/.env.example`. The local `web/AGENTS.md` change (dashes re-added by `next dev`) was kept and not committed.
+- **Set up** `agent/.venv` (Python 3.13.2) on this machine: `pytest -q` 247 passed. This machine has no Docker, no WSL and no `agent/.env`, so the sandbox tools and Nebius runs cannot run here yet.
+- **Added** `.planning/codebase/` (gitignored, local only): `STACK.md`, `INTEGRATIONS.md`, `ARCHITECTURE.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `TESTING.md`, `CONCERNS.md`, written by 4 haiku mapper agents through `/gsd-map-codebase`. Not committed.
+- **Verified by:** all 7 documents present (1,539 lines); secret pattern and em/en dash scans clean; 1,060 cited paths checked for existence (every miss was a package name, model id, runtime folder or relative path that resolves); versions checked against `web/package.json` and the installed `next`; the listed doc and code conflicts re-checked with grep. A fable-judge pass found 5 false or unsupported statements (`agent/.env.example` "not found", the sandbox image "never built" in two files, a cassettes folder that "holds" answers but does not exist, and a misattributed `agent/ARCHITECTURE.md` claim) plus one gap (remote not named). All were corrected.
+- **Doc drift found (not fixed):** root `ARCHITECTURE.md` still says "before any code exists" and "not built", names one web env var (code reads `NEXT_PUBLIC_AGENT_URL`, `_SITE_URL`, `_GITHUB_URL`, `_DEVPOST_URL`, `_DEMO_VIDEO_URL` and `NEXT_DIST_DIR`) and a single `LLM_MODEL`; `agent/README.md` says tests are "not yet run" and that `.env.example` could not be created; `agent/sandbox/Dockerfile` line 15 says nothing was built; `CLAUDE.md` says "Not a git repo yet". Auth is off by default and the production guard only runs when the env is `production`.
+
+### 2026-10-11: Docker on this machine, sandbox image, packs self-test
+- **Installed** (by the user) WSL 2 and Docker Desktop 4.94 (per-user install, engine 29.8.2). Docker Desktop had been opened before WSL existed and was stuck on "wsl is not installed"; a restart fixed it. `docker run hello-world` passed. The shell needs `%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin` on PATH (new terminals get it; old ones fail on `docker-credential-desktop`).
+- **Built** `verity-tools:0.1` from `agent/sandbox/Dockerfile` with no changes (exit 0, 2.88 GB).
+- **Ran** `python -m verity.evals --suite packs --tasks all --provider fake`: all 7 packs ok, every reference passes, every mutant killed (31 of 31), EQY `proven` on all 7, $0. Slowest step: EQY on the larger packs (up to 181 s). Results: `agent/evals/results/e_20261010T192647Z_4dff1f.jsonl`.
+- **Note:** the evals CLI overwrites the committed `agent/evals/report.md`; it was restored with `git restore` so the 2026-10-06 results are kept.
+
+### 2026-10-11: Repo layout reorganized (backend/, frontend/, docs/)
+- **Renamed** `agent/` to `backend/` and `web/` to `frontend/`. Moved the root `ARCHITECTURE.md` (frontend only) to `frontend/ARCHITECTURE.md`, next to `backend/ARCHITECTURE.md`. Moved `MEETING.md`, `PRODUCT.md`, `brand.md`, `UI_UX_SPEC.md`, `UI_CANVAS_RESEARCH.md`, `AGENT_RESEARCH.md` to `docs/`, and the original brief material (`AI_Hardware_Engineer_Project.md`, `Nebius_Hackathon_Game_Plan.html`, `Verity_AI_Hardware_Verification.png`) to `docs/hackathon/`. `REPORT.md`, `CLAUDE.md` and `.archify/` stay where they were.
+- **Why:** two folders named after their job, all reading material in one place, and a root README (required for judging).
+- **Updated** path references in code comments, docs, `CLAUDE.md` (new layout section and doc table) and the one real path in code: `backend/tests/verity_test_support.py` now looks for `frontend/`. Older change log entries above keep their original paths. Python package name `verity`, the image name and identifiers such as `AGENT_ROOT` are unchanged.
+- **Added** a root `README.md` (layout and how to run).
+- **Verified:** recreated `backend/.venv` (the old one held absolute paths), `pytest -q` 247 passed with no skips (the tests that read `frontend/` found it); in `frontend/`: typecheck clean, lint 0 errors (1 old warning in `view-types.ts`), `validate:fixture` OK, `build` OK. The `next dev` server running from `web/` was stopped for the move.
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/
@@ -200,19 +220,19 @@ _Last updated: 2026-10-04_
 
 | File | Purpose |
 |---|---|
-| `AI_Hardware_Engineer_Project.md` | Concept brief |
+| `docs/hackathon/AI_Hardware_Engineer_Project.md` | Concept brief |
 | `AI_Hardware_Engineer_Report.html` | Feasibility datasheet (AIHE-01) |
-| `Nebius_Hackathon_Game_Plan.html` | Hackathon game plan (AIHE-02) |
+| `docs/hackathon/Nebius_Hackathon_Game_Plan.html` | Hackathon game plan (AIHE-02) |
 | `REPORT.md` | This project record |
-| `MEETING.md` | Brief for the 2026-10-02 project meeting |
+| `docs/MEETING.md` | Brief for the 2026-10-02 project meeting |
 | `CLAUDE.md` | Working rules for AI assistants in this project |
-| `UI_CANVAS_RESEARCH.md` | Canvas UI research: journeys, UX prior art, canvas tech (2026-10-04) |
+| `docs/UI_CANVAS_RESEARCH.md` | Canvas UI research: journeys, UX prior art, canvas tech (2026-10-04) |
 | `.archify/workflow-verity-journey-20261004-011950/verity-journey.html` | Interactive user journey map for the canvas UI (v1) |
 | `.archify/workflow-verity-journey-v2-20261004-014852/verity-journey-v2.html` | Journey map v2 with locked decisions |
-| `PRODUCT.md` | Design context: users, registers, tone |
-| `brand.md` | Colors, tokens, type, motion, voice |
-| `UI_UX_SPEC.md` | Pages, states, copy, reusable components |
-| `ARCHITECTURE.md` | Frontend stack, structure, data contracts |
+| `docs/PRODUCT.md` | Design context: users, registers, tone |
+| `docs/brand.md` | Colors, tokens, type, motion, voice |
+| `docs/UI_UX_SPEC.md` | Pages, states, copy, reusable components |
+| `frontend/ARCHITECTURE.md` | Frontend stack, structure, data contracts |
 | `v1RTL generation with LLMs.pdf` | REvolution paper (reference only) |
-| `web/` | Next.js frontend (static export; replays a sample run) |
-| `agent/ARCHITECTURE.md` | Backend architecture contract (not built) |
+| `frontend/` | Next.js frontend (static export; replays a sample run) |
+| `backend/` | Python agent backend; `backend/ARCHITECTURE.md` is its architecture |

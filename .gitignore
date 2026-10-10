@@ -1,4 +1,4 @@
-# Dependencies and build output (web/ has its own .gitignore too)
+# Dependencies and build output (frontend/ has its own .gitignore too)
 node_modules/
 .next/
 .next-*/
