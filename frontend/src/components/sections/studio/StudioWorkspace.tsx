@@ -321,7 +321,7 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
         />
         <RunBanner />
         <main className="flex-1 px-4 py-5">
-          <RunStoryMobile variant="studio" controls={bottomBar} />
+          <RunStoryMobile controls={bottomBar} />
         </main>
       </div>
     );
