@@ -3,7 +3,8 @@
 import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { EmptyState } from "@/components/domain/EmptyState";
-import { useLive, usePlayback, useRun, useUi } from "@/lib/store";
+import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
+import { useLive, useRun, useUi, useVerityStore } from "@/lib/store";
 import { StudioBand } from "./chrome/StudioBand";
 import { DetailPanel } from "./detail/DetailPanel";
 import { useFollowFocus } from "./detail/follow";
@@ -41,60 +42,61 @@ function ownsKeys(el: EventTarget | null): boolean {
  */
 export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const run = useRun((r) => r);
-  const playback = usePlayback();
+  // Only the status: subscribing to the whole playback clock would re-render the studio on every tick.
+  const status = useVerityStore((s) => s.status);
   const { select } = useUi();
   const live = useLive();
   const follow = useFollowFocus(run);
 
   const isLive = mode === "live";
-  const { seek, play, pause, restart, setSpeed } = playback;
 
   // Keyboard shortcuts (UI_UX_SPEC 3.6, 9): only when focus is not in a text field. Escape hands the detail panel
-  // back to following the run.
+  // back to following the run, from anywhere (the scrubber is an input too).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTextField(e.target)) return;
       if (e.key === "Escape") {
         select(null);
         return;
       }
+      if (isTextField(e.target)) return;
       if (mode !== "replay") return;
       const own = ownsKeys(e.target);
+      const p = useVerityStore.getState();
       if (e.key === " " && !own) {
         e.preventDefault();
-        if (playback.status === "playing") pause();
-        else play();
+        if (p.status === "playing") p.pause();
+        else p.play();
       } else if (e.key === "ArrowLeft" && !own) {
-        const prev = [...playback.chapters].reverse().find((c) => c.tMs < playback.tMs - 1500);
-        seek(prev ? prev.tMs : 0);
+        const prev = [...p.chapters].reverse().find((c) => c.tMs < p.tMs - 1500);
+        p.seek(prev ? prev.tMs : 0);
       } else if (e.key === "ArrowRight" && !own) {
-        const next = playback.chapters.find((c) => c.tMs > playback.tMs + 100);
-        seek(next ? next.tMs : playback.durationMs);
+        const next = p.chapters.find((c) => c.tMs > p.tMs + 100);
+        p.seek(next ? next.tMs : p.durationMs);
       } else if (e.key === "1") {
-        setSpeed(1);
+        p.setSpeed(1);
       } else if (e.key === "2") {
-        setSpeed(2);
+        p.setSpeed(2);
       } else if (e.key === "Home" && !own) {
         e.preventDefault();
-        restart();
+        p.restart();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, playback.status, playback.tMs, playback.durationMs, playback.chapters, select, play, pause, seek, restart, setSpeed]);
+  }, [mode, select]);
 
   // Main area by state (UI_UX_SPEC 3.5). Loading and connecting still draw the figure, every step hollow.
   const noData = run.spec === null && run.plan.blocks.length === 0 && run.candidateOrder.length === 0;
   const notice =
-    !isLive && playback.status === "loading"
+    !isLive && status === "loading"
       ? "Loading the recorded run."
       : isLive && noData && (live.connection === "idle" || live.connection === "connecting")
         ? "Connecting to the live run."
         : null;
 
   let main: ReactNode;
-  if (!isLive && playback.status === "error") {
+  if (!isLive && status === "error") {
     main = (
       <div className="s-empty">
         <EmptyState
@@ -139,6 +141,7 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
 
   return (
     <div className={`${STUDIO_ROOT} studio`}>
+      <VignetteGrid />
       <StudioBand run={run} mode={mode} />
       <main className="s-main" aria-label="Run">
         {main}

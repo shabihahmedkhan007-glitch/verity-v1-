@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
+import { TRY_ROOT } from "@/components/sections/shared/app-roots";
+import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import { PRESETS } from "@/lib/contracts/presets";
 import type { Priority } from "@/lib/contracts/types";
 import { useLiveHealth } from "@/lib/hooks/use-live-health";
@@ -54,7 +56,8 @@ export function TryView() {
   };
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className={`${TRY_ROOT} flex min-h-svh flex-col`}>
+      <VignetteGrid />
       <AppHeader
         actions={
           <Button asChild variant="outline" className="h-8 px-3">

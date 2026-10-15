@@ -18,6 +18,7 @@ REPORT.md   project record and change log (stays at the root)
 |---|---|
 | `docs/MEETING.md` | Product brief, loop, risks, glossary (requirements live here until a PRD exists) |
 | `REPORT.md` | Project record: status, decisions, change log. **Append a change log entry every session that changes files.** |
+| `HANDOFF.md` | Living status for the next session: where things stand, next steps, gotchas. **Update it when pausing work.** |
 | `docs/PRODUCT.md` | Users, registers, tone, anti-references (design context) |
 | `docs/brand.md` | Colors, tokens, type, motion, icons, voice. Source of truth for styling |
 | `docs/UI_UX_SPEC.md` | Pages, states, copy, reusable component inventory |

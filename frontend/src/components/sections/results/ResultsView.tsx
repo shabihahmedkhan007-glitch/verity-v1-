@@ -9,6 +9,8 @@ import { ModeBadge } from "@/components/domain/ModeBadge";
 import { SampleDataBadge } from "@/components/domain/SampleDataBadge";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
+import { RESULTS_ROOT } from "@/components/sections/shared/app-roots";
+import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import type { Candidate } from "@/lib/contracts/types";
 import { useLiveRun } from "@/lib/hooks/use-live-run";
 import { useReplayDriver } from "@/lib/hooks/use-replay-driver";
@@ -96,7 +98,8 @@ function ResultsLive({ runId }: { runId: string }) {
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className={`${RESULTS_ROOT} flex min-h-svh flex-col`}>
+      <VignetteGrid />
       <AppHeader />
       <main className="flex flex-1 items-center justify-center px-6 py-16">{children}</main>
     </div>
@@ -128,7 +131,8 @@ function ResultsBody({ runId }: { runId: string }) {
   const verification = winner?.verification ?? null;
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className={`${RESULTS_ROOT} flex min-h-svh flex-col`}>
+      <VignetteGrid />
       <AppHeader
         context={
           <>

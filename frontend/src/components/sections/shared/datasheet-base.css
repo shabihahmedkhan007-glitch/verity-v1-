@@ -1,11 +1,13 @@
-/* Datasheet base: shared by the landing (.ds) and the studio (.vs).
+/* Datasheet base: shared by the landing (.ds) and the studio (.vs); /try (.vt), /results (.vr) and the 404 page (.vn)
+   take the tokens and the vignette grid only.
    Moved out of datasheet.css without changing any declaration; only the selector widened from .ds to :is(.ds, .vs).
    Palette (user decision): AMOLED black, white ink, and Verity Green as the single accent hue, used in tiers:
    dim green for structure (rules, hairlines, grid), mint for captions, full green for numbers, pass/proven and
    the primary action. No greys and no other hues. Status never relies on colour: every status pairs a marker
-   shape (filled or hollow square) with a word. Page-specific rules stay in datasheet.css and studio.css. */
+   shape (filled or hollow square) with a word. Page-specific rules stay in datasheet.css, studio.css and
+   app-pages.css. */
 
-:is(.ds, .vs) {
+:is(.ds, .vs, .vt, .vr, .vn) {
   /* Monochrome overrides of the global tokens, scoped to the datasheet pages. Green (--pass, --primary) stays as is. */
   --background: black;
   --surface: black;
@@ -33,7 +35,62 @@
   --wrap: 1240px;
   --gut: clamp(20px, 3.2vw, 40px);
   --band-h: 54px;
+}
 
+/* The app pages (studio, /try, /results, 404) are built from the shared shadcn and domain components, which read
+   tones the landing never uses; these fold them into the datasheet palette. */
+:is(.vs, .vt, .vr, .vn) {
+  --surface-3: black;
+  --pass-muted: black;
+  --info-muted: black;
+  --warn-muted: black;
+  --primary-muted: color-mix(in oklch, var(--pass) 18%, black);
+  --edge: var(--border-strong);
+  --edge-active: var(--pass);
+  --edge-proof: var(--pass);
+  --ring: var(--pass);
+  --fg-disabled: color-mix(in oklch, var(--pass) 40%, black);
+  /* shadcn aliases resolve at :root, so they are restated here or they keep the navy values. */
+  --card: black;
+  --card-foreground: white;
+  --popover: black;
+  --popover-foreground: white;
+  --secondary: black;
+  --secondary-foreground: white;
+  --muted: black;
+  --muted-foreground: white;
+  --accent: color-mix(in oklch, var(--pass) 14%, black);
+  --accent-foreground: white;
+  --destructive: white;
+  --destructive-foreground: black;
+  --input: var(--border-strong);
+  --sidebar: black;
+  --sidebar-foreground: white;
+  --sidebar-primary: var(--pass);
+  --sidebar-primary-foreground: black;
+  --sidebar-accent: color-mix(in oklch, var(--pass) 14%, black);
+  --sidebar-accent-foreground: white;
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--pass);
+  --code-bg: black;
+  --syn-plain: white;
+  --syn-punct: color-mix(in oklch, var(--pass) 55%, white);
+  --syn-keyword: var(--pass);
+  --syn-type: white;
+  --syn-number: color-mix(in oklch, var(--pass) 55%, white);
+  --syn-comment: color-mix(in oklch, var(--pass) 45%, black);
+  --syn-string: white;
+  --diff-add: color-mix(in oklch, var(--pass) 22%, black);
+  --diff-del: color-mix(in oklch, white 14%, black);
+  --selection: color-mix(in oklch, var(--pass) 30%, black);
+  --shadow-overlay: none;
+  --glow-pass: 0 0 0 1px var(--pass);
+  --mint: var(--fg-subtle);
+  --info: var(--fg-subtle);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+
+:is(.ds, .vs) {
   position: relative;
   isolation: isolate;
   background: var(--bg);
@@ -69,6 +126,41 @@
 :is(.ds, .vs) .skip { position: absolute; left: 12px; top: -60px; background: var(--fg); color: var(--bg); padding: 8px 12px; z-index: 50; font-weight: 600; }
 :is(.ds, .vs) .skip:focus { top: 12px; }
 :is(.ds, .vs) .sd { color: var(--fg); font-weight: 700; text-decoration: underline dotted; text-underline-offset: 3px; }
+
+/* ---------- mouse-reactive vignette grid (every page) ---------- */
+.ds-vg {
+  --mx: 50%;
+  --my: 28%;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.ds-vg::before,
+.ds-vg::after { content: ""; position: absolute; inset: 0; }
+/* Base grid: 48px cells, hairlines, faded out by a radial vignette that follows the pointer. */
+.ds-vg::before {
+  background-image:
+    linear-gradient(to right, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
+  mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
+}
+/* A second, smaller and very faint layer, slightly brighter near the cursor. */
+.ds-vg::after {
+  background-image:
+    radial-gradient(circle 380px at var(--mx) var(--my), color-mix(in oklch, var(--pass) 9%, transparent), transparent),
+    linear-gradient(to right, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+  -webkit-mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
+  mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
+}
+/* The app pages do not lift their content onto a positioned layer like the landing's .ds-content, so the grid
+   goes under it instead: z-index -1 inside the isolated page root, above the root's black background. */
+:is(.vt, .vr, .vn) { position: relative; isolation: isolate; }
+:is(.vs, .vt, .vr, .vn) > .ds-vg { z-index: -1; }
 
 /* ---------- header band ---------- */
 :is(.ds, .vs) .band { background: var(--surface); color: var(--fg); position: sticky; top: 0; z-index: 20; border-bottom: 1.5px solid var(--rule); }

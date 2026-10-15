@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { RunState } from "@/lib/contracts/types";
 import type { SelectedEntity, Selection } from "@/lib/contracts/view-types";
 import { selectEntity } from "@/lib/run/selectors";
@@ -42,14 +42,21 @@ export function DetailPanel({ run, follow }: { run: RunState; follow: Selection 
   const followed = useMemo(() => selectEntity(run, follow), [run, follow]);
   const isPinned = selection !== null;
   const entity = isPinned && pinned ? pinned : followed;
+  const panelRef = useRef<HTMLElement>(null);
+
+  const followRun = () => {
+    select(null);
+    // The button unmounts once the panel follows again; keep keyboard focus in the panel instead of <body>.
+    panelRef.current?.focus();
+  };
 
   return (
-    <aside className="s-detail dp" aria-label="Detail">
+    <aside ref={panelRef} className="s-detail dp" aria-label="Detail" tabIndex={-1}>
       <div className="dp-bar">
         {isPinned ? (
           <>
             <span className="dp-mode">{pinned ? "Pinned" : "Pinned item is not in the run yet"}</span>
-            <button type="button" className="btn ghost xs" onClick={() => select(null)}>
+            <button type="button" className="btn ghost xs" onClick={followRun}>
               Follow run
             </button>
           </>

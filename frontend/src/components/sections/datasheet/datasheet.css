@@ -16,36 +16,7 @@ html:has(.ds) body { background: black; }
 /* Tokens, base type, .band, .btn, .stamp, tables, .mk and .cli live in ../shared/datasheet-base.css (shared with /studio). */
 .ds .ds-content { position: relative; z-index: 1; }
 
-/* ---------- mouse-reactive vignette grid (landing only) ---------- */
-.ds-vg {
-  --mx: 50%;
-  --my: 28%;
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-.ds-vg::before,
-.ds-vg::after { content: ""; position: absolute; inset: 0; }
-/* Base grid: 48px cells, hairlines, faded out by a radial vignette that follows the pointer. */
-.ds-vg::before {
-  background-image:
-    linear-gradient(to right, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px);
-  background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
-  mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
-}
-/* A second, smaller and very faint layer, slightly brighter near the cursor. */
-.ds-vg::after {
-  background-image:
-    radial-gradient(circle 380px at var(--mx) var(--my), color-mix(in oklch, var(--pass) 9%, transparent), transparent),
-    linear-gradient(to right, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
-  -webkit-mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
-  mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
-}
+/* The mouse-reactive vignette grid (.ds-vg) lives in ../shared/datasheet-base.css: every page draws it. */
 
 /* ---------- header band ---------- */
 .ds .band nav { display: flex; gap: 24px; font-size: 14px; font-weight: 500; }

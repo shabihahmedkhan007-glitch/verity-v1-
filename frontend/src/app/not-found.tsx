@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
+import { NOT_FOUND_ROOT } from "@/components/sections/shared/app-roots";
+import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import { EmptyState } from "@/components/domain/EmptyState";
 import { Button } from "@/components/ui/button";
 
@@ -8,7 +10,8 @@ export const metadata: Metadata = { title: "Not found" };
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className={`${NOT_FOUND_ROOT} flex min-h-svh flex-col`}>
+      <VignetteGrid />
       <AppHeader />
       <main className="flex flex-1 items-center justify-center px-6 py-16">
         <EmptyState

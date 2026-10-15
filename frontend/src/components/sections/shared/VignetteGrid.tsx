@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 const EASE = 0.1;
 
 /**
- * Fixed, click-through grid behind the landing. The vignette centre follows the pointer: pointermove only stores a target,
+ * Fixed, click-through grid behind every page (the first child of each datasheet root). The vignette centre follows the pointer: pointermove only stores a target,
  * and a requestAnimationFrame loop lerps the centre toward it and writes --mx/--my on the element (no React state).
  * Touch, coarse pointers and reduced motion keep the static vignette in the upper middle (the CSS defaults).
  */

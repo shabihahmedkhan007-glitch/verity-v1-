@@ -11,7 +11,7 @@ import { PageFoot } from "./PageFoot";
 import { PinSection } from "./PinSection";
 import { RunTimeline } from "./RunTimeline";
 import { TimingSummary } from "./TimingSummary";
-import { VignetteGrid } from "./VignetteGrid";
+import { VignetteGrid } from "../shared/VignetteGrid";
 import { archivo, jetbrainsMono } from "./fonts";
 import "../shared/datasheet-base.css";
 import "./datasheet.css";

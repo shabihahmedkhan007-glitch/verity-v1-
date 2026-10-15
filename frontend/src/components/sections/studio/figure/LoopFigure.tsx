@@ -208,7 +208,7 @@ export function LoopFigure({ live }: { live: boolean }) {
   return (
     <figure className={`fig1${instant ? " is-instant" : ""}`} data-halted={halted ? "" : undefined} aria-labelledby="fig1-h">
       <h2 id="fig1-h" className="sr">
-        Figure 1. The loop, live
+        {live ? "Figure 1. The loop, live" : "Figure 1. The loop, replayed"}
       </h2>
       <div className="fig1-scroll">
         <div ref={gridRef} className="fig1-grid" style={{ gridTemplateColumns: gridTemplate(cols) }}>
@@ -227,7 +227,7 @@ export function LoopFigure({ live }: { live: boolean }) {
         </div>
       </div>
       <figcaption className="fig1-cap">
-        <b>Figure 1.</b> The loop, live. Hollow steps are not reached yet. Every version keeps its attempt history; numbers are relative to {baselineLabel}.
+        <b>Figure 1.</b> {live ? "The loop, live." : "The loop, replayed from a recorded run."} Hollow steps are not reached yet. Every version keeps its attempt history; numbers are relative to {baselineLabel}.
       </figcaption>
     </figure>
   );

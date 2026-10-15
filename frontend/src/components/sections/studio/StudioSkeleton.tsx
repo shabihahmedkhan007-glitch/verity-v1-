@@ -1,6 +1,7 @@
 "use client";
 
 import { Wordmark } from "@/components/brand/Wordmark";
+import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import { STUDIO_ROOT } from "./studio-root";
 
 const STEPS = ["Spec", "Plan", "Lock", "Build", "Rounds", "Prove"];
@@ -9,6 +10,7 @@ const STEPS = ["Spec", "Plan", "Lock", "Build", "Rounds", "Prove"];
 export function StudioSkeleton() {
   return (
     <div className={`${STUDIO_ROOT} studio`} role="status" aria-label="Loading the recorded run.">
+      <VignetteGrid />
       <header className="s-band sband">
         <span className="logo">
           <Wordmark size="md" />
