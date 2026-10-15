@@ -88,8 +88,7 @@
   --diff-del: oklch(25% 0.07 22);
   --selection: oklch(35% 0.08 156);
 
-  /* Canvas */
-  --canvas-dot: oklch(31% 0.03 262);
+  /* Edges */
   --edge: var(--border-strong);
   --edge-active: var(--info);
   --edge-proof: var(--verity-green);
@@ -99,11 +98,8 @@
   /* The one glow in the system: winner moment only */
   --glow-pass: 0 0 0 1px var(--verity-green), 0 0 24px oklch(88% 0.2 151 / 0.35);
 
-  /* Layout constants (Studio) */
+  /* Layout constants (AppHeader on /try and /results) */
   --topbar-h: 3.5rem;
-  --rail-h: 3.25rem;
-  --bottombar-h: 3.5rem;
-  --inspector-w: 25rem;
 }
 
 @theme inline {
@@ -227,37 +223,6 @@
   p { text-wrap: pretty; }
   code, kbd, pre, samp { font-variant-ligatures: none; }
 }
-
-/* React Flow theming. ReactFlow gets className="verity-flow" so these beat the library defaults
-   regardless of stylesheet order (the library CSS is imported in components/canvas/RunCanvas.tsx).
-   The library reads var(--xy-name, var(--xy-name-default)), so we set the non-default names.
-   Custom nodes draw their own cards, so the built-in node color variables are not needed. */
-.react-flow.verity-flow {
-  --xy-background-color: var(--background);
-  --xy-background-pattern-color: var(--canvas-dot);
-  --xy-edge-stroke: var(--edge);
-  --xy-edge-stroke-width: 1;
-  --xy-edge-stroke-selected: var(--foreground);
-  --xy-edge-label-color: var(--fg-muted);
-  --xy-edge-label-background-color: var(--background);
-  --xy-connectionline-stroke: var(--edge);
-  --xy-handle-background-color: var(--surface-2);
-  --xy-handle-border-color: var(--border-strong);
-  --xy-controls-button-background-color: var(--surface);
-  --xy-controls-button-background-color-hover: var(--surface-2);
-  --xy-controls-button-color: var(--foreground);
-  --xy-controls-button-color-hover: var(--foreground);
-  --xy-controls-button-border-color: var(--border);
-  --xy-controls-box-shadow: none;
-  --xy-attribution-background-color: transparent;
-}
-/* The library sets outline: none on focused nodes. Restore a visible keyboard focus ring. */
-.react-flow.verity-flow .react-flow__node.selectable:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: var(--radius);
-}
-.react-flow.verity-flow .react-flow__attribution a { color: var(--fg-subtle); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -91,7 +91,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-- The canvas is browser-only: `components/canvas/RunCanvasLazy.tsx` (a client component) loads `RunCanvas` with `next/dynamic(() => import("./RunCanvas"), { ssr: false, loading: CanvasSkeleton })` (docs: `ssr: false` is only allowed in client components) and takes the same props. Sections always use `RunCanvasLazy`, never `RunCanvas` directly.
+- Since 2026-10-15 /studio uses no canvas library. Figure 1 is a fixed CSS grid plus one SVG wire layer measured after layout (`components/sections/studio/figure/`). It renders on the client like every studio section.
 - Hosting is still an open decision (Nebius or Vercel, `REPORT.md` section 3). The static `out/` folder works on either.
 
 ## 4. `frontend/` folder structure
@@ -115,8 +115,8 @@ frontend/
       ui/            shadcn primitives (generated)                  (S)
       brand/         Wordmark, PoweredBy                            (A)
       domain/        presentational, props-only components          (A)
-      canvas/        RunCanvas, node-types, nodes/*                 (B)
-      sections/      landing/*, studio/*, try/*, results/*          (C)
+      sections/      datasheet/* (landing), studio/*, try/*, results/*, shared/*  (C)
+                     studio/: figure/, detail/, table/, timeline/, chrome/
     lib/
       utils.ts       cn() from shadcn                               (S)
       env.ts         AGENT_URL, isLiveConfigured                    (S)
@@ -342,7 +342,6 @@ Edges created by the golden run: plan chain (spec to first block, block to block
 
 Hooks (B) that sections (C) consume:
 - `useRun<T>(selector)`: typed selector over `snapshot.run`.
-- `useCanvas()`: nodes, edges, handlers for `RunCanvas`.
 - `useReplayDriver(opts: { src: string; autoplay: boolean; loop: boolean })`: loads and validates the log, drives `tick` with `requestAnimationFrame`, honors reduced motion (starts paused at the end when `autoplay` and reduced motion are both set).
 - `useLiveRun(runId: string)`: owns the `EventSource`.
 - `useCountdown(gate, tMs)`: remaining ms for `CountdownGate`.
@@ -395,12 +394,6 @@ Hooks and modules (B implements; S creates typed stubs first):
 ```ts
 // src/lib/store/index.ts
 export function useRun<T>(selector: (run: RunState) => T): T;
-export function useCanvas(): {
-  nodes: VerityNode[]; edges: VerityEdge[];
-  onNodesChange: OnNodesChange<VerityNode>; onEdgesChange: OnEdgesChange<VerityEdge>;
-  onNodeDragStop: OnNodeDrag<VerityNode>;     // (event, node, nodes) => void
-  onNodeClick: NodeMouseHandler<VerityNode>;  // (event, node) => void
-};
 export function usePlayback(): {
   status: PlaybackStatus; tMs: number; durationMs: number; speed: 1 | 2; chapters: Chapter[];
   play(): void; pause(): void; seek(tMs: number): void; restart(): void; setSpeed(s: 1 | 2): void;
@@ -483,20 +476,17 @@ Layers, bottom to top. A layer imports only from layers below it.
 | 1 | Tokens | `app/globals.css` | Only place colors, fonts, radii and motion are defined (`brand.md` 1.5) |
 | 2 | UI primitives | `components/ui` | shadcn-generated. Restyle through tokens, not per-use overrides |
 | 3 | Domain components | `components/brand`, `components/domain` | Presentational, props in and callbacks out. No store, no fetch, no router |
-| 4 | Canvas | `components/canvas` | React Flow wrapper and node types. Node components wrap domain cards (`CandidateCard`, `ArchBlockCard`, ...) and read only their own node `data` plus entity lookups through store selectors |
+| 4 | Figure | `components/sections/studio/figure` | Figure 1, the live loop: a fixed grid of step columns and version boxes plus an SVG wire layer. Reads the run state only; selection goes through `ui.select` |
 | 5 | Sections | `components/sections/*` | Compose 2 to 4 with store hooks. All store-to-props wiring happens here |
 | 6 | Pages | `app/**/page.tsx` | Thin: metadata, `Suspense`, one or more sections. No business logic, no styling beyond layout |
 
 **Pages compose reusable components; they never re-implement them.** If two sections need the same visual, it becomes a domain component. The full inventory with props is in `UI_UX_SPEC.md` section 5.
 
-Canvas specifics (verified API, React Flow 12):
-- `nodeTypes` and `edgeTypes` are module-level constants in `components/canvas/node-types.ts` (re-creating them each render re-renders the whole flow).
-- Node components: `memo((props: NodeProps<VerityNode>) => ...)` with `Handle` from `@xyflow/react`.
-- `<ReactFlow className="verity-flow" colorMode="dark" nodesFocusable deleteKeyCode={null} nodesConnectable={false} ...>`. `deleteKeyCode={null}` stops Backspace from deleting nodes (default is `"Backspace"`); only the AI's `remove` op deletes.
-- Only plan-zone nodes are draggable (`draggable: true` on block nodes, `false` elsewhere); zone frames are non-selectable, non-focusable, `zIndex: -1`.
-- Import `@xyflow/react/dist/style.css` once, in `RunCanvas.tsx`.
-- Keep the React Flow attribution (`proOptions.hideAttribution` stays unset); style it quietly via `.react-flow__attribution`.
-- `fitView` with `FitViewOptions` `{ padding: 0.06, duration: 320 }` after tree growth (`duration: 0` under reduced motion).
+Studio specifics (rebuilt 2026-10-15, decision D11 in `REPORT.md`):
+- One frame: band and metadata line, Figure 1 with the detail panel beside it, Table 1 under the figure, one timeline bar. Full viewport with no page scroll from 1100px wide; narrower, the figure, detail and table stack and the page scrolls.
+- The detail panel follows the run by default (`detail/follow.ts` compares each run state with the previous one); a click on a figure box or table row pins it through `ui.select`, and "Follow run" or Escape clears the selection.
+- No pan, zoom or dragging. Round columns come from the run data, never a constant. The reducer still builds xyflow-typed nodes (`lib/canvas/*`) that `useRunSummary` reads, so `@xyflow/react` and `@dagrejs/dagre` stay installed.
+- Theme: the datasheet world under `.vs` (`studio.css`) on top of `sections/shared/datasheet-base.css`, which the landing (`.ds`) shares.
 
 ## 10. Proposed agent API (contract for `backend/`, not built)
 
@@ -580,7 +570,7 @@ Timeline (`durationMs: 90000`, compressed with highlights). Chapters: Spec 0, Pl
 
 ## 12. Conventions
 
-- **Client components:** every file under `components/canvas`, `components/sections` and every hook starts with `"use client"`. Domain components add it only if they use state or effects. Pages stay server components that render client sections inside `Suspense`.
+- **Client components:** every file under `components/sections` and every hook starts with `"use client"`. Domain components add it only if they use state or effects. Pages stay server components that render client sections inside `Suspense`.
 - **Secrets:** none in `frontend/`. The only env var is `NEXT_PUBLIC_AGENT_URL` (a public base URL). Never add `NEXT_PUBLIC_*` keys, tokens or the Nebius key. `.env*` stays gitignored; commit `.env.example` only.
 - **Untrusted input:** every event from the network or the fixture passes `RunEventSchema.safeParse` before `reduce`. Rendered strings from events are plain text (React escapes them); never use `dangerouslySetInnerHTML` (the Verilog highlighter returns React nodes, not HTML).
 - **Naming:** components `PascalCase.tsx`, one component per file; hooks `use-kebab-case.ts` exporting `useCamelCase`; lib files `kebab-case.ts`; types `PascalCase`; zod schemas `PascalCaseSchema`; CSS custom properties `--kebab-case`. Node ids: `spec`, `blk-*`, `golden`, `c<n>`; labels `v<n>`.

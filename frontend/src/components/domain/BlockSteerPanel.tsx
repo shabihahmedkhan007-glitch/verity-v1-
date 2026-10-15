@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { PlanBlock } from "@/lib/contracts/types";
@@ -38,11 +37,6 @@ function Inner({ block, readOnly, pending, onApply }: BlockSteerPanelProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-base font-bold text-foreground">{block.name}</h3>
-        <p className="text-sm text-fg-muted">{block.reason}</p>
-      </div>
-
       {pending ? (
         <p className="inline-flex items-center gap-2 text-sm text-info" role="status">
           <StatusSquare status="running" size="sm" />
@@ -111,23 +105,22 @@ function Inner({ block, readOnly, pending, onApply }: BlockSteerPanelProps) {
       ) : null}
 
       {readOnly ? null : (
-        <Button
+        <button
           type="button"
-          variant="secondary"
-          className="h-10 self-start px-4"
+          className="btn sm self-start"
           disabled={!dirty || pending}
           onClick={() => onApply({ pins, variants })}
         >
           {pending ? "Replanning" : "Apply and replan"}
-        </Button>
+        </button>
       )}
 
-      <p className="text-xs text-fg-subtle">Moving a block on the board does not change the design. Pins and toggles do.</p>
+      <p className="text-xs text-fg-subtle">Pins and variant choices change the plan. The agent replans after you apply them.</p>
     </div>
   );
 }
 
-/** Pins and variant toggles for one plan block. Editable in live runs, read only in a replay. */
+/** Pins and variant toggles for one plan block (the studio detail panel shows it in live runs). */
 export function BlockSteerPanel(props: BlockSteerPanelProps) {
   // Remount when the block or its recorded values change so the local choices restart from the new values.
   const key = `${props.block.id}|${props.block.pins.join(",")}|${props.block.variants.map((v) => `${v.id}=${v.value}`).join(",")}`;

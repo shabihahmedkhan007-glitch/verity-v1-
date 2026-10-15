@@ -1,7 +1,7 @@
 import type { Candidate, Port, Priority, RunState, StageStatus } from "@/lib/contracts/types";
 
-/** pending = not reached (hollow), current = the step the run is on (full ink), done = finished. */
-export type StepState = "pending" | "current" | "done";
+/** pending = not reached (hollow), current = the step the run is on (full ink), done = finished, skipped = the run skipped it. */
+export type StepState = "pending" | "current" | "done" | "skipped";
 
 export type FigureColumn =
   | { kind: "spec"; key: "spec"; label: string; state: StepState }
@@ -16,8 +16,14 @@ export type FigureColumn =
 const BUILD_STAGES = ["rtl", "lint", "sim", "fix", "synth"] as const;
 
 function fromStage(status: StageStatus): StepState {
-  if (status === "done" || status === "skipped" || status === "failed") return "done";
+  if (status === "done" || status === "failed") return "done";
+  if (status === "skipped") return "skipped";
   return status === "active" ? "current" : "pending";
+}
+
+/** A run that ended early (stopped, error, credit cap). Its current step stays current; nothing is promoted to done. */
+export function isHalted(run: RunState): boolean {
+  return run.phase === "error" || run.phase === "cap_reached" || run.phase === "stopped";
 }
 
 /**
@@ -35,11 +41,10 @@ export function deriveColumns(run: RunState): FigureColumn[] {
   const proveState = fromStage(stages.prove.status);
   const evolveStarted = stages.evolve.status !== "pending";
   const evolveDone = stages.evolve.status === "done" || proveState !== "pending";
-  const finished = run.phase === "done" || run.phase === "error" || run.phase === "cap_reached" || run.phase === "stopped";
 
   const buildCandidates = ordered.filter((c) => c.round === 0);
   const buildActive = buildCandidates.length > 0 || BUILD_STAGES.some((s) => stages[s].status !== "pending");
-  const buildState: StepState = rounds > 0 || evolveStarted || proveState !== "pending" ? "done" : buildActive ? (finished ? "done" : "current") : "pending";
+  const buildState: StepState = rounds > 0 || evolveStarted || proveState !== "pending" ? "done" : buildActive ? "current" : "pending";
 
   const cols: FigureColumn[] = [
     { kind: "spec", key: "spec", label: "Spec", state: fromStage(stages.spec.status) },
@@ -49,10 +54,10 @@ export function deriveColumns(run: RunState): FigureColumn[] {
   ];
 
   if (rounds === 0) {
-    cols.push({ kind: "rounds", key: "rounds", label: "Rounds", state: "pending" });
+    cols.push({ kind: "rounds", key: "rounds", label: "Rounds", state: stages.evolve.status === "skipped" ? "skipped" : "pending" });
   } else {
     for (let n = 1; n <= rounds; n++) {
-      const state: StepState = n < run.round || evolveDone || (finished && n <= run.round) ? "done" : n === run.round ? "current" : "pending";
+      const state: StepState = n < run.round || evolveDone ? "done" : n === run.round ? "current" : "pending";
       cols.push({ kind: "round", key: `round-${n}`, label: `Round ${n}`, state, round: n, candidates: ordered.filter((c) => c.round === n) });
     }
   }
@@ -100,6 +105,14 @@ export function portLines(ports: Port[]): [string, string] {
 
 export function goalText(priority: Priority): string {
   return priority === "area" ? "Smallest area" : priority === "speed" ? "Fastest clock" : "Lowest power";
+}
+
+/** "Rejected after 2 attempts" only when the last attempt failed the tests; other rejections just say "Rejected". */
+export function rejectedText(c: Candidate): string {
+  const last = c.attempts.at(-1)?.verification;
+  const failed = last ? last.lint === "fail" || last.passed < last.total : false;
+  const n = c.attempts.length;
+  return failed && n > 0 ? `Rejected after ${n} ${n === 1 ? "attempt" : "attempts"}` : "Rejected";
 }
 
 export function fixedText(n: number): string | null {

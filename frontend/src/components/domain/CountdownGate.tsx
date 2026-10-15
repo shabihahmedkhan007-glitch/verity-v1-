@@ -4,7 +4,6 @@ export type CountdownGateProps = {
   state: "counting" | "held" | "waiting" | "closed";
   remainingMs: number;
   totalMs: number;
-  readOnly?: boolean;
   onBuildNow?: () => void;
   onHold?: () => void;
   onResume?: () => void;
@@ -12,9 +11,9 @@ export type CountdownGateProps = {
 
 /**
  * Plan approval gate, drawn in the studio's datasheet style (it renders inside Figure 1's PLAN box, live runs only).
- * The countdown is adjustable: hold it, build now, or turn Autopilot off to wait for a click.
+ * The countdown is adjustable: hold it or build now. With Autopilot off it waits for a click.
  */
-export function CountdownGate({ state, remainingMs, totalMs, readOnly, onBuildNow, onHold, onResume }: CountdownGateProps) {
+export function CountdownGate({ state, remainingMs, totalMs, onBuildNow, onHold, onResume }: CountdownGateProps) {
   const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
   const ratio = totalMs > 0 ? Math.max(0, Math.min(1, remainingMs / totalMs)) : 0;
 
@@ -55,7 +54,7 @@ export function CountdownGate({ state, remainingMs, totalMs, readOnly, onBuildNo
           <span style={{ transform: `scaleX(${ratio})` }} />
         </div>
       ) : null}
-      {readOnly || state === "closed" ? null : (
+      {state === "closed" ? null : (
         <div className="gate-acts">
           {state === "counting" ? (
             <>
@@ -84,7 +83,7 @@ export function CountdownGate({ state, remainingMs, totalMs, readOnly, onBuildNo
           ) : null}
         </div>
       )}
-      {state === "counting" && !readOnly ? <p className="gate-note">Pin a block or toggle a variant to steer. Every change restarts the countdown.</p> : null}
+      {state === "counting" ? <p className="gate-note">Pin a block or toggle a variant to steer. Every change restarts the countdown.</p> : null}
     </div>
   );
 }

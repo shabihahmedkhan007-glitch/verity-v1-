@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { highlightCode } from "@/lib/verilog/highlight";
 
@@ -15,7 +14,7 @@ export type CodeViewProps = {
   copyable?: boolean;
 };
 
-/** Read-only code with line numbers and Verilog highlighting. No HTML strings: highlighting returns React nodes. */
+/** Read-only code with line numbers and Verilog highlighting (datasheet style). No HTML strings: highlighting returns React nodes. */
 export function CodeView({ code, language, filename, highlightLines, maxHeight, copyable = true }: CodeViewProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,33 +44,33 @@ export function CodeView({ code, language, filename, highlightLines, maxHeight, 
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-code-bg">
+    <div className="codebox">
       {filename || copyable ? (
-        <div className="flex h-9 items-center justify-between gap-2 border-b border-border bg-surface px-3">
-          <span className="truncate font-mono text-xs text-fg-muted">{filename ?? ""}</span>
+        <div className="codebox-h">
+          <span className="mono codebox-f">{filename ?? ""}</span>
           {copyable && !empty ? (
-            <Button type="button" variant="ghost" size="xs" onClick={copy} aria-label={copied ? "Copied" : "Copy code"}>
-              {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            <button type="button" className="btn ghost xs" onClick={copy} aria-label={copied ? "Copied" : "Copy code"}>
+              {copied ? <Check aria-hidden className="ico" /> : <Copy aria-hidden className="ico" />}
               <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
-            </Button>
+            </button>
           ) : null}
         </div>
       ) : null}
       {empty ? (
-        <p className="px-3 py-4 text-sm text-fg-subtle">No code yet.</p>
+        <p className="dp-empty">No code yet.</p>
       ) : (
         <div
           role="region"
           tabIndex={0}
           aria-label={filename ? `Code: ${filename}` : "Code"}
-          className="overflow-auto py-2"
+          className="codebox-b"
           style={maxHeight ? { maxHeight } : undefined}
         >
-          <pre className="min-w-max font-mono text-[13px] leading-5">
+          <pre className="codebox-pre">
             <code>
               {lines.map((nodes, i) => (
                 <div key={i} className={cn("flex min-h-5", marked.has(i + 1) && "bg-surface-2")}>
-                  <span aria-hidden className="w-10 shrink-0 pr-3 text-right text-fg-subtle select-none">
+                  <span aria-hidden className="ln ln-w">
                     {i + 1}
                   </span>
                   <span className="pr-4 whitespace-pre text-syn-plain">{nodes}</span>
@@ -82,7 +81,7 @@ export function CodeView({ code, language, filename, highlightLines, maxHeight, 
         </div>
       )}
       {empty ? null : (
-        <div className="border-t border-border px-3 py-1.5 text-xs text-fg-subtle">
+        <div className="codebox-foot">
           {lines.length} {lines.length === 1 ? "line" : "lines"}
         </div>
       )}

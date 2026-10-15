@@ -50,33 +50,33 @@ function buildRows(before: string, after: string, language: "verilog" | "text") 
   return { rows, added, removed };
 }
 
-/** Unified line diff. Added and removed rows carry a + or - gutter symbol as well as a fill, never color alone. */
+/** Unified line diff (datasheet style). Added and removed rows carry a + or - gutter symbol as well as a fill, never color alone. */
 export function CodeDiff({ before, after, beforeLabel, afterLabel, language = "verilog" }: CodeDiffProps) {
   const { rows, added, removed } = useMemo(() => buildRows(before, after, language), [before, after, language]);
   const unchanged = added === 0 && removed === 0;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-code-bg">
-      <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-surface px-3 py-1.5">
-        <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+    <div className="codebox">
+      <div className="codebox-h">
+        <span className="codebox-f">
           <span>{beforeLabel}</span>
           <ArrowRight aria-hidden className="size-3" />
           <span>{afterLabel}</span>
         </span>
-        <span className="font-mono text-xs">
-          <span className="text-pass">+{added}</span> <span className="text-fail">-{removed}</span>
+        <span className="mono codebox-n">
+          <span className="add">+{added}</span> <span className="del">-{removed}</span>
         </span>
       </div>
       {unchanged ? (
-        <p className="px-3 py-4 text-sm text-fg-subtle">No changes</p>
+        <p className="dp-empty">No changes</p>
       ) : (
         <div
           role="region"
           tabIndex={0}
           aria-label={`Changes from ${beforeLabel} to ${afterLabel}`}
-          className="overflow-auto py-1"
+          className="codebox-b"
         >
-          <pre className="min-w-max font-mono text-[13px] leading-5">
+          <pre className="codebox-pre">
             <code>
               {rows.map((row, i) => (
                 <div
@@ -87,17 +87,17 @@ export function CodeDiff({ before, after, beforeLabel, afterLabel, language = "v
                     row.kind === "del" && "bg-diff-del",
                   )}
                 >
-                  <span aria-hidden className="w-8 shrink-0 pr-2 text-right text-fg-subtle select-none">
+                  <span aria-hidden className="ln">
                     {row.oldNo ?? ""}
                   </span>
-                  <span aria-hidden className="w-8 shrink-0 pr-2 text-right text-fg-subtle select-none">
+                  <span aria-hidden className="ln">
                     {row.newNo ?? ""}
                   </span>
                   <span
                     className={cn(
-                      "w-5 shrink-0 text-center select-none",
-                      row.kind === "add" && "text-pass",
-                      row.kind === "del" && "text-fail",
+                      "gut",
+                      row.kind === "add" && "add",
+                      row.kind === "del" && "del",
                     )}
                   >
                     {row.kind === "add" ? "+" : row.kind === "del" ? "-" : " "}

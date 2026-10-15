@@ -11,12 +11,12 @@ function Term({ weight, name, gain }: { weight: number; name: string; gain: numb
   );
 }
 
-/** Shows how a fitness score is built from the weighted gains, with the numbers filled in. */
+/** Shows how a fitness score is built from the weighted gains, with the numbers filled in (datasheet style). */
 export function FitnessBreakdown({ fitness, status }: FitnessBreakdownProps) {
   if (!fitness) {
     const baseline = status === "measured";
     return (
-      <p className="rounded-lg border border-border bg-surface p-3 text-sm text-fg-muted">
+      <p className="dp-empty">
         {baseline
           ? "Baseline. Every gain and fitness score is measured against this version."
           : "Not ranked. Only versions that pass the locked tests and are measured get a fitness score."}
@@ -25,11 +25,11 @@ export function FitnessBreakdown({ fitness, status }: FitnessBreakdownProps) {
   }
   const { weights, gains } = fitness;
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-3">
-      <p className="text-sm text-foreground">
-        Fitness <span className="font-mono font-semibold">{formatScore(fitness.score)}</span>
+    <div className="fitbox">
+      <p className="fitbox-t">
+        Fitness <span className="mono">{formatScore(fitness.score)}</span>
       </p>
-      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-xs text-fg-muted">
+      <p className="fitbox-eq mono">
         <span>=</span>
         <Term weight={weights.area} name="area" gain={gains.area} />
         <span>+</span>
@@ -37,7 +37,7 @@ export function FitnessBreakdown({ fitness, status }: FitnessBreakdownProps) {
         <span>+</span>
         <Term weight={weights.power} name="power" gain={gains.power} />
       </p>
-      <p className="text-xs text-fg-subtle">Gains are percent better than v1. Positive is better.</p>
+      <p className="fitbox-n">Gains are percent better than v1. Positive is better.</p>
     </div>
   );
 }

@@ -52,8 +52,8 @@ Copy `.env.example` to `.env.local` if you need any of these. Only public URLs g
 src/app/                    pages, layout.tsx, globals.css (tokens from brand.md 1.5)
 src/components/ui/          shadcn primitives (generated)
 src/components/brand|domain presentational components, props only
-src/components/canvas/      React Flow wrapper and node types
 src/components/sections/    page sections, where store hooks meet components
+                            (studio/: figure, detail panel, Table 1, timeline, band)
 src/lib/contracts/          types, view types, zod schemas, stages, presets
 src/lib/{run,canvas,sources,store,hooks,export,verilog}/
 public/runs/golden.json     recorded sample run (placeholder data, labeled Sample data)
