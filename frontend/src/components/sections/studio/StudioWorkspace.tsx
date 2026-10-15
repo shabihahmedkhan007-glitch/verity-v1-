@@ -1,16 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RunCanvasLazy } from "@/components/canvas/RunCanvasLazy";
-import { CaptionLine } from "@/components/domain/CaptionLine";
-import { CountdownGate } from "@/components/domain/CountdownGate";
 import { EmptyState } from "@/components/domain/EmptyState";
 import { LiveBar } from "@/components/domain/LiveBar";
 import { ReplayBar } from "@/components/domain/ReplayBar";
 import { RunCompleteBar } from "@/components/domain/RunCompleteBar";
-import { StageRail } from "@/components/domain/StageRail";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
@@ -18,22 +14,13 @@ import { RunStoryMobile } from "@/components/sections/shared/RunStoryMobile";
 import { useViewport } from "@/components/sections/shared/use-media-query";
 import { useRunZip } from "@/components/sections/shared/use-run-zip";
 import { ModeBadge } from "@/components/domain/ModeBadge";
-import type { StageId } from "@/lib/contracts/types";
-import { useCountdown } from "@/lib/hooks/use-countdown";
-import { useRunSummary, useStageViews } from "@/lib/hooks/use-run-views";
+import { useRunSummary } from "@/lib/hooks/use-run-views";
 import { useLive, usePlayback, useRun, useUi } from "@/lib/store";
 import { InspectorPanel } from "./InspectorPanel";
 import { RunBanner } from "./RunBanner";
-import { CanvasPlaceholder } from "./StudioSkeleton";
+import { LoopFigure } from "./figure/LoopFigure";
+import { STUDIO_ROOT } from "./studio-root";
 import { StudioTopBar } from "./StudioTopBar";
-
-const STAGE_STATUS: Partial<Record<StageId, string>> = {
-  rtl: "drafting",
-  lint: "linting",
-  sim: "simulating",
-  fix: "fixing",
-  synth: "synthesizing",
-};
 
 const FINISHED = new Set(["done", "error", "cap_reached", "stopped"]);
 
@@ -84,40 +71,6 @@ function CompleteBar({
   );
 }
 
-/** The plan countdown. It sits top-right over the empty tree zone, because the plan stage has no versions yet. */
-function GateOverlay({ live }: { live: boolean }) {
-  const countdown = useCountdown();
-  const { steer } = useLive();
-  if (countdown.state === "closed") return null;
-  return (
-    <CountdownGate
-      state={countdown.state}
-      remainingMs={countdown.remainingMs}
-      totalMs={countdown.totalMs}
-      readOnly={!live}
-      onBuildNow={() => void steer({ kind: "gate", action: "build_now" })}
-      onHold={() => void steer({ kind: "gate", action: "hold" })}
-      onResume={() => void steer({ kind: "gate", action: "resume" })}
-    />
-  );
-}
-
-/** The narration line, in the strip the canvas keeps free under the world. */
-function CanvasOverlay() {
-  const caption = useRun((r) => r.caption);
-  return (
-    <div className="pointer-events-none flex max-w-[36rem] flex-col items-start gap-3">
-      {caption ? (
-        <div className="rounded-md border bg-background px-3 py-2">
-          <CaptionLine text={caption.text} chapter={caption.chapter} announce />
-        </div>
-      ) : (
-        <CaptionLine text={null} announce />
-      )}
-    </div>
-  );
-}
-
 export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const router = useRouter();
   const viewport = useViewport();
@@ -125,16 +78,14 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const ui = useUi();
   const live = useLive();
   const summary = useRunSummary();
-  const stages = useStageViews();
   const runId = useRun((r) => r.runId);
   const phase = useRun((r) => r.phase);
-  const plan = useRun((r) => r.plan);
   const spec = useRun((r) => r.spec);
-  const candidates = useRun((r) => r.candidates);
   const order = useRun((r) => r.candidateOrder);
-  const winnerId = useRun((r) => r.winnerId);
+  const planBlocks = useRun((r) => r.plan.blocks.length);
   const elapsedMs = useRun((r) => r.tMs);
   const round = useRun((r) => r.round);
+  const caption = useRun((r) => r.caption);
   const [stopConfirm, setStopConfirm] = useState(false);
   const [stopping, setStopping] = useState(false);
 
@@ -143,23 +94,6 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const { select, selection } = ui;
   const { seek, play, pause, restart, setSpeed } = playback;
   const resultsHref = `/results?run=${encodeURIComponent(isLive ? runId : "golden")}`;
-
-  const onSelectStage = useCallback(
-    (id: StageId) => {
-      if (id === "spec") return select({ kind: "spec", id: "spec" });
-      if (id === "lock") return select({ kind: "golden", id: "golden" });
-      if (id === "plan") {
-        const first = plan.lastDiff?.changed[0] ?? plan.blocks[0]?.id;
-        return first ? select({ kind: "block", id: first }) : undefined;
-      }
-      if (id === "prove") return winnerId ? select({ kind: "candidate", id: winnerId }) : undefined;
-      const wanted = STAGE_STATUS[id];
-      const inStage = wanted ? [...order].reverse().find((cid) => candidates[cid]?.status === wanted) : undefined;
-      const target = inStage ?? order[order.length - 1];
-      return target ? select({ kind: "candidate", id: target }) : undefined;
-    },
-    [plan, order, candidates, winnerId, select],
-  );
 
   // Keyboard shortcuts (UI_UX_SPEC 3.6, 9): only when focus is not in a text field.
   useEffect(() => {
@@ -251,7 +185,7 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   })();
 
   // Canvas area content by state (UI_UX_SPEC 3.5).
-  const noData = spec === null && plan.blocks.length === 0 && order.length === 0;
+  const noData = spec === null && planBlocks === 0 && order.length === 0;
   let canvas: React.ReactNode;
   if (!isLive && playback.status === "error") {
     canvas = (
@@ -284,19 +218,15 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
         />
       </div>
     );
-  } else if (!isLive && playback.status === "loading") {
-    canvas = <CanvasPlaceholder caption="Loading the recorded run." />;
-  } else if (isLive && noData && (live.connection === "idle" || live.connection === "connecting")) {
-    canvas = <CanvasPlaceholder caption="Connecting to the live run." />;
   } else {
-    canvas = (
-      <RunCanvasLazy
-        variant="studio"
-        interactive
-        overlay={<CanvasOverlay />}
-        topOverlay={<GateOverlay live={isLive} />}
-      />
-    );
+    // Loading and connecting render the figure itself: every step hollow, so the screen is never blank.
+    const waiting =
+      !isLive && playback.status === "loading"
+        ? "Loading the recorded run."
+        : isLive && noData && (live.connection === "idle" || live.connection === "connecting")
+          ? "Connecting to the live run."
+          : null;
+    canvas = <LoopFigure live={isLive} caption={waiting ?? caption?.text ?? ""} />;
   }
 
   const topBar = (
@@ -310,7 +240,7 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
 
   if (viewport === "mobile") {
     return (
-      <div className="flex min-h-dvh flex-col">
+      <div className={`${STUDIO_ROOT} flex min-h-dvh flex-col`}>
         <AppHeader
           context={
             <>
@@ -330,15 +260,12 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const inspectorInline = viewport === "desktop";
 
   return (
-    <div className="grid h-dvh grid-cols-1 grid-rows-[var(--topbar-h)_var(--rail-h)_auto_minmax(0,1fr)_auto] overflow-hidden xl:grid-cols-[minmax(0,1fr)_var(--inspector-w)]">
+    <div className={`${STUDIO_ROOT} grid h-dvh grid-cols-1 grid-rows-[var(--topbar-h)_auto_minmax(0,1fr)_auto] overflow-hidden xl:grid-cols-[minmax(0,1fr)_var(--inspector-w)]`}>
       <div className="col-span-full">{topBar}</div>
-      <div className="col-span-full flex items-center overflow-x-auto border-b bg-background px-4">
-        <StageRail stages={stages} onSelect={onSelectStage} orientation="horizontal" density="full" />
-      </div>
       <div className="col-span-full">
         <RunBanner />
       </div>
-      <main className="relative min-h-0 min-w-0 bg-background" aria-label="Run canvas">
+      <main className="relative min-h-0 min-w-0 bg-background" aria-label="Run">
         {canvas}
       </main>
       {inspectorInline ? (
@@ -350,7 +277,10 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
           <SheetContent side="right" showCloseButton={false} className="w-[360px] gap-0 p-0 sm:max-w-[360px]">
             <SheetTitle className="sr-only">Inspector</SheetTitle>
             <SheetDescription className="sr-only">Details of the selected item.</SheetDescription>
-            <InspectorPanel />
+            {/* The sheet portals outside the studio root, so it carries the datasheet scope itself. */}
+            <div className={`${STUDIO_ROOT} h-full`}>
+              <InspectorPanel />
+            </div>
           </SheetContent>
         </Sheet>
       )}

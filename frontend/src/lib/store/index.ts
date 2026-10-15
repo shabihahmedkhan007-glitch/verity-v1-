@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import type { OnEdgesChange, OnNodeDrag, OnNodesChange, NodeMouseHandler } from "@xyflow/react";
+import { useMemo } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type { Chapter, Priority, RunState } from "@/lib/contracts/types";
@@ -12,8 +11,6 @@ import type {
   Selection,
   SteerRequest,
 } from "@/lib/contracts/view-types";
-import type { VerityEdge, VerityNode } from "@/lib/canvas/zones";
-import { createCanvasSlice } from "./slices/canvas";
 import { createLiveSlice, type StartLiveResult } from "./slices/live";
 import { createPlaybackSlice } from "./slices/playback";
 import { createRunSlice } from "./slices/run";
@@ -26,7 +23,6 @@ import type { Store } from "./types";
  */
 export const useVerityStore = create<Store>()((...a) => ({
   ...createRunSlice(...a),
-  ...createCanvasSlice(...a),
   ...createPlaybackSlice(...a),
   ...createUiSlice(...a),
   ...createLiveSlice(...a),
@@ -40,47 +36,6 @@ export function useRun<T>(selector: (run: RunState) => T): T {
   const run = useVerityStore((s) => s.snapshot.run);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- selectors are usually inline; the run identity is the real input
   return useMemo(() => selector(run), [run]);
-}
-
-/** Nodes and edges for RunCanvas, with the selected flag derived from the single UI selection. */
-export function useCanvas(): {
-  nodes: VerityNode[];
-  edges: VerityEdge[];
-  onNodesChange: OnNodesChange<VerityNode>;
-  onEdgesChange: OnEdgesChange<VerityEdge>;
-  onNodeDragStop: OnNodeDrag<VerityNode>;
-  onNodeClick: NodeMouseHandler<VerityNode>;
-} {
-  const rawNodes = useVerityStore((s) => s.snapshot.nodes);
-  const edges = useVerityStore((s) => s.snapshot.edges);
-  const selection = useVerityStore((s) => s.selection);
-  const { onNodesChange, onEdgesChange, markUserMoved, select } = useVerityStore(
-    useShallow((s) => ({
-      onNodesChange: s.onNodesChange,
-      onEdgesChange: s.onEdgesChange,
-      markUserMoved: s.markUserMoved,
-      select: s.select,
-    })),
-  );
-
-  const nodes = useMemo(
-    () =>
-      rawNodes.map((n) => {
-        const selected = Boolean(selection && n.data.kind !== "zone" && n.data.kind === selection.kind && n.data.refId === selection.id);
-        return Boolean(n.selected) === selected ? n : { ...n, selected };
-      }),
-    [rawNodes, selection],
-  );
-
-  const onNodeDragStop = useCallback<OnNodeDrag<VerityNode>>((_event, node) => markUserMoved(node.id), [markUserMoved]);
-  const onNodeClick = useCallback<NodeMouseHandler<VerityNode>>(
-    (_event, node) => {
-      if (node.data.kind !== "zone") select({ kind: node.data.kind, id: node.data.refId });
-    },
-    [select],
-  );
-
-  return { nodes, edges, onNodesChange, onEdgesChange, onNodeDragStop, onNodeClick };
 }
 
 export function usePlayback(): {

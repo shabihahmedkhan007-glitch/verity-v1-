@@ -1,0 +1,233 @@
+/* Verity studio, in the datasheet world (decision D11 in REPORT.md: overrides brand.md 1.1's navy studio palette).
+   The shared tokens and primitives come from ../shared/datasheet-base.css under .vs. This file adds the studio's
+   own token overrides (tones the landing never uses) and Figure 1. Everything is scoped under .vs.
+   Fail is white: a hollow square, a dashed line and the word FAIL. Green only for pass, proven, numbers, the
+   primary action and focus. */
+
+html:has(.vs) {
+  scrollbar-color: var(--pass) black;
+  background: black;
+}
+html:has(.vs) body { background: black; }
+
+.vs {
+  /* Tones the shared components still use inside the studio, folded into the datasheet palette. */
+  --surface-3: black;
+  --pass-muted: black;
+  --info-muted: black;
+  --warn-muted: black;
+  --primary-muted: color-mix(in oklch, var(--pass) 18%, black);
+  --edge: var(--border-strong);
+  --edge-active: var(--pass);
+  --edge-proof: var(--pass);
+  --ring: var(--pass);
+  --fg-disabled: color-mix(in oklch, var(--pass) 40%, black);
+  /* shadcn aliases resolve at :root, so they are restated here or they keep the navy values. */
+  --card: black;
+  --card-foreground: white;
+  --popover: black;
+  --popover-foreground: white;
+  --secondary: black;
+  --secondary-foreground: white;
+  --muted: black;
+  --muted-foreground: white;
+  --accent: color-mix(in oklch, var(--pass) 14%, black);
+  --accent-foreground: white;
+  --destructive: white;
+  --destructive-foreground: black;
+  --input: var(--border-strong);
+  --sidebar: black;
+  --sidebar-foreground: white;
+  --sidebar-primary: var(--pass);
+  --sidebar-primary-foreground: black;
+  --sidebar-accent: color-mix(in oklch, var(--pass) 14%, black);
+  --sidebar-accent-foreground: white;
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--pass);
+  --code-bg: black;
+  --syn-plain: white;
+  --syn-punct: color-mix(in oklch, var(--pass) 55%, white);
+  --syn-keyword: var(--pass);
+  --syn-type: white;
+  --syn-number: color-mix(in oklch, var(--pass) 55%, white);
+  --syn-comment: color-mix(in oklch, var(--pass) 45%, black);
+  --syn-string: white;
+  --diff-add: color-mix(in oklch, var(--pass) 22%, black);
+  --diff-del: color-mix(in oklch, white 14%, black);
+  --selection: color-mix(in oklch, var(--pass) 30%, black);
+  --shadow-overlay: none;
+  --glow-pass: 0 0 0 1px var(--pass);
+  --mint: var(--fg-subtle);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* ---------- Figure 1 ---------- */
+.vs .fig1 { margin: 0; display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.vs .fig1-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.vs .fig1-grid {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  min-width: min-content;
+  padding: 18px 20px 52px;
+}
+.vs .fig1-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 0; }
+.vs .fig1-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding-top: 14px; }
+.vs .fig1-cap { flex: none; border-top: 1px dotted var(--hair); padding: 8px 24px 10px; font-size: 13px; color: var(--mint); }
+.vs .fig1-cap b { color: var(--fg); }
+
+/* Step header: a square and a word on a rule. The rule continues into the next step, so the row reads as one loop. */
+.vs .fig1-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 9px;
+  font: 700 12.5px/1 var(--sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-variation-settings: "wdth" 88;
+  color: var(--mint);
+  white-space: nowrap;
+}
+.vs .fig1-step::before { content: ""; width: 9px; height: 9px; flex: none; border: 1.5px solid var(--rule); background: transparent; }
+.vs .fig1-step::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: -16px;
+  bottom: 0;
+  border-bottom: 1px dashed var(--hair);
+}
+.vs .fig1-step[data-last]::after { right: 0; }
+.vs .fig1-step[data-state="done"] { color: var(--fg); }
+.vs .fig1-step[data-state="done"]::before { background: var(--fg); border-color: var(--fg); }
+.vs .fig1-step[data-state="done"]::after { border-bottom: 1px solid var(--rule); }
+.vs .fig1-step[data-state="current"] { color: var(--fg); font-weight: 800; }
+.vs .fig1-step[data-state="current"]::before { background: var(--fg); border-color: var(--fg); outline: 1.5px solid var(--fg); outline-offset: 2px; }
+.vs .fig1-step[data-state="current"]::after { border-bottom: 2px solid var(--fg); }
+.vs .fig1-step .n { margin-left: auto; font: 500 11px/1 var(--mono); letter-spacing: 0; text-transform: none; color: var(--mint); }
+
+/* Boxes: the spec, plan, lock and prove steps, and one per version. */
+.vs .fbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
+  padding: 9px 10px 10px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+}
+.vs button.fbox { cursor: pointer; transition: border-color .15s, background-color .6s var(--ease-out), color .6s var(--ease-out); }
+.vs button.fbox:hover { border-color: var(--fg); }
+.vs .fbox[data-pending] { border: 1px dashed var(--hair); color: var(--mint); }
+.vs .fbox[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: 2px; }
+.vs .fbox-t { margin: 0; color: var(--fg); font-weight: 650; font-size: 13.5px; line-height: 1.25; }
+.vs .fbox-m { font: 400 11.5px/1.45 var(--mono); color: var(--fg-muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.vs .fbox-s { font-size: 12px; color: var(--mint); }
+.vs .fbox-tag { align-self: flex-start; margin-top: 2px; font: 700 9.5px/1 var(--sans); letter-spacing: .07em; white-space: nowrap; text-transform: uppercase; color: var(--fg); border: 1px solid var(--fg-muted); padding: 4px 5px 3px; }
+.vs .fbox .ico { width: 14px; height: 14px; flex: none; }
+.vs .fbox-row { display: flex; align-items: center; gap: 7px; }
+.vs .fbox-empty { font-size: 12.5px; line-height: 1.4; color: var(--mint); padding: 2px 0 0; }
+
+/* Plan list */
+.vs .plan-list { list-style: none; margin: 2px 0 0; padding: 0; border-top: 1px dotted var(--hair); }
+.vs .plan-list li { border-bottom: 1px dotted var(--hair); }
+.vs .plan-list button { display: block; width: 100%; padding: 5px 0; background: none; border: 0; color: var(--fg-muted); font: 500 12.5px/1.3 var(--sans); text-align: left; cursor: pointer; }
+.vs .plan-list button:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+.vs .plan-list button[aria-pressed="true"] { color: var(--fg); font-weight: 700; }
+.vs .plan-list .chg { margin-left: 6px; white-space: nowrap; font: 700 10px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--green); }
+
+/* Version box */
+.vs .cbox[data-tone="run"] { border-color: var(--mint); }
+.vs .cbox[data-tone="fail"] { border: 1.5px dashed var(--fail); padding: 8.5px 9.5px 9.5px; }
+.vs .cbox[data-tone="rejected"] { border: 1px dashed var(--hair); color: var(--mint); }
+.vs .cbox[data-tone="rejected"] .cb-label { color: var(--mint); }
+.vs .cb-head { display: flex; align-items: baseline; gap: 7px; }
+.vs .cb-label { font: 800 15px/1 var(--sans); font-variation-settings: "wdth" 84; color: var(--fg); }
+.vs .cb-op { font: 500 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--mint); }
+.vs .cb-tags { margin-left: auto; display: flex; gap: 6px; font: 700 9.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+.vs .cb-att { list-style: none; margin: 3px 0 0; padding: 0; }
+.vs .cb-att li { position: relative; display: grid; grid-template-columns: 20px 9px auto 1fr; align-items: center; column-gap: 6px; padding: 2px 0; font: 500 11.5px/1.3 var(--mono); font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+.vs .cb-att .an { color: var(--mint); }
+.vs .cb-att .w { justify-self: end; font: 700 10px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; }
+.vs .cb-att .sq { width: 9px; height: 9px; }
+.vs .cb-att li[data-r="pass"] .sq { background: var(--green); }
+.vs .cb-att li[data-r="pass"] .w { color: var(--green); }
+.vs .cb-att li[data-r="fail"] .sq { border: 2px solid var(--fail); }
+.vs .cb-att li[data-r="fail"] .w { color: var(--fail); }
+/* A failed attempt hands over to the next one through a dashed stem: the fix. */
+.vs .cb-att li[data-r="fail"]:not(:last-child)::after { content: ""; position: absolute; left: 24px; top: calc(50% + 6px); height: calc(100% - 4px); border-left: 1.5px dashed var(--fail); }
+.vs .cb-att li[data-r="run"] .sq { border: 1.5px solid var(--mint); animation: vs-blink 1.2s steps(2, jump-none) infinite; }
+.vs .cb-att li[data-r="run"] .w { grid-column: 3 / 5; justify-self: start; color: var(--mint); text-transform: none; letter-spacing: .02em; font: 500 11px/1 var(--mono); }
+.vs .cb-note { font: 700 10px/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+.vs .cbox[data-tone="rejected"] .cb-note { color: var(--mint); }
+.vs .cb-ppa { display: flex; align-items: baseline; gap: 6px; padding-top: 5px; margin-top: 2px; border-top: 1px dotted var(--hair); font: 500 11.5px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.vs .cb-ppa .k { font: 600 11px/1 var(--sans); color: var(--mint); }
+.vs .cb-ppa .v { color: var(--fg); }
+.vs .cb-ppa .v[data-dir="better"] { color: var(--green); font-weight: 700; }
+.vs .cb-ppa .f { margin-left: auto; color: var(--fg); }
+.vs .cb-ppa .f .k { margin-right: 3px; }
+.vs .cb-ppa.wait { color: var(--mint); }
+
+/* The winner, after the run picks it: the one solid green surface in the studio. */
+.vs .cbox[data-winner] { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+.vs .cbox[data-winner] :is(.cb-label, .cb-op, .cb-tags, .an, .w, .cb-note, .cb-ppa, .cb-ppa .k, .cb-ppa .v, .cb-ppa .f) { color: var(--green-ink); }
+.vs .cbox[data-winner] .cb-att li { color: var(--green-ink); }
+.vs .cbox[data-winner] .cb-att li .sq { background: var(--green-ink); border-color: var(--green-ink); }
+.vs .cbox[data-winner] .cb-att li::after { border-color: var(--green-ink); }
+.vs .cbox[data-winner] .cb-ppa { border-top-color: color-mix(in oklch, var(--green-ink) 35%, var(--green)); }
+.vs .cbox[data-winner]:hover { border-color: var(--fg); }
+
+/* Prove box result line */
+.vs .prove-r { display: flex; align-items: center; gap: 7px; font: 700 11px/1.25 var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+.vs .prove-r::before { content: ""; width: 9px; height: 9px; flex: none; }
+.vs .prove-r[data-r="proven"] { color: var(--green); }
+.vs .prove-r[data-r="proven"]::before { background: var(--green); }
+.vs .prove-r[data-r="open"] { color: var(--fail); }
+.vs .prove-r[data-r="open"]::before { border: 2px solid var(--fail); }
+.vs .prove-r[data-r="run"] { color: var(--mint); letter-spacing: .02em; text-transform: none; font: 500 11.5px/1.25 var(--mono); }
+.vs .prove-r[data-r="run"]::before { border: 1.5px solid var(--mint); animation: vs-blink 1.2s steps(2, jump-none) infinite; }
+
+/* Wires (SVG, drawn under the boxes) */
+.vs .w-lin { fill: none; stroke: var(--rule); stroke-width: 1; }
+.vs .w-chk { fill: none; stroke: var(--mint); stroke-width: 1.25; stroke-dasharray: 1 4; stroke-linecap: round; }
+.vs .w-prf { fill: none; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.vs .w-prf[data-r="proven"] { stroke: var(--green); }
+.vs .w-prf[data-r="open"] { stroke: var(--fail); }
+.vs .w-lbl { font: 700 10.5px/1 var(--sans); letter-spacing: .08em; paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round; }
+.vs .w-lbl[data-r="proven"] { fill: var(--green); }
+.vs .w-lbl[data-r="open"] { fill: var(--fail); }
+
+/* Narration line under the figure (the timeline bar replaces it next). */
+.vs .fig1-say { flex: none; display: flex; gap: 12px; align-items: baseline; padding: 10px 24px 12px; border-top: 1.5px solid var(--rule); min-height: 44px; }
+.vs .fig1-say .ch { flex: none; font: 700 11px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--mint); }
+.vs .fig1-say p { margin: 0; color: var(--fg); font-size: 15px; line-height: 1.35; }
+
+/* Live plan gate, inside the PLAN box */
+.vs .gate { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; padding-top: 8px; border-top: 1px dotted var(--hair); }
+.vs .gate-t { margin: 0; display: flex; align-items: center; gap: 6px; font: 600 12.5px/1.2 var(--sans); color: var(--fg); }
+.vs .gate-bar { height: 2px; background: var(--hair); }
+.vs .gate-bar span { display: block; height: 100%; background: var(--fg); transform-origin: 0 50%; }
+.vs .gate-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.vs .gate-acts .btn { padding: 7px 10px; font-size: 12.5px; }
+.vs .gate-note { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--mint); }
+
+.vs .is-instant * { transition: none !important; }
+
+@keyframes vs-blink { to { opacity: .25; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vs *,
+  .vs *::before,
+  .vs *::after { transition: none !important; animation: none !important; }
+}

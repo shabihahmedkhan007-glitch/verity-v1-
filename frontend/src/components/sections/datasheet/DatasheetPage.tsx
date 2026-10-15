@@ -13,6 +13,7 @@ import { RunTimeline } from "./RunTimeline";
 import { TimingSummary } from "./TimingSummary";
 import { VignetteGrid } from "./VignetteGrid";
 import { archivo, jetbrainsMono } from "./fonts";
+import "../shared/datasheet-base.css";
 import "./datasheet.css";
 
 /** The landing page, dressed as a hardware datasheet. Everything is scoped under .ds; fonts apply only inside it. */
