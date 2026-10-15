@@ -5,7 +5,7 @@ import type { NodeProps } from "@xyflow/react";
 import type { VerityNode } from "@/lib/canvas/zones";
 
 const DESCRIPTIONS = {
-  plan: "AI-drafted blocks. Drag to arrange; pins and toggles steer the plan.",
+  plan: "AI-drafted blocks. Pins and toggles steer the plan.",
   tree: "Versions compete. Green passed the locked tests.",
 } as const;
 

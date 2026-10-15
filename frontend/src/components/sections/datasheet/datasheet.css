@@ -1,13 +1,14 @@
 /* Verity landing: the datasheet. Ported from .impeccable/concepts/01-datasheet.html.
    Every selector is scoped under .ds so nothing leaks into /studio, /try or /results.
-   Palette (user decision, landing only): AMOLED black, white ink, and Verity Green as the single accent.
-   No greys and no other hues. The tokens are re-declared on .ds below, so the rest of the app is untouched.
+   Palette (user decision, landing only): AMOLED black, white ink, and Verity Green as the single accent hue,
+   used in tiers: dim green for structure (rules, hairlines, grid), mint for captions, full green for numbers,
+   the part number, pass/proven and the primary action. No greys and no other hues. The tokens are re-declared on .ds below, so the rest of the app is untouched.
    Status never relies on colour: every status pairs a marker shape (filled or hollow square) with a word. */
 
 /* Page-level only while the landing is mounted (CSS :has keeps it off the other routes). */
 html:has(.ds) {
   scroll-behavior: smooth;
-  scrollbar-color: white black;
+  scrollbar-color: var(--pass) black;
   background: black;
 }
 html:has(.ds) body { background: black; }
@@ -19,10 +20,10 @@ html:has(.ds) body { background: black; }
   --surface-2: black;
   --foreground: white;
   --fg-muted: white;
-  --fg-subtle: white;
-  --border: white;
-  --border-strong: white;
-  --info: white;
+  --fg-subtle: color-mix(in oklch, var(--pass) 55%, white);
+  --border: color-mix(in oklch, var(--pass) 34%, black);
+  --border-strong: color-mix(in oklch, var(--pass) 62%, black);
+  --info: var(--pass);
   --warn: white;
   --fail: white;
   --fail-muted: black;
@@ -92,8 +93,8 @@ html:has(.ds) body { background: black; }
 /* Base grid: 48px cells, hairlines, faded out by a radial vignette that follows the pointer. */
 .ds-vg::before {
   background-image:
-    linear-gradient(to right, color-mix(in oklch, var(--fg) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--fg) 7%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px);
   background-size: 48px 48px;
   -webkit-mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
   mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
@@ -101,11 +102,12 @@ html:has(.ds) body { background: black; }
 /* A second, smaller and very faint layer, slightly brighter near the cursor. */
 .ds-vg::after {
   background-image:
-    linear-gradient(to right, color-mix(in oklch, var(--fg) 12%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--fg) 12%, transparent) 1px, transparent 1px);
-  background-size: 48px 48px;
-  -webkit-mask-image: radial-gradient(circle 240px at var(--mx) var(--my), black, transparent);
-  mask-image: radial-gradient(circle 240px at var(--mx) var(--my), black, transparent);
+    radial-gradient(circle 380px at var(--mx) var(--my), color-mix(in oklch, var(--pass) 9%, transparent), transparent),
+    linear-gradient(to right, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+  -webkit-mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
+  mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
 }
 
 /* ---------- header band ---------- */
@@ -130,7 +132,7 @@ html:has(.ds) body { background: black; }
 .ds .docmeta { font-size: 12.5px; color: var(--fg-muted); display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
 .ds .docmeta .mono { font-size: 12px; color: var(--fg); }
 .ds .stamp { font: 700 11px/1 var(--sans); letter-spacing: .14em; color: var(--warn); border: 1.5px solid var(--warn); padding: 5px 7px 4px; display: inline-block; transform: rotate(-1.5deg); }
-.ds .partno { font-weight: 800; font-size: clamp(34px, 4.4vw, 54px); line-height: .9; letter-spacing: -.01em; font-variation-settings: "wdth" 72; text-align: right; color: var(--fg); }
+.ds .partno { font-weight: 800; font-size: clamp(34px, 4.4vw, 54px); line-height: .9; letter-spacing: -.01em; font-variation-settings: "wdth" 72; text-align: right; color: var(--green); }
 .ds .partno small { display: block; font-size: 12px; font-weight: 500; letter-spacing: .04em; color: var(--fg-subtle); font-variation-settings: "wdth" 100; margin-top: 6px; }
 
 .ds .actions { border-bottom: 1px dotted var(--hair); background: var(--surface); }

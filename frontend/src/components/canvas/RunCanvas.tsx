@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { useCanvas, useVerityStore } from "@/lib/store";
-import { ZONE_IDS } from "@/lib/canvas/zones";
+import { WORLD, ZONE_IDS } from "@/lib/canvas/zones";
 import { edgeTypes, nodeTypes } from "./node-types";
 
 export type RunCanvasProps = {
@@ -65,12 +65,22 @@ function Canvas({ variant, interactive, overlay, topOverlay }: Omit<RunCanvasPro
     [readOnly, storeNodes],
   );
 
+  // The theater camera follows the action instead of showing the whole world: the plan while it is drafted,
+  // then the versions once the first one exists. Fitting a smaller region keeps the cards readable.
+  const focusIds = useMemo(() => {
+    if (variant !== "theater") return null;
+    const versions = nodes.filter((n) => n.data.kind === "candidate").map((n) => n.id);
+    if (versions.length > 0) return versions;
+    const plan = nodes.filter((n) => n.data.kind !== "zone").map((n) => n.id);
+    return plan.length > 0 ? plan : null;
+  }, [variant, nodes]);
+
   // The world only grows when a zone frame grows; fit again then (unless the user is looking around).
   const worldKey = useMemo(() => {
     const plan = nodes.find((n) => n.id === ZONE_IDS.plan);
     const tree = nodes.find((n) => n.id === ZONE_IDS.tree);
-    return `${plan?.height ?? 0}:${tree?.width ?? 0}:${tree?.height ?? 0}`;
-  }, [nodes]);
+    return `${plan?.height ?? 0}:${tree?.width ?? 0}:${tree?.height ?? 0}:${focusIds?.join(",") ?? ""}`;
+  }, [nodes, focusIds]);
 
   // The pane can settle after the first fit (font load, entrance motion, the hero frame bleeding past the
   // viewport), so a size change counts as a world change for re-fitting.
@@ -82,11 +92,15 @@ function Canvas({ variant, interactive, overlay, topOverlay }: Omit<RunCanvasPro
     () => ({
       padding: hasOverlay
         ? { top: "16px", left: "16px", right: "16px", bottom: `${OVERLAY_RESERVE_PX}px` }
-        : 0.06,
+        : focusIds
+          ? // Room above the focused cards for the zone header (WORLD.headerH) so it is never cut in half.
+            { top: `${WORLD.headerH + 12}px`, left: "24px", right: "24px", bottom: "24px" }
+          : 0.06,
       maxZoom: 1,
       duration: reduced ? 0 : FIT_DURATION_MS,
+      nodes: focusIds ? focusIds.map((id) => ({ id })) : undefined,
     }),
-    [reduced, hasOverlay],
+    [reduced, hasOverlay, focusIds],
   );
 
   const firstFit = useRef(true);
@@ -167,9 +181,13 @@ export function RunCanvas({ variant, interactive, overlay, topOverlay, onOpen }:
       )}
       onClick={variant === "theater" && onOpen ? onOpen : undefined}
     >
-      <ReactFlowProvider>
-        <Canvas variant={variant} interactive={interactive} overlay={overlay} topOverlay={topOverlay} />
-      </ReactFlowProvider>
+      {/* Theater content is a picture of the run: kept out of the tab order and the accessibility tree (the
+          caption under it tells the story as text), while clicks fall through to this wrapper and open the Studio. */}
+      <div className="h-full w-full" inert={variant === "theater"}>
+        <ReactFlowProvider>
+          <Canvas variant={variant} interactive={interactive} overlay={overlay} topOverlay={topOverlay} />
+        </ReactFlowProvider>
+      </div>
     </div>
   );
   if (variant === "theater" && onOpen) {

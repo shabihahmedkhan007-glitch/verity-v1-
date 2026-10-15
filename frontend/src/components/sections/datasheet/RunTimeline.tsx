@@ -164,7 +164,7 @@ export function RunTimeline() {
           </h2>
           <p className="lede">
             The whole recorded run took <b>88 seconds</b>. Scroll to move along it: Verity plans, locks the tests, builds, fails, fixes,
-            then evolves and proves. Failures show in red before the fixes.{" "}
+            then evolves and proves. Failures stay in the record, marked with hollow squares, before the fixes.{" "}
             <span className="sd">Sample data.</span>
           </p>
           <div className="tl-legend-row">

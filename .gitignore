@@ -12,6 +12,7 @@ out/
 # Tooling and planning artifacts
 .claude/
 .planning/
+.impeccable/
 *.bak
 
 # Archify delivery receipts and review captures (the journey maps themselves are kept)

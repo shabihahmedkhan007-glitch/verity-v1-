@@ -225,6 +225,11 @@ _Last updated: 2026-10-04_
 - **Verified:** typecheck clean, lint 0 errors (1 old warning), `validate:fixture` OK, `build` OK, no dashes in `frontend/src`, no raw hex in the new code. Browser checks at 1440x900, 900x700 and 390x844: pinned timeline works, no page-level horizontal scroll. Not checked: reduced motion, real touch device, tool-measured contrast.
 - **Open:** `app/layout.tsx` meta description still says "run faster and smaller".
 
+### 2026-10-13: Landing palette, more green
+- **Changed** the datasheet landing palette (landing only, under `.ds`): still AMOLED black and white ink, now with Verity Green in tiers at the user's request ("looks too black"): dim green rules and hairlines, mint captions, green section numbers and part number, a green mouse-following grid with a faint green wash near the cursor, green scrollbar. Pass, proven and the primary button stay full green; failures stay white hollow squares with dashed lines. Timeline copy no longer says failures show in red.
+- **Verified:** typecheck clean, lint 0 errors (1 old warning), build OK, no dashes; screenshots at 1440x900 of the hero, timeline and characteristics.
+- **Note:** the build agent committed and pushed the landing rebuild as `bfc631d` to `origin/main` on its own; the palette tweak above is not committed.
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/

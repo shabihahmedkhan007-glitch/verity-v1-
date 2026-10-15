@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Crown, Star, Wrench } from "lucide-react";
+import { Crown, Star, Wrench, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Candidate, PPA, Priority } from "@/lib/contracts/types";
@@ -68,10 +68,14 @@ function NodeStatusRow({ candidate, baseline, priority }: { candidate: Candidate
     case "fail":
       return <StatusBadge status="fail" size="sm" tests={tests ?? undefined} />;
     case "fixing":
+      // Keep the failed result on screen while the fix is written: red stays visible until a run passes.
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-fail">
-          <Wrench aria-hidden className="size-3" />
-          Fix attempt {candidate.attempts.length + 1}
+        <span className="inline-flex items-center gap-2">
+          {tests ? <StatusBadge status="fail" size="sm" tests={tests} /> : null}
+          <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-fail">
+            <Wrench aria-hidden className="size-3" />
+            Fixing
+          </span>
         </span>
       );
     case "pass":
@@ -84,7 +88,12 @@ function NodeStatusRow({ candidate, baseline, priority }: { candidate: Candidate
         </span>
       );
     case "rejected":
-      return <span className={muted}>{`Rejected after ${candidate.attempts.length} attempts`}</span>;
+      return (
+        <span className="inline-flex items-center gap-1 truncate text-xs text-fail">
+          <X aria-hidden className="size-3 shrink-0" />
+          {`Rejected: failed ${candidate.attempts.length} attempts`}
+        </span>
+      );
     case "measured": {
       const testText = tests ? <span className="font-mono text-xs text-fg-muted">{formatTests(tests.passed, tests.total)}</span> : null;
       if (candidate.isBaseline) {
@@ -96,8 +105,9 @@ function NodeStatusRow({ candidate, baseline, priority }: { candidate: Candidate
         );
       }
       return (
+        // A measured version already passed every test (its square says so), so the row spends its width on the
+        // gain over v1 and the fitness score, spelled out rather than abbreviated.
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-          {testText}
           <MetricDelta
             metric={PRIORITY_METRIC[priority]}
             value={priorityValue(candidate.ppa, priority)}
@@ -107,7 +117,9 @@ function NodeStatusRow({ candidate, baseline, priority }: { candidate: Candidate
             showArrow={false}
           />
           {candidate.fitness ? (
-            <span className="font-mono text-xs text-fg-muted">F {formatScore(candidate.fitness.score)}</span>
+            <span className="text-xs text-fg-muted">
+              score <span className="font-mono">{formatScore(candidate.fitness.score)}</span>
+            </span>
           ) : null}
         </span>
       );
