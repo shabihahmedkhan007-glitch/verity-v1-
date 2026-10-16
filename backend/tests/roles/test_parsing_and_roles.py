@@ -100,7 +100,7 @@ def test_json_extraction() -> None:
 
 
 # ---------- prompts ----------
-@pytest.mark.parametrize("name", ["planner.v1.md", "rtl_gen.v1.md", "repair.v1.md", "optimize.v1.md"])
+@pytest.mark.parametrize("name", ["planner.v1.md", "rtl_gen.v1.md", "repair.v1.md", "optimize.v1.md", "planner.v2.md", "rtl_gen.v2.md", "repair.v2.md", "optimize.v2.md"])
 def test_templates_load_and_render(name: str) -> None:
     template = load_template(name)
     assert template.system and template.user
@@ -137,7 +137,7 @@ async def test_planner_parses_json_and_retries_once_on_garbage(settings, mac4: T
     assert len(gateway.calls) == 2 and gateway.calls[0]["format"] == "json"
     assert "could not be used" in gateway.calls[1]["user"]  # the retry tells the model what was wrong
     assert result.meta.input_tokens == 200 and "," in result.meta.request_id  # both calls are accounted for
-    assert result.meta.prompt_version.startswith("planner.v1.md@")
+    assert result.meta.prompt_version.startswith("planner.v2.md@")
 
 
 async def test_planner_gives_up_after_the_retry(settings, mac4: TaskPack) -> None:

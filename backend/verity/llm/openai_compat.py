@@ -69,6 +69,8 @@ class OpenAICompatProvider:
             "max_tokens": req.max_output_tokens,
             "temperature": req.temperature,
         }
+        if req.top_p is not None:
+            kwargs["top_p"] = req.top_p
         use_json = req.response_format == "json" and not self._json_mode_unsupported
         if use_json:
             # UNVERIFIED: JSON mode (response_format json_object) on Nebius for Nemotron. If the server rejects it

@@ -215,6 +215,7 @@ class PipelineRun:
     prompt_versions: dict[str, str]
     pack_hash_ok: bool
     error: str | None = None
+    llm_calls: list[dict] = field(default_factory=list)  # RunLLM.calls: one entry per model call
 
     @property
     def baseline(self) -> Candidate | None:
@@ -269,6 +270,7 @@ async def run_pipeline(env: EvalEnv, pack: TaskPack, *, priority: str | None = N
     run_id = "r_eval_" + uuid.uuid4().hex[:16]
     limits = env.limits_for(pack)
     ledger = RunLedger(limits, env.settings)
+    llm = RunLLM(env.provider, env.settings, ledger)
     hub = EventHub(env.store, env.settings)
     ctx = RunContext(
         run_id=run_id,
@@ -277,7 +279,7 @@ async def run_pipeline(env: EvalEnv, pack: TaskPack, *, priority: str | None = N
         priority=chosen,  # type: ignore[arg-type]
         mode=mode,  # type: ignore[arg-type]
         settings=env.settings,
-        llm=RunLLM(env.provider, env.settings, ledger),
+        llm=llm,
         roles=default_roles(),
         tools=env.tools,
         ledger=ledger,
@@ -332,6 +334,7 @@ async def run_pipeline(env: EvalEnv, pack: TaskPack, *, priority: str | None = N
         prompt_versions=dict(record.prompt_versions) if record else {},
         pack_hash_ok=pack_unchanged(pack),
         error=error,
+        llm_calls=list(llm.calls),
     )
 
 
@@ -351,6 +354,11 @@ def fill_from_pipeline(record: EvalRecord, run: PipelineRun) -> EvalRecord:
     record.llm_calls = run.spend.llm_calls
     record.input_tokens = run.spend.input_tokens
     record.output_tokens = run.spend.output_tokens
+    record.reasoning_tokens = sum(int(call.get("reasoningTokens", 0)) for call in run.llm_calls)
+    reasons: dict[str, int] = defaultdict(int)
+    for call in run.llm_calls:
+        reasons[str(call.get("finishReason") or "unknown")] += 1
+    record.finish_reasons = dict(reasons)
     record.est_usd = round(run.spend.usd, 6)
     record.runtime_s = round(run.wall_s, 2)
     record.stage_times = run.stage_times

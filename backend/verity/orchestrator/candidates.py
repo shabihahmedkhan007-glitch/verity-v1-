@@ -29,6 +29,8 @@ class Cand:
     # Backend-only (never on the wire):
     rtl_obj: Rtl | None = None  # the last RTL that passed validation (what the sandbox saw)
     measure: MeasureResult | None = None
+    signatures: list[str] = field(default_factory=list)  # failure signature per failed attempt (R5 stall detection)
+    auto_fixes: int = 0  # deterministic declaration fixes applied (R2), not counted in fix_count
 
     @property
     def number(self) -> int:

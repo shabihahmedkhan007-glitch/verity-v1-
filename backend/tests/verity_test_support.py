@@ -49,7 +49,9 @@ FAKE_HEADER = "// verity-fake:"
 def make_settings(data_dir: Path, *, gate_ms: int = 0, **top_level: Any) -> Settings:
     base = load_settings(provider="fake")
     plan = base.plan.model_copy(update={"gate_auto_continue_ms": gate_ms, "gate_after_replan_ms": 0})
-    return base.model_copy(update={"data_dir": data_dir, "plan": plan, **top_level})
+    # One baseline sample by default so call counts stay simple; tests of R4 pass baseline=... themselves.
+    one_sample = base.baseline.model_copy(update={"samples": 1})
+    return base.model_copy(update={"data_dir": data_dir, "plan": plan, "baseline": one_sample, **top_level})
 
 
 def tmp_cassettes(settings: Settings) -> Path:

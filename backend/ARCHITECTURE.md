@@ -102,7 +102,7 @@ Changes from the diagram in the brief, and why:
 | **Feasibility gate** | Deterministic checks on the request and the plan (section 10.2). Rejects with a reason before any RTL tokens are spent. | Claim a design is physically realizable. It is a scope filter. |
 | **RTL Generator** | One LLM call: plan + port contract + coding rules in, one Verilog file out. | Emit anything except RTL for the DUT. |
 | **Verifier** | Runs contract check, lint, then simulation in the sandbox. Parses results into `Verification` (expected vs got per failing case). | Edit tests or expectations. |
-| **Repair** | One LLM call per FIX attempt: current RTL + lint errors or the first few failing cases in, corrected RTL out. | See the golden model source or the testbench source. |
+| **Repair** | One LLM call per FIX attempt: current RTL + lint errors (plus 1 to 4 guidance lines keyed by Verilator tag) or the first few failing cases in, corrected RTL out. | See the golden model source or the testbench source. |
 | **Optimizer** | One LLM call per child: parent RTL + its PPA + one strategy instruction in, a new RTL file out. | Change the interface or the cycle latency defined in the task pack. |
 | **Judge** | Synthesis + timing via tools, then the fitness formula from `../frontend/ARCHITECTURE.md` 8.3, then elite selection. Pure code. | Use any LLM output in ranking. |
 | **Prover** | Runs EQY between the winner and v1. Reports `proven`, `not_equivalent`, `inconclusive` or `not_run`. | Mark a design proven on timeout. |
@@ -161,7 +161,11 @@ rtl    RTL Generator (LLM, 1 call) -> c1 attempt 1
   |
 lint   contract check (ports, widths, signedness, banned constructs) + Verilator lint
 sim    Icarus + cocotb against the golden model
-  |      FAIL -> fix: Repair (LLM) -> lint -> sim   up to max_repairs_baseline (default 3)
+  |      lint FAIL with a declaration tag (PROCASSWIRE, duplicate declaration, generate) -> deterministic
+  |        declaration fixer, no LLM call, no repair spent -> lint -> sim (new attempt, by FIX)
+  |      FAIL -> fix: Repair (LLM) -> lint -> sim   up to max_repairs_baseline (default 2); v1 attempt 1 is the best of [baseline] samples (default 3) parallel drafts
+  |      same failure signature twice for v1 -> regenerate from the plan (RTL Generator) instead of Repair,
+  |        counted as one repair and one LLM call; a child with a repeated signature is rejected
   |      still FAIL after budget -> run ends "error: no passing baseline". Stop.
   |      (Children are never generated from a failing baseline.)
   |      PASS -> c1 is the baseline (v1)
@@ -188,6 +192,9 @@ done   winner event, final RunLog, artifacts closed
 ### 5.2 Decision rules (all deterministic)
 
 ```python
+if lint_failed and fixer_changes_text: next = AUTO_FIX (verity/core/rtl_fixer.py, free, max 3 per candidate)
+if same_signature_twice and baseline:  next = RESTART_FROM_PLAN (counts as a repair attempt)
+if same_signature_twice and child:     next = REJECT
 if lint_failed or contract_failed: next = REPAIR (counts as a repair attempt)
 elif sim_failed:                   next = REPAIR
 elif sim_passed and not measured:  next = SYNTH
@@ -381,7 +388,7 @@ Without human approval, a run on an LLM-drafted reference must be labeled "refer
 | Job | Tool | License [FACT unless marked] | Why |
 |---|---|---|---|
 | Lint, contract check | **Verilator** `--lint-only -Wall` | LGPL-3.0 or Artistic-2.0 | Fast, strict, the clearest error messages for repair prompts |
-| Simulation | **Icarus Verilog 12** + **cocotb** | GPL-2.0 (iverilog); BSD-3-Clause (cocotb) | Event-driven, full Verilog-2005, 4-state (X/Z) so uninitialized-register bugs show up; cocotb lets the golden model be plain Python. Already the planned pair [DECIDED in MEETING section 5] |
+| Simulation | **Icarus Verilog 12** + **cocotb** | GPL-2.0 (iverilog); BSD-3-Clause (cocotb) | Event-driven, SystemVerilog (`-g2012`, restricted subset, decision R1), 4-state (X/Z) so uninitialized-register bugs show up; cocotb lets the golden model be plain Python. Already the planned pair [DECIDED in MEETING section 5] |
 | Synthesis, area, cells | **Yosys** + Nangate45 liberty via `abc -liberty`, `stat -liberty` | ISC (Yosys) | Standard open flow; REvolution used iverilog + Yosys + Nangate45 too |
 | Timing (MVP) | **OpenSTA** on the Yosys netlist | GPL-3.0 **[ASSUME: verify]** | Real clock period number in seconds, no place and route |
 | Equivalence | **Yosys EQY** (with SBY and a SAT/SMT solver) | ISC **[ASSUME: verify solver licenses]** | Already planned [MEETING section 5] |
@@ -490,7 +497,7 @@ Validation of every RTL response before it reaches a sandbox (`Rtl` value object
 | Encoding | ASCII only |
 | Structure | Exactly the top module named in the pack, with the pack's ports; other modules allowed only if declared in the same file |
 | Banned tokens | Any `$` system task or function other than `$signed`, `$unsigned`, `$clog2`; `` `include ``; `` `define `` with paths; `initial` blocks; `force`/`release`; `$readmem*`, `$fopen`, `$system`, `$dump*`; DPI; `bind` |
-| Interface | Port names, directions, widths, signedness equal the pack (parsed by Yosys `read_verilog; write_json` in the verify call, rejected before sim) |
+| Interface | Port names, directions, widths, signedness equal the pack (parsed by Yosys `read_verilog -sv; write_json` in the verify call, rejected before sim) |
 
 The banned list matters because Verilog can do file I/O at simulation time; banning system tasks means a generated design cannot read the golden data or overwrite test files even inside the sandbox.
 
@@ -637,7 +644,7 @@ Files under `runs/` are hard links or copies of blobs; a write to an existing pa
 
 ## 16. Circuit builder / viewer backend requirements
 
-[REC] The backend produces a simplified, size-bounded graph per measured candidate, from Yosys (`read_verilog; hierarchy -top; proc; opt; write_json`) run in the same sandbox call as synthesis, before technology mapping so cells are still readable (`$add`, `$mul`, `$mux`, `$dff`, ...).
+[REC] The backend produces a simplified, size-bounded graph per measured candidate, from Yosys (`read_verilog -sv; hierarchy -top; proc; opt; write_json`) run in the same sandbox call as synthesis, before technology mapping so cells are still readable (`$add`, `$mul`, `$mux`, `$dff`, ...).
 
 ```ts
 interface CircuitGraph {
@@ -664,10 +671,10 @@ Roles are Python modules in one process, each with a prompt template file, an ou
 
 ```
 backend/verity/roles/
-  planner.py      prompts/planner.v1.md      -> PlanOut (pydantic)
-  rtl_gen.py      prompts/rtl_gen.v1.md      -> RtlOut {rtl, reason}
-  repair.py       prompts/repair.v1.md       -> RtlOut
-  optimizer.py    prompts/optimize.v1.md     -> RtlOut   (strategy in the prompt)
+  planner.py      prompts/planner.v2.md      -> PlanOut (pydantic)
+  rtl_gen.py      prompts/rtl_gen.v2.md      -> RtlOut {rtl, reason}
+  repair.py       prompts/repair.v2.md       -> RtlOut
+  optimizer.py    prompts/optimize.v2.md     -> RtlOut   (strategy in the prompt)
 ```
 
 Model routing is config [REC, to be confirmed by evals]:
@@ -756,19 +763,19 @@ Budget config per run (defaults [REC]):
 
 ```toml
 [budget.run]
-max_llm_calls            = 16
+max_llm_calls            = 20
 max_input_tokens         = 150_000
 max_output_tokens        = 200_000    # includes any reasoning tokens the API reports
 max_usd                  = 0.50
 max_candidates           = 6          # v1 + 3 (round 1) + 2 (round 2)
-max_repairs_baseline     = 3
+max_repairs_baseline     = 2
 max_repairs_child        = 1
 max_rounds               = 2
 max_wall_s               = 900
 
 [budget.call]
-plan_max_output          = 6_000
-rtl_max_output           = 12_000
+plan_max_output          = 12_000
+rtl_max_output           = 24_000
 max_prompt_tokens        = 12_000
 ```
 

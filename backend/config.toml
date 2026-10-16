@@ -56,19 +56,19 @@ input_per_m = 1.00
 output_per_m = 3.00
 
 [budget.run]
-max_llm_calls = 16
+max_llm_calls = 20
 max_input_tokens = 150_000
 max_output_tokens = 200_000    # includes reasoning tokens; a real mac4 run uses 35k to 60k, so max_usd is the binding cap
 max_usd = 0.50                 # per-run cap; also the capUsd sent to the web app
 max_candidates = 6             # v1 + 3 (round 1) + 2 (round 2)
-max_repairs_baseline = 3
+max_repairs_baseline = 2
 max_repairs_child = 1
 max_rounds = 2
 max_wall_s = 900
 
 [budget.call]
-plan_max_output = 6_000        # Nemotron reasoning tokens count against this cap; 1_500 and 4_000 cut real answers off
-rtl_max_output = 12_000
+plan_max_output = 12_000       # Nemotron reasoning tokens count against this cap; 1_500, 4_000 and 6_000 cut real plans off (matmul4)
+rtl_max_output = 24_000        # 12_000 cut 11 of 20 matmul4 drafts and 6 repair/optimizer calls at the cap (2026-10-16 gate)
 max_prompt_tokens = 12_000
 
 [limits]
@@ -89,7 +89,7 @@ sta_s = 60
 eqy_s = 180
 sandbox_overhead_s = 15        # added to the outer timeout of each sandbox call (start-up, copy)
 llm_ultra_s = 120
-llm_super_s = 60
+llm_super_s = 120               # a 12_000 token Super call already took 59 s
 
 [auth]
 required = false               # false = anonymous sessions keyed by client IP (dev, and until frontend/ sends tokens).
@@ -116,6 +116,11 @@ json_retries = 1
 
 [rtl]
 max_bytes = 20_000
+
+[baseline]
+samples = 3                    # R4: v1 first attempts sampled in parallel; only the best is repaired (1 turns it off)
+temperature = 1.0              # Nemotron card recommendation, for the samples only
+top_p = 0.95
 
 [evolution]
 round1_children = 3

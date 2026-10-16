@@ -10,11 +10,12 @@ from ..contracts import TestCase, Verification
 from ..core.llm_types import RtlOut
 from ..core.pack import TaskPack
 from ..core.protocols import LLMGateway
+from ..core.rtl_fixer import guidance_block
 from .common import call_parsed
 from .parsing import RtlAnswer, parse_rtl_answer
 from .prompts import load_template
 
-TEMPLATE_FILE = "repair.v1.md"
+TEMPLATE_FILE = "repair.v2.md"
 FORMAT_HINT = "Give one DIAGNOSIS line, one REASON line, then exactly one ```verilog fenced block with the whole file."
 MAX_LINT_CHARS = 4_000
 MAX_CASES = 5
@@ -34,7 +35,7 @@ async def repair(
     system, user = template.render(
         task_brief=pack.public_brief(),
         current_rtl=rtl_text.strip("\n"),
-        failure=_failure_text(verification),
+        failure=_failure_text(verification, rtl_text),
         top=pack.top,
         latency_cycles=str(pack.latency_cycles),
     )
@@ -62,11 +63,13 @@ async def repair(
     )
 
 
-def _failure_text(verification: Verification) -> str:
-    """Lint log (first 4,000 chars) when lint failed, else at most 5 failing cases."""
+def _failure_text(verification: Verification, rtl_text: str = "") -> str:
+    """Lint log (first 4,000 chars) plus matching guidance when lint failed, else at most 5 failing cases."""
     if verification.lint == "fail":
         log = (verification.lint_log or "no log was produced").strip()
-        return "The design did not pass the checks before simulation. Tool output:\n\n" + log[:MAX_LINT_CHARS]
+        text = "The design did not pass the checks before simulation. Tool output:\n\n" + log[:MAX_LINT_CHARS]
+        guidance = guidance_block(log, rtl_text)
+        return text + "\n\n" + guidance if guidance else text
     failing = [case for case in verification.failures if not case.pass_][:MAX_CASES]
     lines = [
         f"Lint passed. Simulation passed {verification.passed} of {verification.total} test cases.",

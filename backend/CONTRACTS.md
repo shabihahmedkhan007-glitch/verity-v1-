@@ -133,7 +133,7 @@ Each script enforces its own stage deadlines with `subprocess` timeouts and repo
 
 Steps:
 1. **Lint**: `verilator --lint-only -Wall -Wno-fatal -Wno-DECLFILENAME --top-module <top> /work/dut.v`. `ok` = exit code 0 and no `%Error` line. `warnings` = count of `%Warning-` lines. Fail: `status: "lint_fail"`, stop.
-2. **Interface**: `yosys -q -p "read_verilog /work/dut.v; hierarchy -check -top <top>; proc; write_json /tmp/verity/ports.json"`. Compare `modules[<top>].ports` against `task.toml` ports: same name set, same direction (`input` -> `in`, `output` -> `out`; `inout` is always an error), `len(bits) == width * count`, and for `count == 1` ports the same signedness. One error string per mismatch, e.g. `"port acc: width 16, expected 22"`. Fail: `status: "contract_fail"`, stop. `# UNVERIFIED: key Yosys uses for port signedness in write_json.`
+2. **Interface**: `yosys -q -p "read_verilog -sv /work/dut.v; hierarchy -check -top <top>; proc; write_json /tmp/verity/ports.json"`. Compare `modules[<top>].ports` against `task.toml` ports: same name set, same direction (`input` -> `in`, `output` -> `out`; `inout` is always an error), `len(bits) == width * count`, and for `count == 1` ports the same signedness. One error string per mismatch, e.g. `"port acc: width 16, expected 22"`. Fail: `status: "contract_fail"`, stop. `# UNVERIFIED: key Yosys uses for port signedness in write_json.`
 3. **Sim**: cocotb with Icarus (`cocotb.runner.get_runner("icarus")`, `hdl_toplevel=<top>`, `test_module="test_dut"`, build dir `/tmp/verity/sim_build`, `timescale=("1ns","1ps")`), env `PYTHONPATH=$VERITY_PACK_DIR:/verity/lib`, `VERITY_SIM_RESULT=/work/out/sim_result.json`, `VERITY_SEED=<task.toml sim.seed>`, `VERITY_MAX_CYCLES=<sim.max_cycles_per_case>`, `VERITY_TEST_COUNT=<test_count>`. Read `sim_result.json` (section 4). `status` = `pass` when `passed == total == test_count`, else `sim_fail`. Compile error or missing result file: `sim_error` with `message` = first error line.
 
 Stdout (last line), matching `verity.core.results.VerifyResult`:
@@ -161,7 +161,7 @@ Sections not reached are `null`. `failures` holds at most 5 cases, in case order
 ### 3.6 `/verity/bin/measure` (synth, timing, circuit)
 
 Steps:
-1. **Circuit** (before tech mapping): `read_verilog /work/dut.v; hierarchy -check -top <top>; proc; opt; write_json /tmp/verity/pre.json`, then build the `CircuitGraph` (section 3.8).
+1. **Circuit** (before tech mapping): `read_verilog -sv /work/dut.v; hierarchy -check -top <top>; proc; opt; write_json /tmp/verity/pre.json`, then build the `CircuitGraph` (section 3.8).
 2. **Synth**: `synth -top <top> -flatten; dfflibmap -liberty $LIB; abc -liberty $LIB; opt_clean; stat -liberty $LIB; write_verilog -noattr /work/out/netlist.v`. `area_um2` = "Chip area" from `stat`; `cell_count` = number of cells; `cells` = per-cell counts.
 3. **Timing** (OpenSTA, post-synthesis, no wires): read liberty and `netlist.v`, `link_design <top>`; clocked design: `create_clock -name clk -period <target_clock_ns> [get_ports <clock>]`; combinational design (`clock.name == ""`): virtual clock `create_clock -name vclk -period <target_clock_ns>`; `set_input_delay 0` on all inputs except the clock and `set_output_delay 0` on all outputs; worst setup slack `wns_ns`; `clock_period_ns = target_clock_ns - wns_ns` (the minimum period). `# UNVERIFIED: OpenSTA command names and report parsing.`
 
@@ -189,11 +189,11 @@ Gold = `/work/dut.v` (v1), gate = `/work/b.v` (candidate). Config written to `/t
 
 ```
 [gold]
-read_verilog /work/dut.v
+read_verilog -sv /work/dut.v
 prep -top <top>
 
 [gate]
-read_verilog /work/b.v
+read_verilog -sv /work/b.v
 prep -top <top>
 
 [strategy sby]
@@ -373,7 +373,7 @@ Order rule: `add_node` before `connect`, and both before the first `candidate` e
    - Close: `gate {closed, autoContinueMs: 0}`.
 4. **feasibility** (`check_plan` returns reasons; empty = ok): ok -> `[stage plan done]`, `update_status blk-* approved`. Fail -> `[stage plan failed, detail=<first reason>]`, caption `plan_rejected`, `run error {message}`.
 5. **lock**: `[stage lock active]`; `add_node golden`; `update_status golden pending`; `pack.reverify()` (PackIntegrityError -> `[stage lock failed]`, run error); artifacts `tests/golden_model.py` (= `pack.golden_source()`) and `tests/test_dut.py`; `update_status golden locked`; `[stage lock done]`; caption `locked` (Lock).
-6. **rtl**: `[stage rtl active]`; `add_node c1`; `connect golden->c1 checks`; `[cand c1 drafting]` (attempts empty, rtl ""); caption `writing_v1` (Build and fix); `roles.generate_rtl`; credits; `[stage rtl done]`.
+6. **rtl**: `[stage rtl active]`; `add_node c1`; `connect golden->c1 checks`; `[cand c1 drafting]` (attempts empty, rtl ""); caption `writing_v1` (Build and fix); `roles.generate_rtl` (R4: with `[baseline] samples` > 1 it is called that many times in parallel at `[baseline] temperature` and `top_p`, each sample gets the declaration fixer and one sandbox check with no events, samples that still fail lint are dropped, the one passing the highest fraction of tests becomes attempt 1 of c1, and caption `sampled` follows; if none passes lint the one with the fewest lint issues continues; one failed sample does not end the run, all failing does; `samples = 1` is the single call path); credits; `[stage rtl done]`.
 7. **verify loop for c1** (one sandbox call per attempt):
    - validate: `pack.validate_rtl(text)`; `RtlRejected` -> attempt with `Verification(lint="fail", lintLog="Rejected before simulation:\n- ...", passed=0, total=test_count, tool="Verity RTL rules", durationMs=0)` and go to fail handling (caption `rejected_rules`).
    - `[stage lint active]`; `[cand c1 linting]` (rtl = the new text); `tools.verify`; then `[stage lint done|failed]`; if lint passed: `[stage sim active]`, `[cand c1 simulating]`, caption `simulating`, then the result.
@@ -397,7 +397,7 @@ Credits: after every LLM call, `credits {usedUsd: round(ledger.snapshot().usd, 4
 
 Artifact events: content capped at `sse.max_event_bytes - 1024` bytes, with `\n[truncated]` appended when cut. Paths: `tests/golden_model.py`, `tests/test_dut.py`, `plan/plan.r<n>.json`, `reports/synth_<label>.txt`, `reports/sta_<label>.txt`, `reports/eqy_<label>_vs_v1.log`, `reports/summary.json`, `circuit/<cid>.json`. The web zip export takes `tests/` and `reports/`.
 
-Disk (via `store.write_run_file`, ARCHITECTURE 15): `spec.md`, `plan.r<n>.json`, `candidates/<cid>/attempt-<n>.v`, `attempt-<n>.verify.json`, `attempt-<n>.llm.json` (raw model text + CallMeta), `ppa.json`, `synth.log`, `sta.log`, `circuit.json`, `final/winner.v`, `final/eqy.log`, `final/summary.json`, `runlog.json`.
+Disk (via `store.write_run_file`, ARCHITECTURE 15): `spec.md`, `plan.r<n>.json`, `candidates/<cid>/attempt-<n>.v`, `attempt-<n>.verify.json`, `attempt-<n>.llm.json` (raw model text + CallMeta; for a deterministic fix `meta.model` is `verity-declaration-fixer` and `raw` is empty), `candidates/c1/samples.json` (only when baseline sampling ran: per sample `lintOk`, `passed`, `total`, `fixerChanges`, `outputTokens`, `reasoningTokens`, `finishReason`, plus `chosen`), `final/llm-calls.json` (one entry per model call: role, model, temperature, topP, input, output and reasoning tokens, `finishReason`, `maxOutputTokens`, usd; `finishReason` `length` means the call was cut at the output cap), `attempt-<n>.autofix.json` (only when the declaration fixer changed attempt n: `fromAttempt`, `lintIssues`, `changes`), `stall-<n>.json` (only when a stalled baseline was restarted from the plan: `signature`), `ppa.json`, `synth.log`, `sta.log`, `circuit.json`, `final/winner.v`, `final/eqy.log`, `final/summary.json`, `runlog.json`.
 
 Candidate field rules: `rtl` = text of the attempt in flight or the last attempt; `attempts` only contains attempts that have a verification; `verification` = last attempt's verification; `reason` = attempt 1's `RtlOut.reason` (fallback `"First version, written from the plan"`); `fixCount` = number of FIX attempts; `fitness` null unless measured and not rejected; `isBaseline` true for c1 from its first pass.
 

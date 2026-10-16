@@ -30,6 +30,8 @@ class EvalRecord(BaseModel):
     llm_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    reasoning_tokens: int = 0  # part of output_tokens
+    finish_reasons: dict[str, int] = Field(default_factory=dict)  # per model call: stop, length, ...
     est_usd: float = 0.0
     runtime_s: float = 0.0
     stage_times: dict[str, float] = Field(default_factory=dict)  # stage -> seconds

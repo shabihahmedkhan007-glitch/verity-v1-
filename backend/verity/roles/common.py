@@ -42,6 +42,8 @@ def meta_from(template: PromptTemplate, response: LLMResponse, usd: float, role:
         output_tokens=response.output_tokens,
         latency_ms=response.latency_ms,
         usd=usd,
+        finish_reason=response.finish_reason,
+        reasoning_tokens=response.reasoning_tokens,
     )
 
 
@@ -56,6 +58,8 @@ def merge_meta(first: CallMeta, second: CallMeta) -> CallMeta:
         output_tokens=first.output_tokens + second.output_tokens,
         latency_ms=first.latency_ms + second.latency_ms,
         usd=first.usd + second.usd,
+        finish_reason=",".join(r for r in (first.finish_reason, second.finish_reason) if r),
+        reasoning_tokens=first.reasoning_tokens + second.reasoning_tokens,
     )
 
 
@@ -78,6 +82,7 @@ async def call_parsed(
     format_hint: str,
     response_format: ResponseFormat = "text",
     retries: int = 1,
+    sampling: Mapping[str, float] | None = None,
 ) -> Parsed[T]:
     """Call the model, parse the text; on ParseError ask again (up to `retries` times) with the error appended.
 
@@ -99,6 +104,7 @@ async def call_parsed(
             response_format=response_format,
             prompt_version=template.version,
             tags=request_tags,
+            **(sampling or {}),
         )
         call_meta = meta_from(template, response, usd, role)
         meta = call_meta if meta is None else merge_meta(meta, call_meta)

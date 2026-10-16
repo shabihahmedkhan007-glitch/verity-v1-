@@ -177,6 +177,14 @@ def _regression(rows: list[EvalRecord]) -> list[str]:
     return ["### Regression (winner vs v1)", "", f"- checks passed: {_cell(ok, n)}", f"- equivalence of winners: {detail}", ""]
 
 
+def _finish_reasons(rows: list[EvalRecord]) -> str:
+    totals: dict[str, int] = defaultdict(int)
+    for r in rows:
+        for reason, n in r.finish_reasons.items():
+            totals[reason] += n
+    return ", ".join(f"{k}: {v}" for k, v in sorted(totals.items())) or "none recorded"
+
+
 def _performance(rows: list[EvalRecord]) -> list[str]:
     if not rows:
         return []
@@ -187,7 +195,8 @@ def _performance(rows: list[EvalRecord]) -> list[str]:
     body = [[s, _num(median(v), 1), str(len(v))] for s, v in sorted(stages.items())]
     head = [
         f"- median LLM calls per run: {_num(median(float(r.llm_calls) for r in rows), 1)}",
-        f"- median input tokens: {_num(median(float(r.input_tokens) for r in rows), 0)}, output tokens: {_num(median(float(r.output_tokens) for r in rows), 0)}",
+        f"- median input tokens: {_num(median(float(r.input_tokens) for r in rows), 0)}, output tokens: {_num(median(float(r.output_tokens) for r in rows), 0)}, of which reasoning tokens: {_num(median(float(r.reasoning_tokens) for r in rows), 0)}",
+        f"- model calls by finish reason: {_finish_reasons(rows)} (length means cut at the output cap)",
         "",
     ]
     return ["### Performance", "", *head, *_table(["Stage", "median seconds", "runs"], body)]

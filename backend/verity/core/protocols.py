@@ -65,6 +65,8 @@ class LLMGateway(Protocol):
         response_format: ResponseFormat = "text",
         prompt_version: str = "",
         tags: Mapping[str, str] | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> tuple[LLMResponse, float]:
         """Returns (response, estimated usd). Before the call: estimate prompt tokens, raise LLMError if above
         budget.call.max_prompt_tokens, then ledger.reserve() (raises BudgetExhausted). After: ledger.commit().
@@ -89,8 +91,18 @@ class PlanFn(Protocol):
 
 
 class GenerateRtlFn(Protocol):
-    async def __call__(self, llm: LLMGateway, pack: TaskPack, plan: PlanOut, priority: Priority) -> RtlOut:
-        """Baseline RTL (createdBy INIT). Raises RoleOutputError if no Verilog block can be extracted."""
+    async def __call__(
+        self,
+        llm: LLMGateway,
+        pack: TaskPack,
+        plan: PlanOut,
+        priority: Priority,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
+    ) -> RtlOut:
+        """Baseline RTL (createdBy INIT). Raises RoleOutputError if no Verilog block can be extracted.
+        temperature and top_p override the role route for this call (R4 baseline sampling)."""
         ...
 
 

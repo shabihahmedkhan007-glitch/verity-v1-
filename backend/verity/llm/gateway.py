@@ -23,6 +23,8 @@ class RunLLM:
         self.settings = settings
         self.ledger = ledger
         self._call_seq = 0
+        # One entry per finished call (R3): what each call used and why it stopped. Written to final/llm-calls.json.
+        self.calls: list[dict] = []
 
     async def call(
         self,
@@ -33,6 +35,8 @@ class RunLLM:
         response_format: ResponseFormat = "text",
         prompt_version: str = "",
         tags: Mapping[str, str] | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> tuple[LLMResponse, float]:
         settings = self.settings
         model = settings.model_for(role)
@@ -63,7 +67,8 @@ class RunLLM:
             system=system,
             user=user,
             max_output_tokens=settings.max_output_for(role),
-            temperature=settings.temperature_for(role),
+            temperature=settings.temperature_for(role) if temperature is None else temperature,
+            top_p=top_p,
             response_format=response_format,
             timeout_s=float(settings.llm_timeout_for(role)),
             tags=request_tags,
@@ -78,6 +83,23 @@ class RunLLM:
                 Usage(model=model, input_tokens=response.input_tokens, output_tokens=response.output_tokens, usd=usd),
             )
             committed = True
+            self.calls.append(
+                {
+                    "seq": self._call_seq,
+                    "role": role,
+                    "model": model,
+                    "temperature": request.temperature,
+                    "topP": request.top_p,
+                    "inputTokens": response.input_tokens,
+                    "outputTokens": response.output_tokens,
+                    "reasoningTokens": response.reasoning_tokens,
+                    "maxOutputTokens": request.max_output_tokens,
+                    "finishReason": response.finish_reason,
+                    "latencyMs": response.latency_ms,
+                    "usd": round(usd, 6),
+                    "tags": {k: v for k, v in request_tags.items() if k in ("attempt", "sample", "strategy", "parse_retry")},
+                }
+            )
             return response, usd
         finally:
             if not committed:

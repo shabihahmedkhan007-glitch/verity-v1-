@@ -19,6 +19,7 @@ class LLMRequest:
     user: str
     max_output_tokens: int
     temperature: float
+    top_p: float | None = None  # None: the provider default (not sent)
     response_format: ResponseFormat = "text"
     timeout_s: float = 120.0
     # Non-prompt metadata: task_id, strategy, attempt, prompt_version. Used by FakeProvider cassettes and logs.
@@ -50,6 +51,8 @@ class CallMeta:
     output_tokens: int
     latency_ms: int
     usd: float
+    finish_reason: str = ""  # "stop", "length" (cut at the output cap), ...; comma separated when calls were merged
+    reasoning_tokens: int = 0  # already inside output_tokens
 
 
 # ---------- role outputs ----------

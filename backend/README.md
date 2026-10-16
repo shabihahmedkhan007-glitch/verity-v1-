@@ -9,7 +9,7 @@ Yosys EQY, and streams every step to the web app as events. Python 3.11+, FastAP
 > recovery and Stop were observed. What the first run fixed: CRLF in three sandbox files, `signed` wires that OpenSTA
 > rejects (matmul4 and mm4_int4 had no clock period), EQY matching on internal wire names, EQY counterexamples from
 > unreachable register states (now a reset-aware miter first), a half-even rounding mismatch with the web fitness, and
-> LLM caps that cut Nemotron reasoning answers off (`plan_max_output` 6000, `rtl_max_output` 12000, run
+> LLM caps that cut Nemotron reasoning answers off (`plan_max_output` 12000, `rtl_max_output` 24000, run
 > `max_output_tokens` 200000). Known limits: EQY cannot prove a shift-add multiplier equal to `*` in 180 s, so such a
 > winner is reported "Tested, not proven"; the heavy packs (`matmul4`, `mm4_int4`) take about 5 minutes in the packs
 > suite because both EQY sanity calls run to their limit. Some `UNVERIFIED` comments below still stand: trust the code
@@ -132,6 +132,16 @@ Writes `evals/results/<eval_run_id>.jsonl` (one line per task per repeat, fields
 (`--max-total-usd`, default 3). `--skip-sandbox` skips every step that needs the tool image. Exit code 1 when a
 self-check suite (packs, isolation, regression) has a failing row.
 
+Per-call records (R3): every model call is logged with `finish_reason` and reasoning tokens in `final/llm-calls.json`
+of the run folder, in `meta` of each `attempt-<n>.llm.json`, and in the eval rows (`reasoning_tokens`, `finish_reasons`;
+the performance report prints them). `finish_reason` `length` means the call was cut at its output cap.
+
+Nebius facts measured on 2026-10-16 (one tiny prompt per setting, so token counts are indicative only):
+`completion_tokens` already includes `reasoning_tokens`. Both models honour `chat_template_kwargs.enable_thinking: false`
+(reasoning 0). Super also honours `reasoning_effort` `none` (0) and `low` (150 down to 9) and `low_effort` (150 down to 8).
+Ultra's `reasoning_effort: low` changed nothing against its default (49 both), and `medium_effort` reached the template
+(prompt tokens +7) but did not lower reasoning on that prompt. None of these is enabled in the config.
+
 | Suite | Needs | What it answers |
 |---|---|---|
 | `packs` | sandbox | reference passes, every mutant in `tasks/self_test.md` fails, EQY sanity |
@@ -177,7 +187,7 @@ Do these in order. Stop at the first red step and fix it before moving on. Each 
 3. The testbenches and `reference.v` files have never been simulated. A wrong cycle count in a testbench fails the pack
    self-test; fix the pack, then `python tasks/make_manifest.py <id>`.
 4. Nemotron reasoning tokens eat the output cap (`max_tokens` 4,000 for RTL), leaving no code block. Symptom: parse
-   retries then `RoleOutputError`. Try `VERITY_BUDGET__CALL__RTL_MAX_OUTPUT=12000` and raise the run output budget.
+   retries then `RoleOutputError`. Try `VERITY_BUDGET__CALL__RTL_MAX_OUTPUT=24000` and raise the run output budget.
 5. Yosys, OpenSTA and EQY output formats (all parsed from text or JSON never seen): a timing parse miss shows as
    `sta_fail` (area kept, clock period null).
 6. pydantic-settings source ordering and the `LLM_*` named variables (check `GET /health` shows the right models).

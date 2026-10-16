@@ -30,7 +30,7 @@ LOG_CAP = 4_000
 def yosys_script(top: str, dut: Path, lib: Path, pre: Path, stat_txt: Path, stat_json: Path, netlist: Path) -> str:
     return "\n".join(
         [
-            f"read_verilog {dut}",
+            f"read_verilog -sv {dut}",
             f"hierarchy -check -top {top}",
             "proc",
             "opt",

@@ -97,7 +97,7 @@ def stage_contract(task: dict[str, Any], dut: Path, result: dict[str, Any]) -> s
     top = task["top"]
     ports_json = vc.scratch_dir() / "ports.json"
     ports_json.unlink(missing_ok=True)
-    script = f"read_verilog {dut}; hierarchy -check -top {top}; proc; write_json {ports_json}"
+    script = f"read_verilog -sv {dut}; hierarchy -check -top {top}; proc; write_json {ports_json}"
     proc = vc.run(["yosys", "-q", "-p", script], timeout_s=vc.env_float("VERITY_LINT_TIMEOUT_S", 20))
     if proc.timed_out:
         result["message"] = "interface check timed out"
@@ -144,7 +144,7 @@ def stage_sim(task: dict[str, Any], dut: Path, result: dict[str, Any], versions:
     (build / "timescale.v").write_text(TIMESCALE_FILE, encoding="ascii")
     vvp_file = build / "sim.vvp"
     compile_proc = vc.run(
-        ["iverilog", "-g2005", "-DCOCOTB_SIM=1", "-s", top, "-o", str(vvp_file), str(build / "timescale.v"), str(dut)],
+        ["iverilog", "-g2012", "-DCOCOTB_SIM=1", "-s", top, "-o", str(vvp_file), str(build / "timescale.v"), str(dut)],
         timeout_s=max(1.0, deadline - time.monotonic()),
     )
     if compile_proc.timed_out:

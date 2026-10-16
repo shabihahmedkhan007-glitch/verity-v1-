@@ -14,7 +14,7 @@ from .common import call_parsed, format_ppa, priority_text, relative_note
 from .parsing import RtlAnswer, parse_rtl_answer
 from .prompts import load_template
 
-TEMPLATE_FILE = "optimize.v1.md"
+TEMPLATE_FILE = "optimize.v2.md"
 FORMAT_HINT = "Give one REASON line, then exactly one ```verilog fenced block with the whole file."
 
 STRATEGIES: dict[str, str] = {

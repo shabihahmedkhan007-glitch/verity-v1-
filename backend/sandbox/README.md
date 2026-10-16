@@ -70,7 +70,7 @@ Exit codes: 0 result printed (the design may still have failed), 2 input error, 
 
 | Script | Steps (stop at the first failure) | Fixed commands |
 |---|---|---|
-| `verify` | lint, interface, sim | `verilator --lint-only -Wall -Wno-fatal -Wno-DECLFILENAME`; `yosys -p "read_verilog; hierarchy -check; proc; write_json"`; `iverilog -g2005` then `vvp -M <cocotb libs> -m libcocotbvpi_icarus` |
+| `verify` | lint, interface, sim | `verilator --lint-only -Wall -Wno-fatal -Wno-DECLFILENAME`; `yosys -p "read_verilog -sv; hierarchy -check; proc; write_json"`; `iverilog -g2012` then `vvp -M <cocotb libs> -m libcocotbvpi_icarus` |
 | `measure` | synth, timing, circuit | one `yosys -s` script (`synth -flatten; dfflibmap; abc -liberty; stat -liberty`), then `sta` (OpenSTA) on the written netlist |
 | `eqy` | prove | 1. a reset-aware miter (`sby`, engines `abc pdr` + `smtbmc yices`): reset assumed in cycle 0, outputs compared after, so state re-encodings are proven and its counterexamples are real. 2. `eqy -f -d <dir> verity.eqy` with `[strategy sby]`, engines tried in turn: `abc pdr`, then `smtbmc yices` (`VERITY_EQY_ENGINE`, `;` separated); only ports and register names are matched (`rename -hide`). EQY starts from any register state, so for a design with a reset its FAIL is reported as `inconclusive`, not `not_equivalent` |
 

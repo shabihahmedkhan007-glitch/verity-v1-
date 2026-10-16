@@ -124,9 +124,12 @@ async def _baseline_stage(st: RunState) -> None:
     await em.candidate(c1)
     await em.caption(cap.writing_v1(), cap.CH_BUILD)
 
-    with ctx.busy():
-        out = await ctx.roles.generate_rtl(ctx.llm, pack, st.plan, ctx.priority)
-    await st.credits()
+    if ctx.settings.baseline.samples > 1:
+        out = await build.sample_baseline(st, c1)  # R4: k parallel first attempts, best one continues
+    else:
+        with ctx.busy():
+            out = await ctx.roles.generate_rtl(ctx.llm, pack, st.plan, ctx.priority)
+        await st.credits()
     await em.stage("rtl", "done")
 
     if not await build.evaluate(st, c1, out, baseline=True):
@@ -199,6 +202,9 @@ async def _publish_summary(st: RunState, status: str, winner: str | None) -> Non
             for c in st.cands.values()
         ],
     }
+    calls = getattr(ctx.llm, "calls", None)
+    if calls:  # R3: finish reason and reasoning tokens of every model call
+        await st.save("final/llm-calls.json", json.dumps(calls, indent=2), "application/json")
     body = json.dumps(payload, indent=2)
     await st.em.artifact("reports/summary.json", body)
     await st.save("final/summary.json", body, "application/json")

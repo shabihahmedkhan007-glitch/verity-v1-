@@ -31,7 +31,10 @@ ElementType = Literal["int4", "uint4", "int8", "uint8", "none"]
 PortDir = Literal["in", "out"]
 
 CODING_RULES: tuple[str, ...] = (
-    "Verilog-2005 only, synthesizable, one file.",
+    "Restricted SystemVerilog (IEEE 1800-2012), synthesizable, one file, exactly one module (no helper modules).",
+    "Declare every port and signal as `logic`. Do not use `wire` or `reg`, `generate`, or unpacked-array ports.",
+    "Use `always_ff @(posedge clk)` with non-blocking assignments (<=) for registers and `always_comb` with blocking assignments (=) for combinational logic.",
+    "Write lanes out one by one, or use a `for` loop inside `always_comb`. Use `*` and `+` for arithmetic; do not hand-build adders or multipliers.",
     "The top module name, port names, directions, widths and signedness must equal the given header exactly.",
     "Ports listed with a lane count are flat vectors: lane i of port p with lane width W is p[i*W +: W].",
     "One clock, rising edge only. Use the reset exactly as described (name, polarity, synchronous or asynchronous).",
@@ -70,7 +73,7 @@ class TaskPort(BaseModel):
         direction = "input " if self.dir == "in" else "output"
         signed = " signed" if self.signed else ""
         rng = f" [{self.bits - 1}:0]" if self.bits > 1 else ""
-        return f"{direction}{signed}{rng} {self.name}"
+        return f"{direction} logic{signed}{rng} {self.name}"
 
 
 class ClockSpec(BaseModel):
@@ -232,7 +235,7 @@ class TaskPack(BaseModel):
         )
 
     def module_header(self) -> str:
-        """The exact ANSI module header the LLM must use. Outputs may be redeclared `output reg`."""
+        """The exact ANSI module header the LLM must use. Every port is `logic`; outputs are never redeclared `reg`."""
         decls = [f"    {p.verilog_decl()}" for p in self.ports]
         lane_notes = [
             f"// {p.name}: {p.count} lanes x {p.width} bits, lane i = {p.name}[i*{p.width} +: {p.width}]"

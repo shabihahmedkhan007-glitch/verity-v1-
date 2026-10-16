@@ -75,20 +75,20 @@ def _default_prices() -> dict[str, Price]:
 
 
 class RunBudget(BaseModel):
-    max_llm_calls: int = 16
+    max_llm_calls: int = 20
     max_input_tokens: int = 150_000
     max_output_tokens: int = 200_000
     max_usd: float = 0.50
     max_candidates: int = 6
-    max_repairs_baseline: int = 3
+    max_repairs_baseline: int = 2
     max_repairs_child: int = 1
     max_rounds: int = 2
     max_wall_s: int = 900
 
 
 class CallBudget(BaseModel):
-    plan_max_output: int = 6_000
-    rtl_max_output: int = 12_000
+    plan_max_output: int = 12_000
+    rtl_max_output: int = 24_000
     max_prompt_tokens: int = 12_000
 
 
@@ -116,7 +116,7 @@ class TimeoutsConfig(BaseModel):
     eqy_s: int = 180
     sandbox_overhead_s: int = 15
     llm_ultra_s: int = 120
-    llm_super_s: int = 60
+    llm_super_s: int = 120
 
     @property
     def verify_s(self) -> int:
@@ -157,6 +157,14 @@ class PlanConfig(BaseModel):
 
 class RtlConfig(BaseModel):
     max_bytes: int = 20_000
+
+
+class BaselineConfig(BaseModel):
+    """R4: v1 is sampled `samples` times in parallel; only the best one is repaired."""
+
+    samples: int = Field(default=3, ge=1, le=5)
+    temperature: float = 1.0  # the model card's recommendation; used for the samples only
+    top_p: float = 0.95
 
 
 class EvolutionConfig(BaseModel):
@@ -262,6 +270,7 @@ class Settings(BaseSettings):
     watchdog: WatchdogConfig = Field(default_factory=WatchdogConfig)
     plan: PlanConfig = Field(default_factory=PlanConfig)
     rtl: RtlConfig = Field(default_factory=RtlConfig)
+    baseline: BaselineConfig = Field(default_factory=BaselineConfig)
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
 

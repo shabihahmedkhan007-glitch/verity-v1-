@@ -1,6 +1,6 @@
 """Bounded CircuitGraph from Yosys pre-techmap JSON (backend/ARCHITECTURE 16, CONTRACTS 3.8).
 
-Input: the output of `read_verilog; hierarchy -check -top T; proc; opt; write_json pre.json`, so cells are still
+Input: the output of `read_verilog -sv; hierarchy -check -top T; proc; opt; write_json pre.json`, so cells are still
 readable ($add, $mul, $mux, $dff, ...).
 
 Output: a wire-format dict (camelCase keys, `candidateId` empty) that validates against

@@ -14,7 +14,7 @@ from .common import call_parsed, json_retries, priority_text
 from .parsing import ParseError, extract_json_object
 from .prompts import load_template
 
-TEMPLATE_FILE = "planner.v1.md"
+TEMPLATE_FILE = "planner.v2.md"
 FORMAT_HINT = "Reply with exactly one JSON object and nothing else."
 
 

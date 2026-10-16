@@ -103,6 +103,18 @@ def writing_v1() -> str:
     return "Writing v1 from the plan."
 
 
+def auto_fixed(label: str, changes: str) -> str:
+    return f"{label}: fixed declarations without asking the model ({clean(changes, 160)}). Re-checking."
+
+
+def sampled(count: int, passed: int, total: int) -> str:
+    return f"Wrote {count} first versions in parallel. Continuing with the one that passes {passed} of {total} tests."
+
+
+def restarted(label: str) -> str:
+    return f"{label} failed the same way twice. Rewriting it from the plan instead of patching."
+
+
 def simulating(test_count: int) -> str:
     return f"Simulating {test_count} tests against the golden model."
 

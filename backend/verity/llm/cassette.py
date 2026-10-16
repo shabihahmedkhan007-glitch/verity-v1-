@@ -20,15 +20,18 @@ from ..core.protocols import LLMProvider
 
 
 def cassette_key(req: LLMRequest) -> str:
+    fields: dict[str, Any] = {
+        "model": req.model,
+        "system": req.system,
+        "user": req.user,
+        "max_output_tokens": req.max_output_tokens,
+        "temperature": req.temperature,
+        "response_format": req.response_format,
+    }
+    if req.top_p is not None:  # only when set, so older cassette keys stay valid
+        fields["top_p"] = req.top_p
     payload = json.dumps(
-        {
-            "model": req.model,
-            "system": req.system,
-            "user": req.user,
-            "max_output_tokens": req.max_output_tokens,
-            "temperature": req.temperature,
-            "response_format": req.response_format,
-        },
+        fields,
         sort_keys=True,
         ensure_ascii=True,
     )
