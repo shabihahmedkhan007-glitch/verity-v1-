@@ -8,6 +8,8 @@ Copy in quotes is exact UI text. Component names refer to the inventory in secti
 
 ## 0. Design brief (shape summary)
 
+> **Superseded in part by D12 (2026-10-16, `REPORT.md`).** The frontend is now the "V3 Rack" world: amber accent `#FFB000` replaces Verity Green, fail is a hollow white square plus the word (no red), running is pale amber, and the faces are Sofia Sans Extra Condensed, Sofia Sans and Martian Mono. Below, "Verity Green" reads as "amber (accent)". Tokens and the current structure live in `brand.md` and `frontend/ARCHITECTURE.md` section 9. This spec is otherwise kept as written.
+
 **Feature summary.** A two-register web app. The landing page (brand) hooks a hackathon judge in 10 seconds with a self-playing recording of the agent's real loop. The Studio (product) shows that loop on one canvas: a Plan Board of AI-drafted blocks on the left and an Evolution Tree of competing versions on the right, with a stage rail on top and an inspector on the right. Try live and Results complete the story.
 
 **Primary user action.** Watch the agent fail, fix itself and improve, then believe the numbers. Everything else is optional.
@@ -16,7 +18,7 @@ Copy in quotes is exact UI text. Component names refer to the inventory in secti
 
 | | Landing (brand register) | Studio, Try, Results (product register) |
 |---|---|---|
-| Color strategy | Restrained with an earned signal: green appears only as the replay passes tests, plus the one primary button | Restrained: tinted navy neutrals, Verity Green as the only signal |
+| Color strategy | Restrained with an earned signal: amber (accent) appears only as the replay passes tests, plus the one primary button | Restrained: warm near-black neutrals, amber (accent) as the only signal |
 | Scene sentence | A judge on a 14-inch laptop late in a judging session, arriving from the dark navy Devpost thumbnail, deciding in 10 seconds whether this entry is worth three minutes | The same judge, or a hardware engineer, watching a 90-second run on a 1440px laptop, reading status and numbers, occasionally opening code |
 | Anchor references | Keysight and Rigol oscilloscope front panels (one meaning per signal color, plain labels); a TI chip datasheet (numbered, factual, tables over adjectives); Linear's product pages (the product UI is the hero image) | Figma (canvas plus right inspector); GitHub pull request diff (code changes); Vercel deployment view (build step rail with live status); Linear (density and restraint) |
 | Anti-goal | Hacker-terminal costume, neon glow, generic AI SaaS hero | n8n-style pipeline canvas where moving boxes means nothing |
@@ -146,7 +148,7 @@ Hero: left column spans 5 columns, right 7 columns plus bleed. Hero height `min(
 
 ### 2.5 Copy
 
-- Kicker (static; mirrors the thumbnail): "DESCRIBE | GENERATE | SIMULATE | VERIFY", with "VERIFY" in Verity Green. This is the only uppercase kicker on the page.
+- Kicker (static; mirrors the thumbnail): "DESCRIBE | GENERATE | SIMULATE | VERIFY", with "VERIFY" in amber (accent). This is the only uppercase kicker on the page.
 - H1 (`text-display`): "Describe a chip in plain English."
 - Lead (`text-lead`, max 46ch): "Verity writes the Verilog, tests it against an answer key it cannot edit, fixes its own bugs, then redesigns it to be smaller and faster."
 - Primary CTA: "Watch the full run". Secondary CTA (outline): "Try it live".
@@ -169,6 +171,8 @@ Hero: left column spans 5 columns, right 7 columns plus bleed. Hero height `min(
 ---
 
 ## 3. Studio `/studio`
+
+> **D12 (2026-10-16):** the canvas, Figure 1, stage rail and inspector described in sections 3 and 4 were replaced by rack modules: TRANSPORT (timeline bar), LOOP (LED stage columns), MONITOR (narration and detail panel) and VERSIONS (table). See `frontend/ARCHITECTURE.md` section 9. The states, copy and interactions below still guide behavior; the layout and canvas parts are history.
 
 **Purpose.** The run view: watch (replay) or run (live) the whole loop on one canvas, inspect any block or version. **Primary user:** judge, then engineer. **Primary action:** keep watching; secondary: open a version to see expected vs got and the fix diff.
 
@@ -276,6 +280,8 @@ Grid: `grid-rows-[var(--topbar-h)_var(--rail-h)_1fr_var(--bottombar-h)]`, `grid-
 
 ## 4. Canvas and inspector detail
 
+> **D12 (2026-10-16):** the React Flow canvas, node types and edges below no longer exist in the studio; the rack modules replaced them (see the section 3 note). Kept as history.
+
 ### 4.1 World layout (canvas units)
 
 | Region | Position | Size |
@@ -327,7 +333,7 @@ Layer key: **P** primitive (shadcn), **D** domain (presentational), **N** canvas
 
 | Name | Variants used | Pages |
 |---|---|---|
-| `Button` | `default` (Verity Green, navy text; one per screen), `secondary` (surface-2), `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon` | all |
+| `Button` | `default` (amber accent, dark text; one per screen), `secondary` (surface-2), `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon` | all |
 | `Badge` | `default`, `secondary`, `outline` (status badges are domain components built on it) | all |
 | `Tabs` | inspector tabs, diff compare | Studio |
 | `Tooltip` | every icon-only control, rail items, counters | all |
@@ -557,7 +563,7 @@ Main column 8 of 12, side column 4. Page scrolls if needed (unlike Studio). Rank
   - Tab order Studio: header controls, stage rail items (buttons), canvas (React Flow `nodesFocusable`; Tab/Shift+Tab moves between nodes, Enter selects), inspector, bottom bar.
   - Shortcuts (Studio, only when focus is not in a text field): Space play/pause, Left/Right previous/next chapter, `1`/`2` speed, Escape clears selection. Listed in a "Keyboard shortcuts" tooltip on the replay bar.
   - `deleteKeyCode={null}` so Backspace never deletes nodes.
-  - React Flow removes the outline on focused nodes; `globals.css` restores a 2px Verity Green focus ring (`brand.md` 1.5). Check it by tabbing through the canvas.
+  - React Flow removes the outline on focused nodes; `globals.css` restores a 2px amber focus ring (`brand.md` 1.5). Check it by tabbing through the canvas.
   - Every action reachable without dragging. Block steering lives in the inspector.
   - `CandidateList` in the inspector is the non-canvas way to reach every version.
 - **Screen readers:** `CaptionLine` mirrors captions into `aria-live="polite"` (only stage changes, pass/fail results and run end, at most one announcement per 2 s). Canvas node components include a visually hidden summary, e.g. "Version v3, OPTIMIZE from v1, passed 16 of 16 tests, area 12.5% smaller than v1, elite." `Wordmark` exposes "Verity". Icon-only buttons have `aria-label`. React Flow's `ariaLabelConfig` gets plain-English strings ("Zoom in", "Fit the whole run in view").
@@ -590,7 +596,7 @@ Tokens and rules: `brand.md` section 4. Specific moments:
 2. **Node enters:** `animate-node-enter` (220ms). Suppressed when `ui.instant` (seeks).
 3. **Status change:** border and fill crossfade 200ms; `StatusSquare` pops once on PASS or FAIL.
 4. **Running:** status square blinks; lineage edge into a drafting or simulating node animates (React Flow `animated`).
-5. **Agent change:** changed or new block gets a 2px Verity Green outline that fades over 4 s (`animate-diff-outline`, element has `outline-2 outline-offset-2 outline-solid`).
+5. **Agent change:** changed or new block gets a 2px amber (accent) outline that fades over 4 s (`animate-diff-outline`, element has `outline-2 outline-offset-2 outline-solid`).
 6. **Tree growth:** `fitView` with 320ms duration, unless the user zoomed or panned in the last 10 s.
 7. **Winner:** `animate-winner-glow` once, then the static `--glow-pass` ring stays on the winner only.
 8. **Caption:** crossfade 150ms between lines.

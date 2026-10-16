@@ -1,52 +1,58 @@
 "use client";
 
-import { Wordmark } from "@/components/brand/Wordmark";
+import { RackBar } from "@/components/sections/shared/RackBar";
 import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
+import { Mod } from "./chrome/Mod";
 import { STUDIO_ROOT } from "./studio-root";
 
-const STEPS = ["Spec", "Plan", "Lock", "Build", "Rounds", "Prove"];
+const STAGES = ["PLAN", "LOCK", "BUILD", "TEST", "EVOLVE", "PROVE"];
 
-/** Static first paint for /studio (the Suspense fallback): the same frame with every step hollow. Reads no store or URL. */
+/** Static first paint for /studio (the Suspense fallback): the same rack with every LED dark. Reads no store or URL. */
 export function StudioSkeleton() {
   return (
     <div className={`${STUDIO_ROOT} studio`} role="status" aria-label="Loading the recorded run.">
       <VignetteGrid />
-      <header className="s-band sband">
-        <span className="logo">
-          <Wordmark size="md" />
-        </span>
-      </header>
-      <div className="s-meta smeta" aria-hidden />
+      <RackBar current="studio" />
       <div className="s-main" aria-hidden>
-        <div className="s-fig">
-          <div className="fig1">
-            <div className="fig1-scroll">
-              <div className="fig1-grid" style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(120px, 1fr))` }}>
-                {STEPS.map((s, i) => (
-                  <div key={s} style={{ gridRow: 1, gridColumn: i + 1 }}>
-                    <p className="fig1-step" data-state="pending" data-last={i === STEPS.length - 1 ? "" : undefined}>
-                      {s}
-                    </p>
-                  </div>
-                ))}
-                {STEPS.map((s, i) => (
-                  <div key={`b-${s}`} className="fig1-col" style={{ gridRow: 2, gridColumn: i + 1 }}>
-                    <div className="fbox" data-pending>
-                      <span className="fbox-empty">&nbsp;</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <Mod label="Transport" className="transport">
+          <div className="tr">
+            <div className="runid">
+              <span className="m">&nbsp;</span>
+              <h1>Loading</h1>
             </div>
           </div>
-        </div>
-        <div className="s-detail dp" />
-        <div className="s-tbl t1" />
-      </div>
-      <div className="s-time tlb">
-        <div className="tlb-row" />
-        <div className="tlb-say">
-          <p>Loading the recorded run.</p>
+        </Mod>
+        <div className="mid">
+          <Mod label="Loop" right={<span className="word">STANDBY</span>}>
+            <div className="lm-body">
+              <ol className="leds">
+                {STAGES.map((s) => (
+                  <li key={s} className="col" data-state="wait">
+                    <div className="segs">
+                      {Array.from({ length: 10 }, (_, j) => (
+                        <span key={j} className="seg" />
+                      ))}
+                    </div>
+                    <div className="cn">{s}</div>
+                    <div className="cs">
+                      <span className="rkq wait" />
+                      <span>WAIT</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </Mod>
+          <Mod label="Monitor">
+            <div className="mon">
+              <div className="tlb-say">
+                <p className="cap">Loading the recorded run.</p>
+              </div>
+            </div>
+          </Mod>
+          <Mod label="Versions">
+            <div className="t1" />
+          </Mod>
         </div>
       </div>
     </div>

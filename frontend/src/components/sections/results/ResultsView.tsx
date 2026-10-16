@@ -9,6 +9,7 @@ import { ModeBadge } from "@/components/domain/ModeBadge";
 import { SampleDataBadge } from "@/components/domain/SampleDataBadge";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
+import { RackBarLink } from "@/components/sections/shared/RackBar";
 import { RESULTS_ROOT } from "@/components/sections/shared/app-roots";
 import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import type { Candidate } from "@/lib/contracts/types";
@@ -134,6 +135,7 @@ function ResultsBody({ runId }: { runId: string }) {
     <div className={`${RESULTS_ROOT} flex min-h-svh flex-col`}>
       <VignetteGrid />
       <AppHeader
+        current="results"
         context={
           <>
             <span className="truncate text-sm font-medium text-foreground">{summary.title}</span>
@@ -142,9 +144,7 @@ function ResultsBody({ runId }: { runId: string }) {
           </>
         }
         actions={
-          <Button asChild variant="outline" className="h-8 px-3">
-            <Link prefetch={false} href={`/studio?run=${encodeURIComponent(runId)}`}>Back to the run</Link>
-          </Button>
+          <RackBarLink href={`/studio?run=${encodeURIComponent(runId)}`}>Back to the run</RackBarLink>
         }
       />
       <main className="mx-auto w-full max-w-[80rem] flex-1 px-6 py-8">

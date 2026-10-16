@@ -100,7 +100,7 @@ export function GoldenDetail({ entity }: { entity: Extract<SelectedEntity, { kin
               {showSource ? "Hide the golden model" : "Show the golden model"}
             </button>
           </div>
-          {showSource ? <CodeView code={entity.source} language="python" filename="tests/golden_model.py" maxHeight="24rem" /> : null}
+          {showSource ? <CodeView code={entity.source} language="python" filename="tests/golden_model.py" /> : null}
         </section>
       ) : null}
     </>

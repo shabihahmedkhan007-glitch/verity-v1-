@@ -225,7 +225,7 @@ export function CandidateDetail({ entity, run }: { entity: CandidateEntity; run:
           {showParent && parent && entity.parentLabel ? (
             <CodeDiff before={parent.rtl} after={c.attempts[0]?.rtl ?? c.rtl} beforeLabel={entity.parentLabel} afterLabel={c.label} />
           ) : null}
-          {showCode && c.rtl ? <CodeView code={c.rtl} language="verilog" filename={`${c.label}.v`} maxHeight="24rem" /> : null}
+          {showCode && c.rtl ? <CodeView code={c.rtl} language="verilog" filename={`${c.label}.v`} /> : null}
         </section>
       ) : null}
 

@@ -40,7 +40,7 @@ Success beyond the hackathon: an engineer trusts the numbers enough to download 
 Three words: **exact, candid, calm.**
 
 - Exact: every number has a unit, a source tool and a baseline. Nothing is rounded up into a claim.
-- Candid: failures are shown, not hidden. Red happens on screen before green. Limits are stated on the landing page.
+- Candid: failures are shown, not hidden. A failure is shown on screen before the pass. Limits are stated on the landing page.
 - Calm: the agent does the work; the interface does not shout about it. No hype words, no confetti.
 
 Emotional goals: the judge feels "I can see it working" (clarity), then "I believe the numbers" (trust), then "I could use this" (relevance).
@@ -51,7 +51,7 @@ Voice in one line: a careful engineer explaining a test bench to a smart friend.
 
 What Verity must not look or feel like:
 
-- **Hacker-terminal costume.** Matrix rain, scanlines, glitch text, green-on-black monospace everywhere. The palette is dark navy and green; that is exactly why this trap is close. Mono is for code and measured values only.
+- **Hacker-terminal costume.** Matrix rain, scanlines, glitch text, glowing monospace everywhere. The palette is a warm near-black with an amber accent (instrument-panel colors); that is exactly why this trap is close. Mono is for code and measured values only.
 - **Crypto neon dashboards.** Glowing everything, gradient text, stacked hero metrics.
 - **Chat-first AI apps.** A prompt box and a stream of prose as the main surface. Verity's main surface is the loop, not the conversation.
 - **n8n-style pipeline canvases.** Draggable stages that mean nothing (you cannot simulate before the RTL exists).
@@ -62,7 +62,7 @@ What Verity must not look or feel like:
 ## Design Principles
 
 1. **Show the loop, not the chat.** Every screen answers "what is the agent doing right now, and did it work?" through status on blocks and versions, never through paragraphs.
-2. **Green is earned.** Verity Green means verified, passing or the one primary action. It never decorates. A screen gets greener only as the run actually passes tests.
+2. **Amber is earned.** The amber accent means verified, passing, proven, the one primary action or keyboard focus. It never decorates. A screen gets more amber only as the run actually passes tests. Running states use a paler amber.
 3. **Measured, never judged.** Fitness and every displayed number come from tool output (Yosys, OpenROAD, iverilog, EQY), relative to our own v1, labeled as such. The interface never asks or shows an LLM's opinion of quality.
 4. **Autopilot first, steering optional.** Nothing waits on the user. Every human touch has a default that proceeds, and the "Human inputs: N" counter proves it.
 5. **Failure is content.** The FAIL state is designed as carefully as PASS: expected vs got, the agent's diagnosis, the fix as a diff.
@@ -70,8 +70,8 @@ What Verity must not look or feel like:
 ## Accessibility & Inclusion
 
 - Target WCAG 2.2 AA. All token pairs in `brand.md` were contrast-checked (results recorded there).
-- Never color alone: every status pairs a colored square with an icon and a text label (PASS, FAIL, RUNNING). Pass green and fail red also differ in lightness so they separate in grayscale and for red-green color blindness.
-- Typeface chosen for legibility: Atkinson Hyperlegible Next and Mono (distinct 0/O and 1/l/I, which matters in Verilog literals).
+- Never color alone: every status pairs a square with a text label (PASS, FAIL, RUNNING). Pass is a filled amber square, fail is a hollow white square (never red), running is a pale amber square, so states separate by shape and word, not hue.
+- Typefaces (decision D12): Sofia Sans Extra Condensed for display, Sofia Sans for body, Martian Mono for data, labels and code; see `brand.md` section 2.
 - Every story step is reachable by keyboard and by clicking; dragging is never required.
 - The countdown gate is adjustable (Hold, Build now, Autopilot off) to satisfy timing-adjustable criteria.
 - Moving content (the auto-playing replay) has a visible pause control; `prefers-reduced-motion` starts the landing replay paused on its final state and removes pulsing.

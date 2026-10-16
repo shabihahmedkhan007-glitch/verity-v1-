@@ -1,14 +1,12 @@
-import { archivo, jetbrainsMono } from "@/components/sections/datasheet/fonts";
+import { RACK_FACES } from "./rack-fonts";
 import "./datasheet-base.css";
 import "./app-pages.css";
 
-const FACES = `${archivo.variable} ${jetbrainsMono.variable}`;
+/** Root class of /try: the rack scope (.vt) plus the rack font variables (D12). */
+export const TRY_ROOT = `vt ${RACK_FACES}`;
 
-/** Root class of /try: the datasheet scope (.vt) plus the Archivo and JetBrains Mono variables. */
-export const TRY_ROOT = `vt ${FACES}`;
+/** Root class of /results: the rack scope (.vr) plus the rack font variables. */
+export const RESULTS_ROOT = `vr ${RACK_FACES}`;
 
-/** Root class of /results: the datasheet scope (.vr) plus the Archivo and JetBrains Mono variables. */
-export const RESULTS_ROOT = `vr ${FACES}`;
-
-/** Root class of the 404 page: the datasheet scope (.vn) plus the Archivo and JetBrains Mono variables. */
-export const NOT_FOUND_ROOT = `vn ${FACES}`;
+/** Root class of the 404 page: the rack scope (.vn) plus the rack font variables. */
+export const NOT_FOUND_ROOT = `vn ${RACK_FACES}`;

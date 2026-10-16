@@ -57,6 +57,7 @@ _Last updated: 2026-10-04_
 | D9 | 2026-10-04 | Brand colors: background #050A12, surface #0B1220, accent Verity Green #39FF88; fonts Atkinson Hyperlegible Next and Mono | Colors chosen by the user; fonts chosen by the planner for legibility of Verilog values (unreviewed by the user) | (none recorded) |
 | D10 | 2026-10-04 | Frontend: Next.js 16 static export in `web/` with Tailwind v4, shadcn/ui, @xyflow/react, Zustand, dagre, zod; routes `/`, `/studio`, `/try`, `/results` with `?run=` | Free static hosting, replay path has no server to fail | tldraw (license key), dynamic route segments (not supported by static export) |
 | D11 | 2026-10-15 | /studio adopts the landing's datasheet world: AMOLED black, white ink, tiered Verity Green, Archivo and JetBrains Mono, no red (fail is a white hollow square, a dashed line and the word FAIL). This overrides brand.md 1.1's navy studio palette for /studio. The pan and zoom canvas is replaced by a fixed figure ("Figure 1, live"); plan block dragging and replay-mode steering controls are removed (steering stays in live runs) | One visual world from the landing click-through into the run; the self-fix and the numbers must read without panning or clicking | Keep the navy studio palette, restyle React Flow in place, hybrid canvas |
+| D12 | 2026-10-16 | Rack world with an amber accent replaces D11 (datasheet theme) and Verity Green. Source: user choice among six mockups in .impeccable/mocks/slipstream (V3 Rack, amber accent). Accent is earned (pass, proven, primary action, focus); running uses pale amber; fail stays a hollow white square plus the word; no red. Known risk: amber reads as warning on instruments, mitigated by shape plus word | One palette and type system across landing, studio, /try and /results | Keep D11 green datasheet; the other five mockups |
 
 ## 5. Change log
 
@@ -266,6 +267,34 @@ _Last updated: 2026-10-04_
 
 - **Changed** (main session, no subagent): the landing's pointer-following vignette grid now sits behind /studio, /try, /results, their loading skeletons and the 404 page. `VignetteGrid.tsx` moved from `sections/datasheet/` to `sections/shared/` (git rename) and its CSS (`.ds-vg`) from `datasheet.css` into `shared/datasheet-base.css`. On app pages the root is isolated and the grid sits at `z-index: -1`, so it paints above the black page and under every card and panel. The 404 page gets its own scope `.vn` (`NOT_FOUND_ROOT`) and the same datasheet tokens and app-page rules as /try and /results.
 - **Verified:** typecheck clean, lint 0 errors (1 old warning), build OK, no dashes. Landing pixel identical to before (0 of 1,296,000 pixels). Each of the five routes has exactly one grid, behind the content at 1440x900 and 390 wide; /studio still has no page scroll; no horizontal overflow; the 404 colour scan finds 0 off-palette values, Archivo only. The static export loads all five routes with no new page errors.
+
+### 2026-10-16: Palette switched to the amber rack (D12)
+
+- **What:** `globals.css` now defines the `--rk-*` token contract (ground, panels, rules, ink, accent tiers, running tones, `--font-display/body/data`) and repoints the legacy semantic tokens (`--background`, `--surface`, `--primary`, `--pass`, `--ring`, `--chart-*`, syntax, diff, `--verity-green`) to it. `layout.tsx` loads `RACK_FACES` (Sofia Sans Extra Condensed, Sofia Sans, Martian Mono) in place of Atkinson, Archivo and JetBrains Mono. `datasheet-base.css` and `app-pages.css` scoped overrides moved from AMOLED black plus green tiers to the rack palette and now include `.rk`; `app-roots.ts` uses `RACK_FACES`. `docs/brand.md` and the `CLAUDE.md` guardrail updated. No raw green hex remained outside lib, studio, rack and datasheet.
+- **Why:** decision D12.
+- **Verified:** typecheck clean; lint 0 errors, 1 old warning (`lib/contracts/view-types.ts`, unused `Chapter`); `validate:fixture` OK (6 versions, winner c5); `build` OK (5 static routes). Browser checks at 1440x900, 900 and 390: no horizontal overflow, the studio fits 1440x900 without page scroll, and the end narration reads "Winner v5: area −17.4% vs v1. PROVEN EQUAL (EQY).". Impeccable detector: 0 findings. Opus review: VERIFIED WITH CAVEATS, follow-up fixes in progress.
+
+### 2026-10-16: New rack landing (D12, part B)
+
+- **Built** `frontend/src/components/sections/rack/` and pointed `app/page.tsx` at `RackPage`, scoped under `.rk` with `RACK_FACES`: `RackNav` (the shared bar), a full-width headline band (`RackHead`: "Say what the chip does." over "It writes, breaks, fixes and proves the Verilog.", lead copy, "Watch the full run" and "Try it live"), then three rack modules with `Ears` (mounting flanges with screws): `ModSpec` (MOD 1, the plain-English spec and port list), `ModLoop` (MOD 2, six LED stage columns PLAN LOCK BUILD TEST EVOLVE PROVE that light stage by stage on load, three fail markers on TEST, round dial) and `ModResult` (MOD 3, the measured result, priority knob, area bars per version, equivalence lamp). Under them `Inside` ("Inside each module": SLOT 1 ANSWER KEY, SLOT 2 SELF FIX, SLOT 3 MEASURED, SLOT 4 EQUIVALENCE) and `RackFooter` (limits notice, links; project links render only when their URL is set). Same copy and sample figures as the datasheet landing, labeled as sample data.
+- **Removed:** the datasheet landing (`sections/datasheet/*`, including `fonts.ts`) and the stray `d1.png`. `sections/landing/links.ts` stays.
+- **Verified:** see the D12 entry above (shared checks for parts A to C).
+
+### 2026-10-16: Studio re-skinned as a rack (D12, part C)
+
+- **Changed** `frontend/src/components/sections/studio/**` over the existing store and replay logic (`lib/` untouched). The studio is a rack of modules: TRANSPORT (`timeline/TimelineBar`, with seven-segment readouts from `chrome/Seg7` and the run metadata), LOOP (`loop/LoopModule` fed by `loop/derive-leds.ts`: LED stage columns, fail markers, round, derived only from run state), MONITOR (`timeline/Narration` plus `detail/DetailPanel`) and VERSIONS (`table/CharacteristicsTable`). `chrome/Mod.tsx` draws each module (ears, "MOD · NAME" label). Scope class `.vs` and `STUDIO_ROOT` now add `RACK_FACES`. The LOOP count reads "N failed attempts" (the studio counts 4 failing attempts including v6's two; the landing says 3 fails, meaning 3 versions).
+- **Deleted:** `figure/LoopFigure.tsx`, `CandidateBox.tsx`, `Wires.tsx` and `describe.ts` (Figure 1). Kept `figure/derive.ts` and `figure/proof.ts` (shared derivations).
+- **Verified:** see the D12 entry above (shared checks for parts A to C).
+
+### 2026-10-16: One rack top bar on every page
+
+- **Built** `frontend/src/components/sections/shared/RackBar.tsx` and `rack-bar.css`: brand, four links (How it works, Why trust it, Studio, Try live) with `aria-current` on the current page, a context slot and an actions slot (`RackSampleBadge`, `RackBarLink`). Used by the landing `RackNav`, the studio `StudioBand` and `StudioSkeleton`, and `AppHeader` (now a thin wrapper) for /try, /results and the 404 page. The old `.sband` and `.rk .nav` styles and `MarkIcon` were removed.
+- **Verified:** typecheck clean, lint 0 errors; the studio still fits 1440x900; 390 wide has no horizontal overflow on the studio and /results. Done after the Opus review was dispatched, so that review did not cover it.
+
+### 2026-10-16: Studio scroll fix
+
+- **Changed** `studio.css`: the detail panel body (`.dp-body`) is the one vertical scroller, with `overscroll-behavior: contain` so scrolling does not chain into the page and a mask that fades the cut edges. Code boxes (`.codebox-b`) scroll only sideways. Below 1100px wide the page scrolls and the detail body grows (`overflow: visible`) instead of nesting a second scroller.
+- **Verified:** studio fits 1440x900 with no page scroll; no horizontal overflow at 900 and 390.
 
 ## 6. Key facts and links
 

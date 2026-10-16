@@ -48,8 +48,8 @@ Backend (from `backend/`, venv in `backend/.venv`): `pytest -q`. Sandbox image a
 ## Guardrails
 
 - Never write an em dash or en dash anywhere: code, comments, copy, docs.
-- Brand colors are fixed: `#050A12` background, `#0B1220` surface, `#39FF88` Verity Green. Components use token utilities from `globals.css`, never raw hex.
-- Green is earned: pass/verified, the one primary action, or focus. Nothing else.
+- Brand colors are fixed (D12): `#0A0806` ground, `#13100C` panel, `#FFB000` amber accent. Components use token utilities from `globals.css`, never raw hex.
+- Amber is earned: pass/verified, the one primary action, or focus. Nothing else.
 - The replay path makes no network call after `golden.json`. Live code stays in `lib/sources/live.ts`.
 - `frontend/` holds no secrets. `NEXT_PUBLIC_*` is for public URLs only. API keys live in `backend/.env` (server side only).
 - REvolution is a reference for principles only (tiny population, FAIL vs PASS pools, PPA fitness vs our own v1, keep best 1 to 2, operators FIX, SIMPLIFY, OPTIMIZE, EXPLORE). Never show the paper's numbers as Verity's.

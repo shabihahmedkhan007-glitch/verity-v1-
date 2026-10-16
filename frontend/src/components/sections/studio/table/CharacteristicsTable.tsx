@@ -4,32 +4,36 @@ import { memo, useCallback } from "react";
 import type { Candidate, PPA, RunState } from "@/lib/contracts/types";
 import type { Selection } from "@/lib/contracts/view-types";
 import { formatArea, formatDelta, formatNs } from "@/lib/format";
-import { formatScore } from "@/components/domain/signed";
 import { useUi } from "@/lib/store";
+import { Mod } from "../chrome/Mod";
 import { rejectedText } from "../figure/derive";
+import { proofText } from "../figure/proof";
+import { Sq } from "../loop/LoopModule";
 
-type Tone = "pass" | "fail" | "info";
+type Kind = "pass" | "fail" | "run" | "wait" | "drop";
 
-function statusOf(c: Candidate): { tone: Tone; word: string } {
+/** The status shape and word of a version. Never colour alone: a square plus a word. */
+function statusOf(c: Candidate, isWinner: boolean, settled: boolean): { kind: Kind; word: string; accent: boolean } {
+  if (isWinner) return { kind: "pass", word: "Winner", accent: true };
   switch (c.status) {
     case "drafting":
-      return { tone: "info", word: "Writing" };
+      return { kind: "run", word: "Writing", accent: false };
     case "linting":
-      return { tone: "info", word: "Linting" };
+      return { kind: "run", word: "Linting", accent: false };
     case "simulating":
-      return { tone: "info", word: "Simulating" };
+      return { kind: "run", word: "Simulating", accent: false };
     case "fail":
-      return { tone: "fail", word: "Fail" };
+      return { kind: "fail", word: "Fail", accent: false };
     case "fixing":
-      return { tone: "fail", word: "Fixing" };
+      return { kind: "fail", word: "Fixing", accent: false };
     case "pass":
-      return { tone: "pass", word: "Pass" };
+      return { kind: "pass", word: "Pass", accent: false };
     case "synthesizing":
-      return { tone: "info", word: "Measuring" };
+      return { kind: "run", word: "Measuring", accent: false };
     case "measured":
-      return { tone: "pass", word: "Measured" };
+      return c.isBaseline ? { kind: "pass", word: "Baseline", accent: false } : c.isElite ? { kind: "pass", word: "Kept", accent: false } : settled ? { kind: "drop", word: "Dropped", accent: false } : { kind: "pass", word: "Measured", accent: false };
     case "rejected":
-      return { tone: "fail", word: "Rejected" };
+      return { kind: "fail", word: "Rejected", accent: false };
   }
 }
 
@@ -41,60 +45,64 @@ function unmeasured(c: Candidate): string {
   return "Not measured yet";
 }
 
+function Delta({ value, base, label }: { value: number | null; base: number | null | undefined; label: string }) {
+  if (value === null || !base) return null;
+  const d = formatDelta(value, base, { lowerIsBetter: true });
+  return (
+    <small className="t1-d" data-dir={d.direction}>
+      {d.text}
+      <span className="sr">{d.direction === "better" ? ` lower ${label}` : d.direction === "worse" ? ` higher ${label}` : ` about the same ${label}`}</span>
+    </small>
+  );
+}
+
 type RowProps = {
   c: Candidate;
   base: PPA | null;
   isWinner: boolean;
+  settled: boolean;
   pinned: boolean;
   followed: boolean;
   onPick(id: string): void;
 };
 
-const Row = memo(function Row({ c, base, isWinner, pinned, followed, onPick }: RowProps) {
-  const st = statusOf(c);
-  const v = c.verification;
+const Row = memo(function Row({ c, base, isWinner, settled, pinned, followed, onPick }: RowProps) {
+  const st = statusOf(c, isWinner, settled);
   const area = c.ppa?.areaUm2 ?? null;
   const clk = c.ppa?.clockPeriodNs ?? null;
-  const measured = c.ppa !== null && (area !== null || clk !== null);
-  const delta = !c.isBaseline && area !== null && base?.areaUm2 ? formatDelta(area, base.areaUm2, { lowerIsBetter: true }) : null;
-  const tags: string[] = [];
-  if (c.isBaseline) tags.push("Baseline");
-  if (c.isElite && !isWinner) tags.push("Elite");
-  if (isWinner) tags.push("Winner");
+  const pwr = c.ppa?.powerMw ?? null;
+  const measured = c.ppa !== null && (area !== null || clk !== null || pwr !== null);
+  const rel = !c.isBaseline;
 
   return (
     <tr
       data-on={pinned ? "" : undefined}
       data-follow={followed && !pinned ? "" : undefined}
-      data-tone={st.tone}
       data-rejected={c.status === "rejected" ? "" : undefined}
+      data-winner={isWinner ? "" : undefined}
+      data-live={st.kind === "run" ? "" : undefined}
       onClick={() => onPick(c.id)}
     >
       <th scope="row">
         <button type="button" className="t1-ver" aria-pressed={pinned} aria-label={`${c.label}, show details`}>
           {c.label}
         </button>
+        <small className="t1-by">{c.createdBy}</small>
       </th>
-      <td className="mono t1-by">{c.createdBy}</td>
-      <td className="num mono">{v ? `${v.passed}/${v.total}` : <span className="t1-na">not run</span>}</td>
-      <td className="num mono">{c.fixCount}</td>
       {measured ? (
         <>
-          <td className="num mono">{area !== null ? formatArea(area) : <span className="t1-na">n/a</span>}</td>
-          <td className="num mono">
-            {c.isBaseline ? (
-              <span className="t1-na">baseline</span>
-            ) : delta ? (
-              <span className="t1-d" data-dir={delta.direction}>
-                {delta.text}
-                <span className="sr">{delta.direction === "better" ? " smaller than v1" : delta.direction === "worse" ? " larger than v1" : " about the same as v1"}</span>
-              </span>
-            ) : (
-              <span className="t1-na">n/a</span>
-            )}
+          <td className="num m">{area !== null ? formatArea(area) : <span className="t1-na">n/a</span>}</td>
+          <td className="num m">
+            {c.isBaseline ? <span className="t1-na">baseline</span> : rel && area !== null ? <Delta value={area} base={base?.areaUm2} label="area" /> : <span className="t1-na">n/a</span>}
           </td>
-          <td className="num mono">{clk !== null ? formatNs(clk) : <span className="t1-na">n/a</span>}</td>
-          <td className="num mono">{c.fitness ? formatScore(c.fitness.score) : <span className="t1-na">n/a</span>}</td>
+          <td className="num m">
+            {clk !== null ? formatNs(clk) : <span className="t1-na">n/a</span>}
+            {rel ? <Delta value={clk} base={base?.clockPeriodNs} label="clock period" /> : null}
+          </td>
+          <td className="num m">
+            {pwr !== null ? pwr.toFixed(2) : <span className="t1-na">n/a</span>}
+            {rel ? <Delta value={pwr} base={base?.powerMw} label="power" /> : null}
+          </td>
         </>
       ) : (
         <td colSpan={4} className="t1-wait">
@@ -102,16 +110,69 @@ const Row = memo(function Row({ c, base, isWinner, pinned, followed, onPick }: R
         </td>
       )}
       <td>
-        <span className={`mk ${st.tone}`}>{st.word}</span>
-        {tags.length > 0 ? <span className="t1-tags">{tags.join(", ")}</span> : null}
+        <span className="st">
+          <Sq kind={st.kind} />
+          <span className="word" data-accent={st.accent ? "" : undefined}>
+            {st.word}
+          </span>
+        </span>
       </td>
     </tr>
   );
 });
 
+/** Winner against the baseline in plain words, from the record only. */
+function versionsNote(run: RunState, baselineLabel: string, base: PPA | null): string {
+  const winner = run.winnerId ? run.candidates[run.winnerId] : undefined;
+  if (winner?.ppa && base && winner.id !== run.baselineId) {
+    const bits: string[] = [];
+    const a = winner.ppa.areaUm2;
+    const c = winner.ppa.clockPeriodNs;
+    const p = winner.ppa.powerMw;
+    if (a !== null && base.areaUm2) bits.push(`area ${formatDelta(a, base.areaUm2, { lowerIsBetter: true }).text}`);
+    if (c !== null && base.clockPeriodNs) {
+      const d = formatDelta(c, base.clockPeriodNs, { lowerIsBetter: true });
+      bits.push(`clock period ${d.text}${d.direction === "worse" ? " (slower)" : d.direction === "better" ? " (faster)" : ""}`);
+    }
+    if (p !== null && base.powerMw) bits.push(`power ${formatDelta(p, base.powerMw, { lowerIsBetter: true }).text}`);
+    if (bits.length > 0) return `${winner.label}: ${bits.join(", ")} vs ${baselineLabel}.`;
+  }
+  if (base) return `${baselineLabel} is the baseline. Every figure here is compared to it.`;
+  return "Versions appear as the agent writes them.";
+}
+
+/** The equivalence lamp: waiting, checking, or the EQY result. "Proven" only when the record says proven. */
+function EqyLamp({ run, baselineLabel }: { run: RunState; baselineLabel: string }) {
+  const winner = run.winnerId ? run.candidates[run.winnerId] : undefined;
+  let kind: Kind = "wait";
+  let word = "EQY waiting";
+  let note = "after the winner is picked";
+  let accent = false;
+  if (winner?.eqy) {
+    const p = proofText(winner.eqy, baselineLabel);
+    kind = p.result === "proven" ? "pass" : "fail";
+    accent = p.result === "proven";
+    word = p.label;
+    note = `${winner.label} vs ${baselineLabel}`;
+  } else if (run.stages.prove.status === "active") {
+    kind = "run";
+    word = "EQY checking";
+    note = winner ? `${winner.label} vs ${baselineLabel}` : "";
+  }
+  return (
+    <div className="eqy-s" data-state={kind}>
+      <Sq kind={kind} />
+      <span className="word" data-accent={accent ? "" : undefined}>
+        {word}
+      </span>
+      {note ? <span className="lab eqy-n">{note}</span> : null}
+    </div>
+  );
+}
+
 /**
- * Table 1, characteristics: one row per version, filled in only as the record measures it. Clicking a row pins the
- * detail panel to that version (the same ui.select the figure uses).
+ * The VERSIONS module: one row per version, filled in only as the record measures it, then the winner note and the
+ * EQY lamp. Clicking a row pins the inspector to that version (ui.select).
  */
 export function CharacteristicsTable({ run, follow }: { run: RunState; follow: Selection | null }) {
   const { selection, select } = useUi();
@@ -124,66 +185,59 @@ export function CharacteristicsTable({ run, follow }: { run: RunState; follow: S
   const pick = useCallback((id: string) => select({ kind: "candidate", id }), [select]);
 
   return (
-    <section className="s-tbl t1" aria-labelledby="t1-title">
-      <header className="t1-h">
-        <h2 id="t1-title" className="t1-title">
-          <span className="n">Table 1.</span> Characteristics
-        </h2>
-        <p className="t1-sub">
-          Relative to {baselineLabel}
-          {tools ? `, ${tools}` : ""}. Measured values only.{run.sample ? " Sample data." : ""}
-        </p>
-      </header>
-      <div className="t1-scroll">
-        <table className="dtbl t1-tbl" aria-labelledby="t1-title">
-          <thead>
-            <tr>
-              <th scope="col">Ver</th>
-              <th scope="col">By</th>
-              <th scope="col" className="num">
-                Tests
-              </th>
-              <th scope="col" className="num">
-                Fix
-              </th>
-              <th scope="col" className="num">
-                Area
-              </th>
-              <th scope="col" className="num">
-                Area vs {baselineLabel}
-              </th>
-              <th scope="col" className="num">
-                Clock
-              </th>
-              <th scope="col" className="num">
-                Fitness
-              </th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.length === 0 ? (
+    <Mod label="Versions" right={<span className="lab">All deltas vs {baselineLabel}</span>} ariaLabel="Versions">
+      <div className="t1">
+        <div className="t1-scroll">
+          <table className="dtbl t1-tbl" aria-label={`Versions, relative to ${baselineLabel}${tools ? `, ${tools}` : ""}. Measured values only.${run.sample ? " Sample data." : ""}`}>
+            <thead>
               <tr>
-                <td colSpan={9} className="t1-wait">
-                  No versions yet. v1 is written after the golden model is locked.
-                </td>
+                <th scope="col">VER</th>
+                <th scope="col" className="num">
+                  AREA µm²
+                </th>
+                <th scope="col" className="num">
+                  AREA VS {baselineLabel}
+                </th>
+                <th scope="col" className="num">
+                  CLOCK ns
+                </th>
+                <th scope="col" className="num">
+                  POWER mW
+                </th>
+                <th scope="col">Status</th>
               </tr>
-            ) : (
-              order.map((c) => (
-                <Row
-                  key={c.id}
-                  c={c}
-                  base={baseline?.ppa ?? null}
-                  isWinner={c.id === run.winnerId}
-                  pinned={selection?.kind === "candidate" && selection.id === c.id}
-                  followed={follow?.kind === "candidate" && follow.id === c.id}
-                  onPick={pick}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {order.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="t1-wait">
+                    No versions yet. v1 is written after the golden model is locked.
+                  </td>
+                </tr>
+              ) : (
+                order.map((c) => (
+                  <Row
+                    key={c.id}
+                    c={c}
+                    base={baseline?.ppa ?? null}
+                    isWinner={c.id === run.winnerId}
+                    settled={c.round < run.round || run.stages.evolve.status === "done"}
+                    pinned={selection?.kind === "candidate" && selection.id === c.id}
+                    followed={follow?.kind === "candidate" && follow.id === c.id}
+                    onPick={pick}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="vnote">
+          {versionsNote(run, baselineLabel, baseline?.ppa ?? null)}
+          {tools ? <span className="vtools"> {tools}.</span> : null}
+          {run.sample ? <span className="vtools"> Sample data.</span> : null}
+        </p>
+        <EqyLamp run={run} baselineLabel={baselineLabel} />
       </div>
-    </section>
+    </Mod>
   );
 }

@@ -1,92 +1,91 @@
-/* Datasheet base: shared by the landing (.ds) and the studio (.vs); /try (.vt), /results (.vr) and the 404 page (.vn)
-   take the tokens and the vignette grid only.
-   Moved out of datasheet.css without changing any declaration; only the selector widened from .ds to :is(.ds, .vs).
-   Palette (user decision): AMOLED black, white ink, and Verity Green as the single accent hue, used in tiers:
-   dim green for structure (rules, hairlines, grid), mint for captions, full green for numbers, pass/proven and
-   the primary action. No greys and no other hues. Status never relies on colour: every status pairs a marker
-   shape (filled or hollow square) with a word. Page-specific rules stay in datasheet.css, studio.css and
-   app-pages.css. */
+/* Rack base: shared by the landing (.rk, and the legacy .ds) and the studio (.vs); /try (.vt), /results (.vr) and the
+   404 page (.vn) take the tokens and the vignette grid only.
+   Palette (decision D12): warm near-black ground, ivory ink, and amber as the single accent hue, used in tiers:
+   dim amber for structure (rules, hairlines, grid), pale amber for running states, full amber for numbers,
+   pass/proven and the primary action. Status never relies on colour: every status pairs a marker shape (filled or
+   hollow square) with a word; fail is a hollow white square, never red. Page-specific rules stay in datasheet.css,
+   studio.css and app-pages.css. The file keeps its old name so existing imports still resolve. */
 
-:is(.ds, .vs, .vt, .vr, .vn) {
-  /* Monochrome overrides of the global tokens, scoped to the datasheet pages. Green (--pass, --primary) stays as is. */
-  --background: black;
-  --surface: black;
-  --surface-2: black;
-  --foreground: white;
-  --fg-muted: white;
-  --fg-subtle: color-mix(in oklch, var(--pass) 55%, white);
-  --border: color-mix(in oklch, var(--pass) 34%, black);
-  --border-strong: color-mix(in oklch, var(--pass) 62%, black);
-  --info: var(--pass);
-  --warn: white;
-  --fail: white;
-  --fail-muted: black;
-  --primary-foreground: black;
+:is(.ds, .vs, .vt, .vr, .vn, .rk) {
+  /* Rack overrides of the global tokens, scoped to the app pages. Amber (--pass, --primary) stays as is. */
+  --background: var(--rk-ground);
+  --surface: var(--rk-panel);
+  --surface-2: var(--rk-panel-2);
+  --foreground: var(--rk-ink);
+  --fg-muted: var(--rk-ink-2);
+  --fg-subtle: var(--rk-ink-3);
+  --border: var(--rk-rule);
+  --border-strong: var(--rk-rule-2);
+  --info: var(--rk-run);
+  --warn: var(--rk-ink);
+  --fail: var(--rk-ink);
+  --fail-muted: var(--rk-ground);
+  --primary-foreground: var(--rk-on-a);
 
-  /* Local aliases onto the global tokens, kept short because the datasheet uses them everywhere. */
+  /* Local aliases onto the global tokens, kept short because the pages use them everywhere. */
   --bg: var(--background);
   --fg: var(--foreground);
   --rule: var(--border-strong);
   --hair: var(--border);
-  --green: var(--pass);
+  --green: var(--pass); /* historic name; resolves to amber (D12) */
   --green-ink: var(--primary-foreground);
-  --sans: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
-  --mono: var(--font-jbmono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sans: var(--font-body);
+  --mono: var(--font-data);
+  --display: var(--font-display);
   --wrap: 1240px;
   --gut: clamp(20px, 3.2vw, 40px);
   --band-h: 54px;
 }
 
 /* The app pages (studio, /try, /results, 404) are built from the shared shadcn and domain components, which read
-   tones the landing never uses; these fold them into the datasheet palette. */
+   tones the landing never uses; these fold them into the rack palette. */
 :is(.vs, .vt, .vr, .vn) {
-  --surface-3: black;
-  --pass-muted: black;
-  --info-muted: black;
-  --warn-muted: black;
-  --primary-muted: color-mix(in oklch, var(--pass) 18%, black);
+  --surface-3: var(--rk-seg-off);
+  --pass-muted: var(--rk-a5);
+  --info-muted: var(--rk-run-bg);
+  --warn-muted: var(--rk-seg-off);
+  --primary-muted: var(--rk-a5);
   --edge: var(--border-strong);
-  --edge-active: var(--pass);
+  --edge-active: var(--rk-run);
   --edge-proof: var(--pass);
   --ring: var(--pass);
-  --fg-disabled: color-mix(in oklch, var(--pass) 40%, black);
-  /* shadcn aliases resolve at :root, so they are restated here or they keep the navy values. */
-  --card: black;
-  --card-foreground: white;
-  --popover: black;
-  --popover-foreground: white;
-  --secondary: black;
-  --secondary-foreground: white;
-  --muted: black;
-  --muted-foreground: white;
-  --accent: color-mix(in oklch, var(--pass) 14%, black);
-  --accent-foreground: white;
-  --destructive: white;
-  --destructive-foreground: black;
+  --fg-disabled: var(--rk-grey);
+  /* shadcn aliases resolve at :root, so they are restated here or they keep the root values. */
+  --card: var(--rk-panel);
+  --card-foreground: var(--rk-ink);
+  --popover: var(--rk-panel-2);
+  --popover-foreground: var(--rk-ink);
+  --secondary: var(--rk-panel-2);
+  --secondary-foreground: var(--rk-ink);
+  --muted: var(--rk-panel-2);
+  --muted-foreground: var(--rk-ink-2);
+  --accent: var(--rk-seg-off);
+  --accent-foreground: var(--rk-ink);
+  --destructive: var(--rk-ink);
+  --destructive-foreground: var(--rk-ground);
   --input: var(--border-strong);
-  --sidebar: black;
-  --sidebar-foreground: white;
+  --sidebar: var(--rk-panel);
+  --sidebar-foreground: var(--rk-ink);
   --sidebar-primary: var(--pass);
-  --sidebar-primary-foreground: black;
-  --sidebar-accent: color-mix(in oklch, var(--pass) 14%, black);
-  --sidebar-accent-foreground: white;
+  --sidebar-primary-foreground: var(--rk-on-a);
+  --sidebar-accent: var(--rk-seg-off);
+  --sidebar-accent-foreground: var(--rk-ink);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--pass);
-  --code-bg: black;
-  --syn-plain: white;
-  --syn-punct: color-mix(in oklch, var(--pass) 55%, white);
+  --code-bg: var(--rk-inset);
+  --syn-plain: var(--rk-ink);
+  --syn-punct: var(--rk-ink-3);
   --syn-keyword: var(--pass);
-  --syn-type: white;
-  --syn-number: color-mix(in oklch, var(--pass) 55%, white);
-  --syn-comment: color-mix(in oklch, var(--pass) 45%, black);
-  --syn-string: white;
-  --diff-add: color-mix(in oklch, var(--pass) 22%, black);
-  --diff-del: color-mix(in oklch, white 14%, black);
-  --selection: color-mix(in oklch, var(--pass) 30%, black);
+  --syn-type: var(--rk-ink);
+  --syn-number: var(--rk-a2);
+  --syn-comment: var(--rk-ink-3);
+  --syn-string: var(--rk-run-2);
+  --diff-add: var(--rk-a5);
+  --diff-del: var(--rk-seg-off);
+  --selection: var(--rk-a4);
   --shadow-overlay: none;
   --glow-pass: 0 0 0 1px var(--pass);
   --mint: var(--fg-subtle);
-  --info: var(--fg-subtle);
   --ease-out: cubic-bezier(.16, 1, .3, 1);
 }
 
@@ -141,8 +140,8 @@
 /* Base grid: 48px cells, hairlines, faded out by a radial vignette that follows the pointer. */
 .ds-vg::before {
   background-image:
-    linear-gradient(to right, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 16%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in oklch, var(--rk-a) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--rk-a) 12%, transparent) 1px, transparent 1px);
   background-size: 48px 48px;
   -webkit-mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
   mask-image: radial-gradient(circle at var(--mx) var(--my), black, transparent 45%);
@@ -150,15 +149,15 @@
 /* A second, smaller and very faint layer, slightly brighter near the cursor. */
 .ds-vg::after {
   background-image:
-    radial-gradient(circle 380px at var(--mx) var(--my), color-mix(in oklch, var(--pass) 9%, transparent), transparent),
-    linear-gradient(to right, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in oklch, var(--pass) 34%, transparent) 1px, transparent 1px);
+    radial-gradient(circle 380px at var(--mx) var(--my), color-mix(in oklch, var(--rk-a) 8%, transparent), transparent),
+    linear-gradient(to right, color-mix(in oklch, var(--rk-a) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--rk-a) 26%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 48px 48px, 48px 48px;
   -webkit-mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
   mask-image: radial-gradient(circle 380px at var(--mx) var(--my), black, transparent);
 }
 /* The app pages do not lift their content onto a positioned layer like the landing's .ds-content, so the grid
-   goes under it instead: z-index -1 inside the isolated page root, above the root's black background. */
+   goes under it instead: z-index -1 inside the isolated page root, above the root's ground background. */
 :is(.vt, .vr, .vn) { position: relative; isolation: isolate; }
 :is(.vs, .vt, .vr, .vn) > .ds-vg { z-index: -1; }
 

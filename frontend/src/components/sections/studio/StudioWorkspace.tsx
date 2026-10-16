@@ -5,13 +5,14 @@ import Link from "next/link";
 import { EmptyState } from "@/components/domain/EmptyState";
 import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import { useLive, useRun, useUi, useVerityStore } from "@/lib/store";
-import { StudioBand } from "./chrome/StudioBand";
+import { Mod } from "./chrome/Mod";
+import { RunMeta, StudioBand } from "./chrome/StudioBand";
 import { DetailPanel } from "./detail/DetailPanel";
 import { useFollowFocus } from "./detail/follow";
-import { LoopFigure } from "./figure/LoopFigure";
+import { LoopModule } from "./loop/LoopModule";
 import { STUDIO_ROOT } from "./studio-root";
 import { CharacteristicsTable } from "./table/CharacteristicsTable";
-import { TimelineBar } from "./timeline/TimelineBar";
+import { NarrationFor, TimelineBar } from "./timeline/TimelineBar";
 
 function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -37,8 +38,8 @@ function ownsKeys(el: EventTarget | null): boolean {
 }
 
 /**
- * The studio: band and metadata line, Figure 1 with the detail panel beside it, Table 1 under the figure, and one
- * timeline bar at the bottom. Full viewport with no page scroll on desktop; stacks (figure, detail, table) when narrow.
+ * The studio as a rack: a TRANSPORT module on top, then LOOP, MONITOR (narration and inspector) and VERSIONS side by
+ * side. Full viewport with no page scroll on desktop; the modules stack when narrow.
  */
 export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
   const run = useRun((r) => r);
@@ -129,24 +130,27 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
     );
   } else {
     main = (
-      <>
-        <section className="s-fig" aria-label="Figure 1: the loop">
-          <LoopFigure live={isLive} />
-        </section>
-        <DetailPanel run={run} follow={follow} />
+      <div className="mid">
+        <LoopModule run={run} />
+        <Mod label="Monitor" right={run.sample ? <span className="word">Sample data</span> : null}>
+          <div className="mon">
+            <NarrationFor run={run} mode={mode} notice={notice} />
+            <DetailPanel run={run} follow={follow} />
+          </div>
+        </Mod>
         <CharacteristicsTable run={run} follow={follow} />
-      </>
+      </div>
     );
   }
 
   return (
     <div className={`${STUDIO_ROOT} studio`}>
       <VignetteGrid />
-      <StudioBand run={run} mode={mode} />
+      <StudioBand mode={mode} />
       <main className="s-main" aria-label="Run">
+        <TimelineBar run={run} mode={mode} meta={<RunMeta run={run} mode={mode} />} />
         {main}
       </main>
-      <TimelineBar run={run} mode={mode} notice={notice} />
     </div>
   );
 }

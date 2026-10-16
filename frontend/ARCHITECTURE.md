@@ -56,7 +56,7 @@ Status of claims: library APIs below were checked against current docs via Conte
 | `diff` (jsdiff) | 9.0.0 (ships types) | BSD-3-Clause | Context7 `/kpdecker/jsdiff` (`diffLines`) |
 | `jszip` | 3.10.2 | MIT OR GPL-3.0-or-later (we use it under MIT) | Context7 `/stuk/jszip` (`file`, `folder`, `generateAsync({type:"blob"})`) |
 
-Fonts: `Atkinson_Hyperlegible_Next` and `Atkinson_Hyperlegible_Mono` from `next/font/google`, confirmed present in `next@16.3.8`'s font data and type declarations (`brand.md` section 2).
+Fonts (decision D12): `Sofia_Sans_Extra_Condensed` (display, weights 800 and 900), `Sofia_Sans` (body) and `Martian_Mono` (data and labels) from `next/font/google`, declared in `components/sections/shared/rack-fonts.ts` as `RACK_FACES` (CSS variables `--font-rk-display`, `--font-rk-body`, `--font-rk-mono`, mapped in `globals.css` to `--font-display`, `--font-body`, `--font-data`). Atkinson, Archivo and JetBrains Mono are no longer used (`brand.md` section 2).
 
 Not used, on purpose: no chart library (2 to 4 bars are plain SVG), no syntax-highlighter package (a 40-line Verilog tokenizer in `lib/verilog/`), no FileSaver (download via object URL), no tldraw (license key), no elkjs (EPL/GPL; dagre is enough).
 
@@ -91,7 +91,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-- Since 2026-10-15 /studio uses no canvas library. Figure 1 is a fixed CSS grid plus one SVG wire layer measured after layout (`components/sections/studio/figure/`). It renders on the client like every studio section.
+- Since 2026-10-15 /studio uses no canvas library. Since 2026-10-16 (D12) it is a rack of modules (TRANSPORT, LOOP, MONITOR, VERSIONS) in plain CSS grid, with no SVG wire layer (`components/sections/studio/`). It renders on the client like every studio section.
 - Hosting is still an open decision (Nebius or Vercel, `REPORT.md` section 3). The static `out/` folder works on either.
 
 ## 4. `frontend/` folder structure
@@ -115,8 +115,12 @@ frontend/
       ui/            shadcn primitives (generated)                  (S)
       brand/         Wordmark, PoweredBy                            (A)
       domain/        presentational, props-only components          (A)
-      sections/      datasheet/* (landing), studio/*, try/*, results/*, shared/*  (C)
-                     studio/: figure/, detail/, table/, timeline/, chrome/
+      sections/      rack/* (landing), studio/*, try/*, results/*, shared/*  (C)
+                     rack/: RackPage, RackNav, RackHead, ModSpec, ModLoop, ModResult, Inside, RackFooter, Ears, icons, rack.css
+                     studio/: chrome/ (Mod, Seg7, StudioBand), loop/ (LoopModule, derive-leds), timeline/ (TimelineBar, Narration),
+                              detail/ (DetailPanel, follow, CandidateDetail, ItemDetails), table/ (CharacteristicsTable),
+                              figure/ (derive.ts, proof.ts only)
+                     shared/: RackBar + rack-bar.css, AppHeader, rack-fonts.ts, app-roots.ts, datasheet-base.css, app-pages.css, VignetteGrid
     lib/
       utils.ts       cn() from shadcn                               (S)
       env.ts         AGENT_URL, isLiveConfigured                    (S)
@@ -476,17 +480,20 @@ Layers, bottom to top. A layer imports only from layers below it.
 | 1 | Tokens | `app/globals.css` | Only place colors, fonts, radii and motion are defined (`brand.md` 1.5) |
 | 2 | UI primitives | `components/ui` | shadcn-generated. Restyle through tokens, not per-use overrides |
 | 3 | Domain components | `components/brand`, `components/domain` | Presentational, props in and callbacks out. No store, no fetch, no router |
-| 4 | Figure | `components/sections/studio/figure` | Figure 1, the live loop: a fixed grid of step columns and version boxes plus an SVG wire layer. Reads the run state only; selection goes through `ui.select` |
+| 4 | Rack chrome | `components/sections/studio/chrome`, `components/sections/shared/RackBar.tsx` | `Mod` (a rack module: ears, "MOD · NAME" label), `Seg7` (seven-segment readout), the shared top bar. Presentational; no run logic |
 | 5 | Sections | `components/sections/*` | Compose 2 to 4 with store hooks. All store-to-props wiring happens here |
 | 6 | Pages | `app/**/page.tsx` | Thin: metadata, `Suspense`, one or more sections. No business logic, no styling beyond layout |
 
 **Pages compose reusable components; they never re-implement them.** If two sections need the same visual, it becomes a domain component. The full inventory with props is in `UI_UX_SPEC.md` section 5.
 
-Studio specifics (rebuilt 2026-10-15, decision D11 in `REPORT.md`):
-- One frame: band and metadata line, Figure 1 with the detail panel beside it, Table 1 under the figure, one timeline bar. Full viewport with no page scroll from 1100px wide; narrower, the figure, detail and table stack and the page scrolls.
-- The detail panel follows the run by default (`detail/follow.ts` compares each run state with the previous one); a click on a figure box or table row pins it through `ui.select`, and "Follow run" or Escape clears the selection.
+Studio specifics (rack re-skin 2026-10-16, decision D12 in `REPORT.md`; replaces the D11 Figure 1 and datasheet frame):
+- One frame: the shared `RackBar` (via `StudioBand`), then a TRANSPORT module on top (`timeline/TimelineBar`, seven-segment readouts, run metadata), then three modules side by side: LOOP (`loop/LoopModule`), MONITOR (`timeline/Narration` plus `detail/DetailPanel`) and VERSIONS (`table/CharacteristicsTable`). `StudioWorkspace` composes them. Full viewport with no page scroll from 1100px wide; narrower, the modules stack and the page scrolls.
+- LOOP shows one LED column per stage (PLAN, LOCK, BUILD, TEST, EVOLVE, PROVE) with a status square and word, fail markers on TEST and the round. `loop/derive-leds.ts` derives all of it from run state only (stage statuses, candidates, `evolve.detail`), never from constants.
+- The detail panel follows the run by default (`detail/follow.ts` compares each run state with the previous one); a click on a VERSIONS row pins it through `ui.select`, and "Follow run" or Escape clears the selection. `figure/derive.ts` and `figure/proof.ts` remain as shared derivations; the figure components (`LoopFigure`, `CandidateBox`, `Wires`, `describe.ts`) were deleted.
+- Scroll model: the detail body (`.dp-body`) is the one vertical scroller, with `overscroll-behavior: contain`; code boxes scroll only sideways. Below 1100px the page scrolls and the detail body grows.
 - No pan, zoom or dragging. Round columns come from the run data, never a constant. The reducer still builds xyflow-typed nodes (`lib/canvas/*`) that `useRunSummary` reads, so `@xyflow/react` and `@dagrejs/dagre` stay installed.
-- Theme: the datasheet world under `.vs` (`studio.css`) on top of `sections/shared/datasheet-base.css`, which the landing (`.ds`) shares.
+- Theme: the rack world under `.vs` (`studio.css`, tokens `--rk-*` in `globals.css`) on top of `sections/shared/datasheet-base.css` (the file keeps its old name). Root class `STUDIO_ROOT` = `vs` + `RACK_FACES`.
+- Landing (`components/sections/rack/`, scope `.rk`): `RackPage` = `RackNav`, `RackHead`, a rack of `ModSpec`, `ModLoop`, `ModResult` (each with `Ears`), then `Inside` and `RackFooter`. /try (`.vt`), /results (`.vr`) and the 404 page (`.vn`) take the same tokens (`app-roots.ts`, `app-pages.css`); every page uses the one `RackBar` top bar (/try, /results and 404 through `AppHeader`).
 
 ## 10. Proposed agent API (contract for `backend/`, not built)
 

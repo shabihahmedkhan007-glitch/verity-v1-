@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/sections/shared/AppHeader";
+import { RackBarLink } from "@/components/sections/shared/RackBar";
 import { TRY_ROOT } from "@/components/sections/shared/app-roots";
 import { VignetteGrid } from "@/components/sections/shared/VignetteGrid";
 import { PRESETS } from "@/lib/contracts/presets";
@@ -58,13 +57,7 @@ export function TryView() {
   return (
     <div className={`${TRY_ROOT} flex min-h-svh flex-col`}>
       <VignetteGrid />
-      <AppHeader
-        actions={
-          <Button asChild variant="outline" className="h-8 px-3">
-            <Link prefetch={false} href="/studio?run=golden">Watch the recorded run</Link>
-          </Button>
-        }
-      />
+      <AppHeader current="try" actions={<RackBarLink href="/studio?run=golden">Watch the recorded run</RackBarLink>} />
       <main className="mx-auto w-full max-w-[64rem] flex-1 px-6 py-10 md:py-14">
         <h1 className="text-2xl font-bold text-foreground">Run Verity live</h1>
         <p className="mt-2 max-w-[65ch] text-base text-fg-muted">

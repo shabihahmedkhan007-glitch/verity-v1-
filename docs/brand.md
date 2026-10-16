@@ -2,7 +2,7 @@
 
 Source of truth for color, type, spacing, motion, icons and voice. Read with `PRODUCT.md` (who and why) and `UI_UX_SPEC.md` (pages and components). Written 2026-10-04.
 
-The three brand colors are fixed by the user and must not change. Everything else is derived from them and checked for WCAG 2.2 AA (results in section 1.4).
+**Decision D12 (2026-10-16) supersedes the navy and Verity Green palette and the Archivo, JetBrains Mono, Atkinson faces.** The rack palette (amber accent) and the Sofia Sans faces below are now the source of truth. Sections 1.3 to 1.5 and the contrast table record the earlier navy and green system and are kept as history only; the live tokens are in `frontend/src/app/globals.css`.
 
 ---
 
@@ -10,21 +10,32 @@ The three brand colors are fixed by the user and must not change. Everything els
 
 ### 1.1 Strategy
 
-- **Studio, Try, Results (product register): Restrained.** Tinted navy neutrals carry 90% of the surface. Verity Green is the single signal. Fail, warn and info appear only as state.
-- **Landing (brand register): Restrained with an earned signal.** Same palette; the page's color comes from the live replay itself. As the recorded run passes tests, green appears on screen. Nothing on the landing is green unless it is verified or the primary action.
-- **Rule: green is earned.** Verity Green means one of three things only: verified/pass, the one primary action on a screen, or keyboard focus. Never decoration, never a background wash, never gradient text.
+- **Studio, Try, Results (product register): Restrained.** Warm near-black neutrals carry 90% of the surface. Amber is the single signal. Fail, warn and info appear only as state.
+- **Landing (brand register): Restrained with an earned signal.** Same palette; the page's color comes from the live replay itself. As the recorded run passes tests, amber appears on screen. Nothing on the landing is amber unless it is verified or the primary action.
+- **Rule: amber is earned.** Amber means one of three things only: verified/pass, the one primary action on a screen, or keyboard focus. Never decoration, never a background wash, never gradient text. Running or in-progress states use pale amber (`--rk-run`). Fail is a hollow white square plus the word, never red. Known risk: amber reads as a warning on instruments; mitigated by shape plus word.
 
 Theme: dark only. Scene sentence for both registers: a judge on a 14-inch laptop late in a judging session, arriving from the dark navy Devpost thumbnail, watching an autonomous run for two or three minutes; a dark surface keeps that continuity and lets status color carry the meaning.
 
-### 1.2 Fixed brand colors (do not change)
+### 1.2 Fixed brand colors (D12, do not change)
 
-| Name | Role | Hex | OKLCH |
-|---|---|---|---|
-| Deep Space Navy | Page background | `#050A12` | `oklch(14.3% 0.020 255.8)` |
-| Dark Blue | Surfaces, cards, canvas nodes | `#0B1220` | `oklch(18.3% 0.031 263.4)` |
-| Verity Green | Primary accent, pass/verified, focus | `#39FF88` | `oklch(88.1% 0.221 151.2)` |
+| Token | Role | Hex |
+|---|---|---|
+| `--rk-ground` | Page background | `#0A0806` |
+| `--rk-panel` / `--rk-panel-2` | Surfaces, raised surfaces | `#13100C` / `#19150F` |
+| `--rk-inset` | Code and inset wells | `#0C0A07` |
+| `--rk-rule` / `--rk-rule-2` | Hairlines, strong rules | `#2A231A` / `#3A3024` |
+| `--rk-ink` / `--rk-ink-2` / `--rk-ink-3` | Text: primary, secondary, tertiary | `#F3EEE6` / `#C4BBAE` / `#978C7E` |
+| `--rk-seg-off` / `--rk-seg-off-b` / `--rk-grey` | Unlit segments, their border, disabled | `#1E1912` / `#2C251B` / `#7E7468` |
+| `--rk-a` | Amber accent (pass, proven, primary action, focus) | `#FFB000` |
+| `--rk-a2` / `--rk-a3` / `--rk-a4` / `--rk-a5` | Accent tiers, brightest to dimmest (earned only) | `#E09A00` / `#A66F00` / `#5C3E00` / `#2E1F05` |
+| `--rk-run` / `--rk-run-2` / `--rk-run-bg` | Running / in progress | `#FFD98A` / `#B8995A` / `#211A0C` |
+| `--rk-on-a` | Text on accent fills | `#140C00` |
 
-### 1.3 Derived palette
+Type faces (loaded in `components/sections/shared/rack-fonts.ts`): display `--font-display` = Sofia Sans Extra Condensed (800, 900); body `--font-body` = Sofia Sans; data and labels `--font-data` = Martian Mono.
+
+The legacy token names (`--background`, `--surface`, `--primary`, `--pass`, `--ring`, `--chart-*`, and `--verity-green`) still exist and now resolve to these values. `--fail` and `--warn` are ivory (white); `--info` is `--rk-run`.
+
+### 1.3 Derived palette (Superseded by D12 (2026-10-16), kept as history)
 
 Neutrals are tinted toward the navy hue (about 255 to 262). Accent tints share Verity Green's hue (151 to 156).
 
@@ -61,7 +72,7 @@ Neutrals are tinted toward the navy hue (about 255 to 262). Accent tints share V
 
 Syntax keyword green is deliberately desaturated so Verity Green stays the only saturated green on screen.
 
-### 1.4 Contrast results (computed 2026-10-04)
+### 1.4 Contrast results (computed 2026-10-04; Superseded by D12 (2026-10-16), kept as history)
 
 77 pairs checked with the WCAG 2.x relative-luminance formula (OKLCH converted to sRGB in a script). Zero failures. Minimums:
 
@@ -82,7 +93,9 @@ Syntax keyword green is deliberately desaturated so Verity Green stays the only 
 
 Pass green and fail red have a luminance ratio of 2.19 to each other, so they separate in grayscale and for red-green color blindness. Status is still never shown by color alone (see 6.2).
 
-### 1.5 Ready-to-paste `globals.css`
+### 1.5 Ready-to-paste `globals.css` (Superseded by D12 (2026-10-16), kept as history)
+
+> History only: this block holds the old navy, `#39FF88` and Atkinson values. Do not paste it. The current tokens are in section 1.2 and in `frontend/src/app/globals.css`.
 
 Paste into `frontend/src/app/globals.css`. Keep the `@import` lines that `npx shadcn@latest init` writes (as of shadcn 4.x docs: `tailwindcss`, `tw-animate-css`, `shadcn/tailwind.css`) and replace everything else with this block. The app ships one theme: tokens live in `:root`, and `<html>` carries `class="dark"` so shadcn's `dark:` variants apply.
 
@@ -366,7 +379,17 @@ The `--xy-*` names above were checked against `@xyflow/react@12.12.0`'s `dist/st
 
 ## 2. Typography
 
-### 2.1 Families
+### 2.1 Families (current, D12)
+
+| Role | Family | next/font export | Weights used |
+|---|---|---|---|
+| Display (headline, big readouts) | Sofia Sans Extra Condensed | `Sofia_Sans_Extra_Condensed` | 800, 900 |
+| Body (UI, prose) | Sofia Sans | `Sofia_Sans` | variable |
+| Data (code, measured values, labels, readouts) | Martian Mono | `Martian_Mono` | variable |
+
+Declared in `components/sections/shared/rack-fonts.ts` as `RACK_FACES` (variables `--font-rk-display`, `--font-rk-body`, `--font-rk-mono`); each page root adds `RACK_FACES`. In `globals.css` they map to `--font-display`, `--font-body` and `--font-data` (`--font-sans` is the body face, `--font-mono` the data face). Mono is for code, measured values and instrument labels.
+
+### 2.1a Atkinson families (Superseded by D12 (2026-10-16), kept as history)
 
 | Role | Family | next/font export | Weights used |
 |---|---|---|---|
@@ -412,7 +435,9 @@ Brand (Landing): fluid, ratio at least 1.25 between steps.
 
 Rules: body measure capped at 65ch (`max-w-[65ch]`). Weights: 400 body, 500 UI labels and buttons, 700 headings, 800 display and wordmark. Sentence case everywhere; uppercase only for the four operator names and PASS/FAIL inside badges (with `tracking-wider`). Measured numbers use `font-mono` so columns align.
 
-### 2.3 Wordmark
+### 2.3 Wordmark (Superseded by D12 (2026-10-16), kept as history)
+
+Current: the rack bar (`shared/RackBar.tsx`) shows an outlined square with a check mark and the word VERITY, linking to `/`. The text below describes the retired green-square wordmark.
 
 "Verity" in Atkinson Hyperlegible Next 800, tracking -0.02em, `--foreground`, with the dot of the i replaced by a Verity Green square (about 0.2em, radius 0). Build it as text: `Ver` + dotless `ı` (U+0131) with an absolutely positioned green square above it + `ty`. Wrap in an element with `aria-label="Verity"` and hide the inner spans from assistive tech. Tune the square's offset visually at each size. The green square is the brand motif: status indicators are squares too.
 
@@ -505,19 +530,19 @@ A careful engineer explaining a test bench to a smart friend: plain, exact, unhu
 - Numbers: thousands separators (1,840), one decimal for percentages (17.4%), two for ns and mW (3.38 ns, 1.66 mW), currency with two decimals ($0.18). Units always: µm², ns, MHz, mW.
 - Times: "10 s", "1:30" (replay clock), "about 6 minutes".
 - Sentence case for all UI text. No exclamation marks. No "magic", "revolutionary", "AI-powered", "effortless", "seamless".
-- Status pairs color + icon + word, always: `[green square] PASS 16/16`, `[red square] FAIL 13/16`, `[blinking cyan square] Running`.
+- Status pairs a square + word, always: `[filled amber square] PASS 16/16`, `[hollow white square] FAIL 13/16`, `[blinking pale amber square] Running`. Never red.
 
 ## 7. Do and don't
 
 | Do | Don't |
 |---|---|
 | Let the replay be the hero image | Put a stock chip photo or a 3D render in the hero |
-| Use green only for pass, the primary action and focus | Tint panels, headings or icons green for "brand" |
+| Use amber only for pass, proven, the primary action and focus | Tint panels, headings or icons amber for "brand" |
 | Show FAIL states fully, with expected vs got and the fix diff | Hide failures or skip straight to the winner |
 | Put the baseline next to every number | Show "-17%" with no "vs v1" and no tool |
 | Use mono for code and measured values | Use mono for headings, buttons or "techy" labels |
 | Use full 1px borders and tinted fills for callouts | Use a thick colored side stripe on cards or alerts |
-| Use one primary button per screen | Put two green buttons side by side |
+| Use one primary button per screen | Put two amber buttons side by side |
 | Keep canvas nodes flat (surface + border) | Add drop shadows, glass blur or gradients to nodes |
 | Use the winner glow once, on the winner | Glow on hover, on buttons, or on every pass |
 | Keep about 12 nodes visible | Let the tree sprawl; collapse rejected versions instead |

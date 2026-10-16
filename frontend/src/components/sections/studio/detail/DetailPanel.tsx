@@ -67,7 +67,7 @@ export function DetailPanel({ run, follow }: { run: RunState; follow: Selection 
           </span>
         )}
       </div>
-      <div className="dp-body" key={entity ? entityKey(entity) : "none"}>
+      <div className="dp-body" tabIndex={0} aria-label="Detail, scrollable" key={entity ? entityKey(entity) : "none"}>
         {entity ? (
           <Body entity={entity} run={run} />
         ) : (
