@@ -15,12 +15,14 @@ from ..contracts import (
     CreateRunRequest,
     CreateRunResponse,
     HealthResponse,
+    ParseRequest,
     SessionRequest,
     SessionResponse,
     to_json,
     to_wire,
 )
 from ..contracts.view_types import STEER_ADAPTER
+from ..core.errors import AdmissionDenied, LLMError
 from ..core.family import ParamsError
 from ..core.protocols import RunService
 from ..core.records import ACTIVE_STATUSES, RunRecord
@@ -50,6 +52,7 @@ class ApiState:
     session_limiter: TokenBucketLimiter
     auth_limiter: TokenBucketLimiter
     run_limiter: TokenBucketLimiter
+    parse_limiter: TokenBucketLimiter
 
 
 def _state(request: Request) -> ApiState:
@@ -202,6 +205,26 @@ async def create_run(request: Request, principal: Principal = Depends(session_gu
         raise
     token = state.auth.issue_stream_token(run.id, principal.sid)
     return _json(CreateRunResponse(run_id=run.id, cap_usd=run.budget.max_usd, stream_token=token), status=201)
+
+
+@router.post("/parse")
+async def parse_text(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    state = _state(request)
+    body = await _read_json(request, ParseRequest)
+    wait = state.parse_limiter.acquire(principal.sid)
+    if wait > 0:
+        raise rate_limited(wait)
+    try:
+        reply = await state.service.parse(body.text)
+    except AdmissionDenied as exc:
+        state.parse_limiter.refund(principal.sid)
+        if exc.reason == "maintenance":
+            raise ApiError(503, "Live runs are offline for maintenance.", "maintenance") from None
+        raise  # budget_exhausted: the shared handler answers 429 with the reason
+    except LLMError:
+        log.warning("parse: the model call failed", exc_info=True)
+        raise ApiError(502, "The model could not be reached. Try again shortly.") from None
+    return _json(reply)
 
 
 @router.get("/runs/{run_id}/events")

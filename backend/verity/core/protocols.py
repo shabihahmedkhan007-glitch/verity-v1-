@@ -18,6 +18,7 @@ from ..contracts import (
     Candidate,
     EventBase,
     HealthResponse,
+    ParseReply,
     PinInput,
     Priority,
     RunLog,
@@ -349,6 +350,11 @@ class RunService(Protocol):
         ...
 
     async def health(self) -> HealthResponse: ...
+
+    async def parse(self, text: str) -> ParseReply:
+        """POST /parse: one planner call, validated against the knob tables. Raises AdmissionDenied
+        (maintenance | budget_exhausted) and LLMError. The call's cost is added to the daily spend."""
+        ...
 
 
 __all__ = [

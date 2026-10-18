@@ -92,9 +92,14 @@ class CallBudget(BaseModel):
     max_prompt_tokens: int = 12_000
 
 
+class ParseBudget(BaseModel):
+    max_output_tokens: int = 400
+
+
 class BudgetConfig(BaseModel):
     run: RunBudget = Field(default_factory=RunBudget)
     call: CallBudget = Field(default_factory=CallBudget)
+    parse: ParseBudget = Field(default_factory=ParseBudget)
 
 
 class LimitsConfig(BaseModel):
@@ -102,6 +107,7 @@ class LimitsConfig(BaseModel):
     auth_window_s: int = 600
     api_per_session_per_min: int = 60
     runs_per_session_per_hour: int = 3
+    parse_per_session_per_min: int = 6
     concurrent_per_session: int = 1
     concurrent_global: int = 2
     daily_usd: float = 5.0

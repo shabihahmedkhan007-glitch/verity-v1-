@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 
 from ..config import AGENT_ROOT, Settings
+from ..api.parse import parse_request
 from ..features import FEATURES
 from ..contracts import (
     AutopilotSteer,
@@ -31,6 +32,7 @@ from ..contracts import (
     GateSteer,
     HealthResponse,
     HumanEvent,
+    ParseReply,
     PinSteer,
     Priority,
     RunLog,
@@ -240,6 +242,20 @@ class RunManager:
             auth_required=self._settings.auth.required,
             features=list(FEATURES),
         )
+
+    async def parse(self, text: str) -> ParseReply:
+        """POST /parse. Refused like a run when offline or when the day's budget is used up; the call's
+        estimated cost is added to the same daily total the runs use (the fake provider spends nothing)."""
+        if self._closing or self._maintenance():
+            raise AdmissionDenied("maintenance", "live runs are offline")
+        if (await self._daily_spend()).exhausted:
+            raise AdmissionDenied("budget_exhausted", "the daily budget is used up")
+
+        async def record(usd: float) -> None:
+            if usd > 0 and self._settings.provider != "fake":
+                await self._store.add_daily_spend(_utcnow().strftime("%Y-%m-%d"), usd)
+
+        return await parse_request(text, self._packs, self._provider, self._settings, on_cost=record)
 
     # ======================================================================
     # RunService: write side

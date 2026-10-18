@@ -20,6 +20,7 @@ from ..config import Settings
 from ..core.protocols import RunService
 from .auth import AuthService
 from .errors import install_error_handlers
+from .ratelimit import TokenBucketLimiter
 from .routes import ApiState, ip_guard, new_limiters, router
 
 log = logging.getLogger("verity.api")
@@ -102,6 +103,7 @@ def create_app(
         session_limiter=session_limiter,
         auth_limiter=auth_limiter,
         run_limiter=run_limiter,
+        parse_limiter=TokenBucketLimiter(settings.limits.parse_per_session_per_min, 60.0),
     )
 
     install_error_handlers(app)

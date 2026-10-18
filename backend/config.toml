@@ -71,11 +71,15 @@ plan_max_output = 12_000       # Nemotron reasoning tokens count against this ca
 rtl_max_output = 24_000        # 12_000 cut 11 of 20 matmul4 drafts and 6 repair/optimizer calls at the cap (2026-10-16 gate)
 max_prompt_tokens = 12_000
 
+[budget.parse]
+max_output_tokens = 400         # POST /parse: one short JSON answer from the planner model
+
 [limits]
 auth_per_ip = 10               # POST /auth/session per IP ...
 auth_window_s = 600            # ... per 10 min
 api_per_session_per_min = 60
 runs_per_session_per_hour = 3
+parse_per_session_per_min = 6   # POST /parse per session
 concurrent_per_session = 1
 concurrent_global = 2
 daily_usd = 5.00               # global estimated spend per UTC day, persisted in SQLite

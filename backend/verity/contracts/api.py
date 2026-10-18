@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+from pydantic import field_validator
+
 from .base import WireModel, opt
 from .events import Priority
 
@@ -46,3 +48,39 @@ class CreateRunResponse(WireModel):
 class ErrorResponse(WireModel):
     error: str
     reason: str | None = opt()
+
+
+PARSE_MAX_CHARS = 300
+
+
+class ParseRequest(WireModel):
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _length(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= PARSE_MAX_CHARS:
+            raise ValueError(f"text must be 1 to {PARSE_MAX_CHARS} characters")
+        return value
+
+
+class ParseClosest(WireModel):
+    family: str
+    params: dict[str, int | bool | str]
+
+
+class ParseInRange(WireModel):
+    result: Literal["in_range"] = "in_range"
+    family: str
+    params: dict[str, int | bool | str]
+    note: str | None = opt()
+
+
+class ParseOutOfRange(WireModel):
+    result: Literal["out_of_range"] = "out_of_range"
+    reason: str
+    closest: ParseClosest | None = None  # always on the wire; null when nothing is close
+
+
+ParseReply = ParseInRange | ParseOutOfRange

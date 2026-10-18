@@ -40,6 +40,28 @@ _BUG_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def _fake_parse_json(request: str) -> str:
+    low = request.lower()
+    bits = re.search(r"(\d+)[- ]?bit", low)
+    width = {"width": int(bits.group(1))} if bits else {}
+    if "gpu" in low or "6090" in low:
+        answer: dict[str, Any] = {
+            "result": "out_of_range",
+            "reason": "That is a full GPU: thousands of cores, memories and caches. Verity builds small single-module blocks.",
+            "closest": {"family": "mac4", "params": {"lanes": 8, "width": 16, "cycles": 32}},
+        }
+    elif "counter" in low:
+        answer = {"result": "in_range", "family": "cnt8", "params": width}
+    elif "adder" in low:
+        answer = {"result": "in_range", "family": "add8", "params": width}
+    elif "pattern" in low or "detector" in low:
+        pattern = "".join(c for c in low if c in "01")
+        answer = {"result": "in_range", "family": "fsm_seq", "params": {"pattern": pattern} if pattern else {}}
+    else:
+        answer = {"result": "in_range", "family": "mac4", "params": {}}
+    return json.dumps(answer)
+
+
 class FakeProvider:
     name = "fake"
 
@@ -63,6 +85,8 @@ class FakeProvider:
     # ---------- entry ----------
     async def complete(self, req: LLMRequest) -> LLMResponse:
         tags = req.tags
+        if tags.get("purpose") == "parse":
+            return await self._parse_answer(req)
         task_id = tags.get("task_id", "")
         if not task_id:
             raise LLMError("fake provider needs the task_id tag", retryable=False)
@@ -85,6 +109,22 @@ class FakeProvider:
             output_tokens=estimate_tokens(text),
             model=req.model,
             request_id=f"fake-{digest[:12]}",
+            latency_ms=int(self._delay_s * 1000),
+            finish_reason="stop",
+        )
+
+    # ---------- POST /parse ----------
+    async def _parse_answer(self, req: LLMRequest) -> LLMResponse:
+        """Deterministic stand-in for the parse call. The request text is the user message."""
+        if self._delay_s > 0:
+            await asyncio.sleep(self._delay_s)
+        text = _fake_parse_json(req.user)
+        return LLMResponse(
+            text=text,
+            input_tokens=estimate_tokens(req.system + req.user),
+            output_tokens=estimate_tokens(text),
+            model=req.model,
+            request_id="fake-parse",
             latency_ms=int(self._delay_s * 1000),
             finish_reason="stop",
         )
