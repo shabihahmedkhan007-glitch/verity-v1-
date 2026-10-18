@@ -156,7 +156,7 @@ async def test_fast_mode_skips_evolve_and_prove(settings, mac4: TaskPack) -> Non
         assert {"evolve", "prove"} <= skipped
         assert set(final_candidates(run.events)) == {"c1"}
         assert [e.candidate_id for e in run.events if isinstance(e, WinnerEvent)] == ["c1"]
-        assert run.tools.eqy_calls == 0
+        assert run.tools.eqy_calls == 1  # only the human_ref check; no prove stage in fast mode
     finally:
         await finish(run)
 
@@ -270,7 +270,7 @@ async def test_winner_override_after_the_ai_pick(settings, mac4: TaskPack) -> No
     tools.check_equivalence = eqy_then_override  # type: ignore[method-assign]
     run = await execute_fake_run(settings, mac4, mode="full", tools=tools, on_ctx=lambda ctx: holder.update(ctx=ctx))
     try:
-        if tools.eqy_calls == 0:
+        if tools.eqy_calls <= 1:  # only the human_ref check ran
             pytest.skip("the AI picked v1, so the prove stage (and the override) was not exercised")
         winners = [e for e in run.events if isinstance(e, WinnerEvent)]
         assert winners[-1].by == "user" and winners[-1].candidate_id == "c1"
@@ -286,12 +286,12 @@ async def test_not_equivalent_demotes_the_winner(settings, mac4: TaskPack) -> No
     run = await execute_fake_run(settings, mac4, mode="full", tools=tools)
     try:
         assert run.error is None and run.outcome is not None
-        if tools.eqy_calls == 0:
+        if tools.eqy_calls <= 1:  # only the human_ref check ran
             pytest.skip("the AI picked v1, so EQY never ran")
         final = final_candidates(run.events)
         assert run.outcome.winner_id == "c1" or final[run.outcome.winner_id].status == "measured"
         assert any(c.status == "rejected" and c.eqy is not None and c.eqy.status == "not_equivalent" for c in final.values())
-        assert tools.eqy_calls <= mac4_prove_attempts(settings)
+        assert tools.eqy_calls <= mac4_prove_attempts(settings) + 1  # +1: the human_ref check
     finally:
         await finish(run)
 

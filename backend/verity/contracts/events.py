@@ -342,6 +342,15 @@ class ArtifactEvent(EventBase):
     content: str
 
 
+class HumanRefEvent(EventBase):
+    """The winner's counterpart: the human-written reference measured with the same tools, plus EQY of the reference
+    (gold) against the winner (gate). Emitted once, after the winner and before the terminal run event."""
+
+    t: Literal["human_ref"] = "human_ref"
+    ppa: PPA
+    eqy: Equivalence
+
+
 RunEvent = Annotated[
     Union[
         RunPhaseEvent,
@@ -357,6 +366,7 @@ RunEvent = Annotated[
         CaptionEvent,
         CreditsEvent,
         ArtifactEvent,
+        HumanRefEvent,
     ],
     Field(discriminator="t"),
 ]

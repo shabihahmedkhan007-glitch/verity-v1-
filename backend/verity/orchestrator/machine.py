@@ -26,7 +26,7 @@ from ..core.types import (
     RunStopped,
     ToolInfraError,
 )
-from . import build, evolve, judge
+from . import build, evolve, human_ref, judge
 from .candidates import FIRST_VERSION_REASON
 from .events import Emitter
 from .plan_stage import StageFailed, plan_stage, spec_stage
@@ -82,6 +82,7 @@ async def _run(st: RunState) -> None:
         winner = await evolve.choose_and_prove(st, prove=True)
 
     winner = await evolve.apply_winner_override(st, winner)
+    await human_ref.measure_human_ref(st, winner)
     await _finish(st, winner)
 
 

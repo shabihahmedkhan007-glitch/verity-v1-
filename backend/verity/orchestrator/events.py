@@ -23,7 +23,9 @@ from ..contracts import (
     GateState,
     HumanEvent,
     HumanInput,
+    HumanRefEvent,
     NodeKind,
+    PPA,
     OpEvent,
     PlanBlock,
     PlanDiff,
@@ -32,6 +34,7 @@ from ..contracts import (
     RoundEvent,
     RunPhase,
     RunPhaseEvent,
+    Equivalence,
     Spec,
     SpecEvent,
     StageEvent,
@@ -136,6 +139,9 @@ class Emitter:
 
     async def winner(self, candidate_id: str, by: WinnerBy, ai_pick_id: str) -> None:
         await self.emit(WinnerEvent(candidate_id=candidate_id, by=by, ai_pick_id=ai_pick_id))
+
+    async def human_ref(self, ppa: PPA, eqy: Equivalence) -> None:
+        await self.emit(HumanRefEvent(ppa=ppa, eqy=eqy))
 
     # ---------- spend and files ----------
     async def credits(self) -> None:

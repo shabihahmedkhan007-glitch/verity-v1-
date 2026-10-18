@@ -10,7 +10,9 @@ import logging
 
 from ..contracts import WinnerOverrideInput, WinnerOverrideSteer
 from ..core import captions as cap
+from ..core.rtl import Rtl
 from ..core.types import (
+    RunContext,
     BudgetExhausted,
     EquivalenceResult,
     LLMError,
@@ -188,15 +190,19 @@ async def choose_and_prove(st: RunState, *, prove: bool) -> str:
     return await _prove(st, pick)
 
 
-async def _run_eqy(st: RunState, gold: Cand, gate: Cand) -> EquivalenceResult:
-    ctx = st.ctx
-    assert gold.rtl_obj is not None and gate.rtl_obj is not None
+async def run_eqy(ctx: RunContext, gold: Rtl, gate: Rtl) -> EquivalenceResult:
+    """EQY gold vs gate. An infrastructure error becomes a status "error" result (maps to inconclusive)."""
     try:
         with ctx.busy():
-            return await ctx.tools.check_equivalence(gold.rtl_obj, gate.rtl_obj, ctx.pack)
+            return await ctx.tools.check_equivalence(gold, gate, ctx.pack)
     except ToolInfraError as exc:
         log.warning("run %s: EQY infrastructure error: %s", ctx.run_id, exc)
         return EquivalenceResult(status="error", message=str(exc))
+
+
+async def _run_eqy(st: RunState, gold: Cand, gate: Cand) -> EquivalenceResult:
+    assert gold.rtl_obj is not None and gate.rtl_obj is not None
+    return await run_eqy(st.ctx, gold.rtl_obj, gate.rtl_obj)
 
 
 async def _prove(st: RunState, winner_id: str) -> str:

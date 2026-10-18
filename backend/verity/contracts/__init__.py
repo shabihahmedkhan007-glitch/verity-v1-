@@ -50,6 +50,7 @@ from .events import (
     GateEvent,
     GateState,
     HumanEvent,
+    HumanRefEvent,
     HumanInput,
     MoveNodeOp,
     NodeKind,
