@@ -12,7 +12,12 @@ KNOBS: list[dict] = [
     {"id": "enable", "kind": "bool", "default": True},
 ]
 
-WRAP_EDGES_EXTRA = 2  # the testbench runs 2**width + 2 edges to show a full wrap (same formula in test_dut.py)
+RESET_MARGIN = 6  # reset_dut holds reset for 3 rising edges (+1 release edge) before the steps; 2 more edges of slack
+
+
+def wrap_edges(width: int) -> int:
+    """Edges the testbench clocks to show a full wrap (one past the top value, one more to show 0 then 1). Rendered into params.json."""
+    return (1 << width) + 2
 
 
 def _q(text: str) -> str:
@@ -47,7 +52,7 @@ def _task_toml(width: int, enable: bool) -> str:
             f"q is a register: it changes only on a rising clock edge, to q + 1 (modulo {1 << width}) when rst_n is 1. "
             "rst_n low at the edge sets q to 0."
         )
-    max_cycles = max(512, (1 << width) + WRAP_EDGES_EXTRA + 6)
+    max_cycles = max(512, wrap_edges(width) + RESET_MARGIN)
     lines = [
         'schema = "verity.task/1"',
         'id = "cnt8"',
@@ -117,5 +122,5 @@ def render(params: dict) -> dict[str, str]:
     return {
         "task.toml": _task_toml(width, enable),
         "reference.v": _reference_v(width, enable),
-        "params.json": json.dumps({"width": width, "enable": enable}) + "\n",
+        "params.json": json.dumps({"width": width, "enable": enable, "wrap_edges": wrap_edges(width)}) + "\n",
     }

@@ -12,6 +12,7 @@ PARAMS = json.loads(Path(__file__).with_name("params.json").read_text(encoding="
 WIDTH = PARAMS["width"]
 ENABLE = PARAMS["enable"]
 MASK = (1 << WIDTH) - 1
+WRAP_EDGES = PARAMS["wrap_edges"]  # edges the testbench clocks to show a full wrap; rendered by family.py
 
 
 def golden_cnt8_step(q, rst_n, en):

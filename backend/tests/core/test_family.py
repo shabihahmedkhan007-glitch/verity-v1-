@@ -1,5 +1,6 @@
 """Knob params: validation, render_pack, and the render cache (mac4 is the first family)."""
 
+import json
 import os
 import re
 from pathlib import Path
@@ -153,3 +154,11 @@ def test_add8_cnt8_rendered_defaults_match_checked_in_files(add8: TaskPack, cnt8
         assert rendered["reference.v"] == (pack.root / "reference.v").read_text(encoding="utf-8")
         assert rendered["params.json"] == (pack.root / "params.json").read_text(encoding="utf-8")
         assert rendered["task.toml"] == (pack.root / "task.toml").read_text(encoding="utf-8")
+
+
+def test_cnt8_wrap_length_is_single_sourced(cnt8: TaskPack, tmp_path: Path) -> None:
+    for width in (4, 8, 16):
+        pack = render_pack(cnt8, {"width": width}, tmp_path)
+        params = json.loads((pack.root / "params.json").read_text(encoding="utf-8"))
+        assert params["wrap_edges"] == (1 << width) + 2
+        assert pack.sim.max_cycles_per_case >= params["wrap_edges"] + 4  # 3 reset edges plus the release edge

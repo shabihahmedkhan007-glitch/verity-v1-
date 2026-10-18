@@ -22,7 +22,7 @@ WIDTH = golden.WIDTH
 ENABLE = golden.ENABLE  # False: no en port, the counter is free-running
 MAXV = golden.MASK
 RANDOM_STEPS = 80
-WRAP_EDGES = (1 << WIDTH) + 2  # a full wrap at every width (no preload is possible); max_cycles_per_case is derived from the same width
+WRAP_EDGES = golden.WRAP_EDGES  # a full wrap at every width (no preload is possible); rendered by family.py with max_cycles_per_case
 
 
 @dataclass
