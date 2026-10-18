@@ -127,16 +127,64 @@ async def test_wall_budget_exhausted_skips_tools_and_keeps_status(settings, mac4
         (ev,) = refs(run.events)
         assert ev.ppa.area_um2 is None and ev.eqy.status == "not_run"
         assert ev.eqy.log == "Not run: the time limit was reached."
-        assert run.outcome is not None and run.outcome.status in ("done", "cap_reached")
+        assert run.outcome is not None and run.outcome.status == "done"
     finally:
         await run.store.close()
 
 
-async def test_capped_run_with_a_winner_emits_human_ref(tmp_path, mac4: TaskPack) -> None:
-    base = make_settings(tmp_path / "data")
-    tight = base.budget.model_copy(update={"run": base.budget.run.model_copy(update={"max_llm_calls": 3})})
-    run = await execute_fake_run(base.model_copy(update={"budget": tight}), mac4, mode="full")
+async def test_wall_budget_hit_after_measure_skips_eqy(settings, mac4: TaskPack, monkeypatch) -> None:
+    real = RunLedger.exhausted
+    real_stage = human_ref.measure_human_ref
+    state = {"armed": False, "tools": None}
+
+    async def arm(st, winner_id):
+        state["armed"], state["tools"] = True, st.ctx.tools
+        await real_stage(st, winner_id)
+
+    def exhausted(self):
+        tools = state["tools"]
+        if state["armed"] and tools.measure_calls > state["measure_at_entry"]:
+            return "max_wall_s"
+        return real(self)
+
+    async def arm2(st, winner_id):
+        state["measure_at_entry"] = st.ctx.tools.measure_calls
+        state["eqy_at_entry"] = st.ctx.tools.eqy_calls
+        await arm(st, winner_id)
+
+    monkeypatch.setattr(human_ref, "measure_human_ref", arm2)
+    monkeypatch.setattr(RunLedger, "exhausted", exhausted)
+    run = await execute_fake_run(settings, mac4, mode="fast", tools=FakeToolRunner())
     try:
+        (ev,) = refs(run.events)
+        assert ev.ppa.area_um2 is not None, "measure ran"
+        assert ev.eqy.status == "not_run" and ev.eqy.log == "Not run: the time limit was reached."
+        assert run.tools.measure_calls == state["measure_at_entry"] + 1
+        assert run.tools.eqy_calls == state["eqy_at_entry"], "EQY skipped"
+        assert run.outcome is not None and run.outcome.status == "done"
+    finally:
+        await run.store.close()
+
+
+async def test_end_budget_path_with_a_winner_emits_human_ref(settings, mac4: TaskPack, monkeypatch) -> None:
+    from verity.core.types import BudgetExhausted
+    from verity.orchestrator import evolve, machine
+
+    async def boom(st, current):
+        raise BudgetExhausted("max_llm_calls")
+
+    calls = []
+    real_end = machine._end_budget
+
+    async def spy(st, limit):
+        calls.append(limit)
+        await real_end(st, limit)
+
+    monkeypatch.setattr(evolve, "apply_winner_override", boom)
+    monkeypatch.setattr(machine, "_end_budget", spy)
+    run = await execute_fake_run(settings, mac4, mode="fast", tools=FakeToolRunner())
+    try:
+        assert calls == ["max_llm_calls"], "the _end_budget path ran"
         assert run.outcome is not None and run.outcome.status == "cap_reached" and run.outcome.winner_id
         assert len(refs(run.events)) == 1
         ref = next(i for i, e in enumerate(run.events) if isinstance(e, HumanRefEvent))

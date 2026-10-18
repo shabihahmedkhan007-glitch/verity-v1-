@@ -34,7 +34,6 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
         ppa = PPA(pdk=DEFAULT_PDK)
         eqy = Equivalence(status="inconclusive", against_id=winner_id)
         if ctx.ledger.exhausted() == "max_wall_s":
-            st.note_budget("max_wall_s")
             eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
             await em.human_ref(ppa, eqy)
             return
@@ -56,6 +55,8 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
 
         if not pack.eqy.enabled:
             eqy = not_run_equivalence(winner_id, "Equivalence checking is turned off for this task.")
+        elif ctx.ledger.exhausted() == "max_wall_s":
+            eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
         else:
             try:
                 eqy = (await evolve.run_eqy(ctx, ref, winner.rtl_obj)).to_equivalence(winner_id)
