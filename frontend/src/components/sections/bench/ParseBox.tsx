@@ -82,7 +82,7 @@ export function ParseBox({
         className="b-text"
         rows={3}
         maxLength={MAX_CHARS}
-        placeholder="For example: a 6-lane multiply-accumulate, 12-bit inputs, 20 cycles"
+        placeholder="For example: a 6-lane multiply-accumulate, 8-bit inputs, 20 cycles"
         value={text}
         disabled={disabled || busy}
         aria-describedby={`${id}-s`}

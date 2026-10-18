@@ -82,10 +82,11 @@ export const PRESETS: Preset[] = [
 ];
 
 // ---------- bench envelope (spec 2026-10-17 section 4) ----------
-// DRAFT ranges: encoded once here from the design spec and rendered from this table. The shipped ranges are the ones
-// the real-model range probe passes (spec section 7); until then every range is labelled draft on the page.
+// Ranges are encoded once here and rendered from this table. They are the ranges the real-model range probe passed on
+// 2026-10-18 (backend/evals/probe-2026-10-18.md), and they must equal each pack's family.py KNOBS. Set this back to true
+// to label the ranges draft on the page while a new range is unproven.
 
-export const RANGES_ARE_DRAFT = true;
+export const RANGES_ARE_DRAFT = false;
 
 export type KnobValue = number | boolean | string;
 export type KnobDef =
@@ -112,7 +113,7 @@ export const FAMILIES: Family[] = [
     summary: "Lanes of unsigned multiply-accumulate over a fixed number of cycles.",
     knobs: [
       { id: "lanes", label: "Lanes", kind: "int", min: 1, max: 8, default: 4, unit: "lanes" },
-      { id: "width", label: "Input width", kind: "int", min: 4, max: 16, default: 8, unit: "bits" },
+      { id: "width", label: "Input width", kind: "int", min: 4, max: 8, default: 8, unit: "bits" },
       { id: "cycles", label: "Accumulate cycles", kind: "int", min: 4, max: 32, default: 16, unit: "cycles" },
     ],
     liveAtDefaults: true,
