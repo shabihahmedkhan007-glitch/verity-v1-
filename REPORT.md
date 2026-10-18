@@ -21,14 +21,32 @@ Running record of everything done, decided, and changed in this project, from th
 | Deadline | 2026-10-30, 10:00 AM Pacific. Internal target: submit 2026-10-29 |
 | Planned stack | Python agent loop in FastAPI (SSE stream), Nemotron 3 Ultra + Super on Nebius Token Factory, Token Factory Sandboxes for chip tools (iverilog, Verilator, cocotb, Yosys, OpenROAD), Next.js + Tailwind dashboard, Tavily for datasheet lookup |
 
+
+### Backend at a glance
+
+The backend (`backend/`, Python 3.13, FastAPI) is the agent: it takes a chip request, drives NVIDIA Nemotron on Nebius Token Factory through the whole design loop, runs every check in real open-source chip tools, and streams each step to the web app. Detail lives in `backend/ARCHITECTURE.md`; exact interfaces in `backend/CONTRACTS.md`.
+
+| Part | What it does |
+|---|---|
+| The loop (`verity/orchestrator/`) | spec, plan, lock the golden model, write v1, lint, simulate, fix (repair the same version in place), synthesize, evolve (up to 2 rounds, at most 6 versions: v1 plus 3 plus 2, operators SIMPLIFY, OPTIMIZE and EXPLORE), pick the winner by measured fitness vs v1, prove it equal to v1 with EQY, then measure the human reference. Fast mode stops after v1; full mode is the default for judges. |
+| Nemotron roles (`verity/roles/`, `verity/llm/`) | Planner, RTL writer and repairer run on Nemotron 3 Ultra; the optimizer runs on Nemotron 3 Super. Every call goes through one gateway that records tokens, cost and finish reason against the run's budget. A fake provider gives $0 runs for tests and local checks. |
+| Chip tools (`sandbox/`, Docker image `verity-tools:0.1`) | `verify`: lint (Verilator), interface check (Yosys), simulation (cocotb + Icarus). `measure`: Yosys synthesis on Nangate45, OpenSTA timing and a vectorless power estimate. `eqy`: Yosys EQY equivalence. The AI never runs a tool directly; the backend calls fixed scripts with fixed arguments. |
+| Task packs (`backend/tasks/`) | Each pack is a locked answer key: a human-written golden model (`golden.py`), a cocotb testbench, a human reference design (`reference.v`) and a SHA-256 manifest that is re-checked before every tool call. Seven packs; four of them (MAC array, adder, counter, sequence detector) are knob families that render a fresh locked pack for any in-range setting. The AI sees only the spec, the module header and the coding rules, never the tests or the reference. |
+| Trust rules | Every PASS is a real simulation against the human-written golden model. "Proven" only when EQY proves it. Every number comes from a tool run and is stated against our own v1; the human-reference comparison is the one labelled exception (D14). |
+| Plain-English parse (`verity/core/parse.py`) | One Nemotron call maps a sentence onto a family and knob values, or refuses with the closest buildable chip; the server validates every answer against the knob tables, and the answer can only pre-fill the bench, never become a test or a reference. |
+| API (`verity/api/`) | `GET /health` (live, budget, features), `POST /auth/session` (access code), `POST /runs` (family, goal, knobs), `GET /runs/{id}/events` (server-sent events, resumable), `GET /runs/{id}/log`, `POST /runs/{id}/steer`, `POST /runs/{id}/stop`, `POST /parse`. |
+| Budgets and safety | Per-run cap $0.50 (enforced on the server), daily cap $5.00, 15-minute wall limit with a watchdog, one run at a time per session, rate limits on runs, parse and access-code attempts. API keys stay server-side in `backend/.env`. |
+| Storage | SQLite for runs, events and daily spend (sessions are signed tokens, not stored), plus a folder per run with every prompt, answer, tool log and the final Verilog; a finished run is replayable as the same event stream the web app plays. |
+| Quality | 402 automated tests (orchestrator, API, contracts, tools, packs, with Docker edge proofs at every knob family's limits); pack self-test with mutants; real-model gate (mac4 10 of 10, 2026-10-16) and range probe (17 runs, 2026-10-18). |
+
 ## 2. Current status
 
-_Last updated: 2026-10-04_
+_Last updated: 2026-10-18_
 
-- **Phase:** UI build started 2026-10-04. Design and architecture docs exist (PRODUCT.md, brand.md, UI_UX_SPEC.md, ARCHITECTURE.md); the `web/` frontend is being built against a sample recorded run. No agent backend yet.
-- **Devpost:** draft project created with name, elevator pitch and thumbnail. Remaining submission sections not filled yet.
-- **Repo:** private GitHub repo https://github.com/Sahir619/verity (branch `main`), created 2026-10-04. No root README or LICENSE yet; the hackathon requires a public repo with an MIT, Apache 2.0 or MPL 2.0 license and a README before submission.
-- **Schedule:** week 1 (setup + spikes, gate 2026-10-04) has not started; about 3 days behind the 32-day plan.
+- **Phase:** feature complete for the demo, ahead of the 2026-10-25 freeze. Landing (two ways in), studio (recorded real run) and the live bench all work end to end on real Nemotron; see Backend at a glance above.
+- **Live bench:** judges describe a small chip in plain English or set knobs across four families with probe-proven ranges; refusals offer the closest buildable chip; results include a "Verity vs human reference" scoreboard. Verified in the browser on real Nemotron 2026-10-18.
+- **Repo:** `main` pushed to remote `v1` (github.com/shabihahmedkhan007-glitch/verity-v1-); working tree clean.
+- **Blocking for judging:** hosting (a public URL that stays up until judging ends) and the judging limits (access codes, per-judge budget). Then the video, the Devpost write-up and the submission (internal target 2026-10-29).
 
 ## 3. Open decisions
 
