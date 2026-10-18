@@ -120,6 +120,8 @@ class StubService:
             created_at=datetime.now(UTC),
             budget=BudgetLimits.from_settings(self.settings),
             task_pack_sha256="0" * 64,
+            params=dict(params) if params else None,
+            title=self.rendered.title if self.rendered else preset_id,
         )
         self.runs[run_id] = record
         self.events[run_id] = run_events()
@@ -150,6 +152,23 @@ class StubService:
 
     async def health(self) -> HealthResponse:
         return HealthResponse(live_enabled=True, cap_usd=0.5, provider="fake", models={"planner": "m"}, features=["params"])
+
+    async def list_runs(self, limit: int = 50, offset: int = 0):  # noqa: ANN201
+        from verity.contracts import RunSummaryItem, RunsResponse
+
+        items = [
+            RunSummaryItem(
+                id=r.id,
+                preset_id=r.preset_id,
+                params=r.params,
+                title=r.title or r.preset_id,
+                status=r.status,
+                finished_at=None,
+                winner=None,
+            )
+            for r in self.runs.values()
+        ]
+        return RunsResponse(runs=items[offset : offset + limit])
 
 
 def code_hash(code: str) -> str:
@@ -322,3 +341,54 @@ def test_run_with_valid_params_renders_the_pack(tmp_path, packs) -> None:
     assert service.rendered is not None
     a = service.rendered.port("a")
     assert (a.count, a.width) == (6, 6)
+
+
+def test_finished_run_log_is_publicly_readable(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=True)
+    with client:
+        owner = login(client)
+        stranger = login(client)
+        run_id = client.post("/runs", json={"presetId": "mac4", "priority": "area"}, headers=owner).json()["runId"]
+
+        # Active run: stranger is rejected with 403
+        assert client.get(f"/runs/{run_id}/log", headers=stranger).status_code == 403
+
+        # Mark run finished (done)
+        service.runs[run_id] = service.runs[run_id].model_copy(update={"status": "done"})
+
+        # Finished run: stranger gets 200
+        res_stranger = client.get(f"/runs/{run_id}/log", headers=stranger)
+        assert res_stranger.status_code == 200
+        assert res_stranger.json()["meta"]["runId"] == run_id
+
+        # Finished run: unauthenticated request without token gets 200
+        res_anon = client.get(f"/runs/{run_id}/log")
+        assert res_anon.status_code == 200
+        assert res_anon.json()["meta"]["runId"] == run_id
+
+
+def test_list_runs_endpoint(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=False)
+    with client:
+        # Empty at start
+        res = client.get("/runs")
+        assert res.status_code == 200
+        assert res.json() == {"runs": []}
+
+        # Create a run with params
+        created = client.post(
+            "/runs",
+            json={"presetId": "mac4", "priority": "area", "params": {"lanes": 6, "width": 6, "cycles": 20}},
+        ).json()
+        run_id = created["runId"]
+
+        res = client.get("/runs")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["runs"]) == 1
+        item = data["runs"][0]
+        assert item["id"] == run_id
+        assert item["presetId"] == "mac4"
+        assert item["params"] == {"lanes": 6, "width": 6, "cycles": 20}
+        assert item["status"] == "running"
+        assert item["winner"] is None

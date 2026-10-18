@@ -107,4 +107,12 @@ MIGRATIONS: tuple[str, ...] = (
     PRAGMA user_version = 1;
     COMMIT;
     """,
+    # ---- 2: params and title on runs ----
+    """
+    BEGIN;
+    ALTER TABLE runs ADD COLUMN params_json TEXT;
+    ALTER TABLE runs ADD COLUMN title TEXT;
+    PRAGMA user_version = 2;
+    COMMIT;
+    """,
 )

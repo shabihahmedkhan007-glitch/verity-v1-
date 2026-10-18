@@ -89,6 +89,15 @@ def _principal(request: Request, state: ApiState) -> Principal:
     return Principal(sid=anonymous_sid(client_ip(request)), role="anonymous", anonymous=True)
 
 
+def _principal_opt(request: Request, state: ApiState) -> Principal | None:
+    token = _bearer(request)
+    if token:
+        return state.auth.read_session(token)
+    if not state.settings.auth.required:
+        return Principal(sid=anonymous_sid(client_ip(request)), role="anonymous", anonymous=True)
+    return None
+
+
 def _charge_session(state: ApiState, sid: str) -> None:
     wait = state.session_limiter.acquire(sid)
     if wait > 0:
@@ -207,6 +216,15 @@ async def create_run(request: Request, principal: Principal = Depends(session_gu
     return _json(CreateRunResponse(run_id=run.id, cap_usd=run.budget.max_usd, stream_token=token), status=201)
 
 
+@router.get("/runs")
+async def list_runs(request: Request, limit: int = 50, offset: int = 0) -> JSONResponse:
+    state = _state(request)
+    clamped_limit = max(1, min(limit, 100))
+    clamped_offset = max(0, offset)
+    result = await state.service.list_runs(limit=clamped_limit, offset=clamped_offset)
+    return _json(result)
+
+
 @router.post("/parse")
 async def parse_text(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
     state = _state(request)
@@ -279,9 +297,24 @@ def _after_seq(request: Request) -> int:
 
 
 @router.get("/runs/{run_id}/log")
-async def run_log(run_id: str, request: Request, principal: Principal = Depends(session_guard)) -> Response:
+async def run_log(run_id: str, request: Request) -> Response:
     state = _state(request)
-    await _owned_run(state, run_id, principal.sid)
+    _valid_run_id(run_id)
+    run = await state.service.get_run(run_id)
+    if run is None:
+        raise ApiError(404, "Run not found.")
+    if run.status in ACTIVE_STATUSES:
+        principal = _principal_opt(request, state)
+        if principal is None:
+            raise unauthorized("Missing or invalid session token.")
+        _charge_session(state, principal.sid)
+        if run.session_id != principal.sid:
+            raise ApiError(403, "This run belongs to another session.")
+    else:
+        # Finished runs are publicly readable without ownership (spec 6.2, BACKEND_CHECKLIST item 7).
+        principal = _principal_opt(request, state)
+        if principal is not None:
+            _charge_session(state, principal.sid)
     log_model = await state.service.run_log(run_id)
     return Response(content=to_json(log_model), media_type="application/json", headers={"Cache-Control": "no-store"})
 

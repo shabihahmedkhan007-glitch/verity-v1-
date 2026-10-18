@@ -12,8 +12,8 @@ Last updated 2026-10-18. Read this first in a new session, then `CLAUDE.md`, the
 | Landing | Two equal ways in under the headline: "Build one live" (amber, to `/bench`) and "Watch a recorded run" (to `/studio?run=mac4-real`); the top bar's amber action also goes to the live bench. |
 | Live bench `/bench` (D13 to D15) | Judge-facing live page (`frontend/src/components/sections/bench/*`); `/try` forwards to it. Judge types plain English (Nemotron parses it, refuses out-of-range asks with a "Use closest" chip) or sets knobs; runs on real Nemotron; shows live RTL, loop, monitor, versions, winner, discarded versions with the reason, and "Verity vs human reference" (shown even when the human wins). Verified end to end on real Nemotron 2026-10-18 (counter 12-bit free-running: winner v4 proven equal to v1 and to the human design, area −0.6% vs human, $0.03). |
 | Knob families (probe-proven ranges) | mac4 lanes 1 to 8, width 4 to 8, cycles 4 to 32; add8 width 4 to 32; cnt8 width 4 to 16, enable on/off; fsm_seq pattern 3 to 8 bits, overlap on/off. Ranges equal in `frontend/src/lib/contracts/presets.ts` `FAMILIES` and each `backend/tasks/<id>/family.py` `KNOBS` (change both together). Evidence: `backend/evals/probe-2026-10-18.md` (17 real runs, $0.69). |
-| Backend | Knob params on `POST /runs` (rendered packs cached under the data dir, `verity/core/family.py`), `features` on `/health` (`params`, `human_ref`, `parse`), `human_ref` event (`orchestrator/human_ref.py`, never changes run status, respects the wall budget), `POST /parse` (`verity/core/parse.py`, thinking off, 600 token cap, server validation is the authority). Exact shapes: `backend/CONTRACTS.md` section 9 and `BACKEND_CHECKLIST.md`. pytest 402 pass (2 known DeprecationWarnings from `tests/core/test_sv_subset.py`). |
-| Studio | Recordings and live runs both still play here; "Open in studio" from the bench works by replaying the finished run's stream. The planned split (studio = recordings only) waits for a public `GET /runs/{id}/log` and `GET /runs` (both MISSING, in `BACKEND_CHECKLIST.md`). |
+| Backend | Knob params on `POST /runs` (rendered packs cached under the data dir, `verity/core/family.py`), `features` on `/health` (`params`, `human_ref`, `parse`), `human_ref` event (`orchestrator/human_ref.py`, never changes run status, respects the wall budget), `POST /parse` (`verity/core/parse.py`, thinking off, 600 token cap, server validation is the authority). Exact shapes: `backend/CONTRACTS.md` section 9 and `BACKEND_CHECKLIST.md`. pytest 386 pass, 24 skip without Docker (2 known DeprecationWarnings from `tests/core/test_sv_subset.py`). |
+| Studio | Recordings and live runs both still play here; "Open in studio" from the bench works by replaying the finished run's stream. Both public read for finished logs (`GET /runs/{id}/log`) and the runs library index (`GET /runs`) are now implemented in the backend (spec 6.2). |
 | Featured run | `frontend/public/runs/mac4-real.json`: real Nebius mac4 full run (2026-10-16), winner v4 area −1.6%, clock −7.4% vs v1, EQY proven. Landing figures derive from it at build time. |
 | Nebius key | In `backend/.env` (gitignored), never printed. The key appeared in chat earlier: rotate it after the hackathon. A Claude Code deny rule blocks reading `.env`. Real spend 2026-10-18: about $1.13 (one $0.37 full bench run, parse checks, $0.69 probe, $0.03 judge-path run). |
 
@@ -21,13 +21,13 @@ Last updated 2026-10-18. Read this first in a new session, then `CLAUDE.md`, the
 
 1. **Hosting (blocks judges).** Pass/fail rule: a hosted demo URL that stays up until judging ends. Proposal in the spec section 8: one Nebius AI Cloud VM running the FastAPI backend plus the `verity-tools:0.1` Docker image, HTTPS, health check and auto-restart; the frontend stays a static export built with `NEXT_PUBLIC_AGENT_URL` pointing at it. Needs the user's decision on where and who runs it.
 2. **Production settings for judging:** `VERITY_AUTH__REQUIRED=true` with access codes (`VERITY_ACCESS_CODE_HASHES`), `VERITY_SIGNING_SECRET`, `VERITY_CORS_ORIGINS` = the site origin, per-run cap and `runs_per_session_per_hour` / `daily_usd` for the judging budget (spec section 12, still open with the user).
-3. **Studio split and `/runs` library** once the backend serves finished logs publicly (spec 6.2).
+3. **Studio split and `/runs` library frontend integration:** backend endpoints `GET /runs` and `GET /runs/{id}/log` are live; frontend can now build the `/runs` page and split the studio (spec 6.2).
 4. **Video and submission** (freeze 2026-10-25, submit 2026-10-29). Real "beat the human" material: fsm_seq first versions were 62% and 38% smaller than the human reference, proven equivalent (probe report).
 
 ## Open items
 
 - Bench at large MAC sizes is now out of range; 4 lanes x 12 bits is proven but not expressible with per-knob ranges.
-- Deferred minors from the reviews (render cache cleanup, `Knob` default self-check, lint/import order, parse wording edge cases): see the REPORT.md 2026-10-18 entry.
+- Deferred minors from reviews: render cache cleanup (`prune_render_cache`), `Knob` default self-validation, dropped-keys note in parse, and knob parity regression test are all implemented and verified; stale comments in the locked mac4 testbench remain.
 - `docs/UI_UX_SPEC.md` still describes the old /try page and old landing figures.
 - matmul4 reliability is not fixed (not on the bench).
 - `LICENSE` copyright reads "DOMINIC_WOLF"; confirm with the user.
@@ -47,8 +47,8 @@ Last updated 2026-10-18. Read this first in a new session, then `CLAUDE.md`, the
 
 - Frontend (from `frontend/`): `npm run typecheck`, `npm run lint` (1 old warning in `lib/contracts/view-types.ts`), `npm run validate:fixture`, `npm run build`.
 - Browser: `agent-browser` CLI. `/bench` at 1440x900 fits without page scroll; 390 wide `scrollWidth` 390. `/studio?run=mac4-real` unchanged.
-- Backend (from `backend/`): `PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m pytest -q` (402; Docker edge proofs skip without Docker).
-- Knob parity: frontend `FAMILIES` must equal every `family.py` `KNOBS` (a scratch parity script did this on 2026-10-18; worth turning into a test).
+- Backend (from `backend/`): `PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m pytest -q` (410 total tests: 386 pass, 24 skip when Docker Desktop is absent).
+- Knob parity: automated in `tests/core/test_knob_parity.py` checking frontend `FAMILIES` against every task pack's `KNOBS`.
 
 ## Map
 

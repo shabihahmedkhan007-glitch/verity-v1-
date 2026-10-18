@@ -386,6 +386,34 @@ _Last updated: 2026-10-18_
 - **Changed** the landing hero (`components/sections/rack/RackHead.tsx`, `rack.css`): the two buttons became two equal rack panels, "Build one live" (to `/bench`, the one amber primary, user's choice) and "Watch a recorded run" (to `/studio?run=mac4-real`), each saying what you get and what it costs ("Real Nemotron run · a few minutes", "Real run · 1:10 replay · free"). The top bar's amber action now points to the live bench too ("Build one live"), so each view has one primary. The landing still makes no network call. Removed the unused `.ctas` rules.
 - **Verified:** typecheck, lint (1 old warning), build; browser at 1440 (panel titles on one line and aligned, one amber primary) and 390 (stacked, `scrollWidth` 390), 0 console errors; impeccable detector 0 findings.
 
+### 2026-10-18: Public read for finished run logs (GET /runs/{id}/log)
+- **Changed** `GET /runs/{id}/log` in `verity/api/routes.py`: active runs (`queued`, `running`) strictly enforce session ownership (`403` for strangers, `401` if unauthenticated and auth required); finished runs (`done`, `error`, `cap_reached`, `stopped`, `timed_out`) are now publicly readable without session ownership so judges and visitors can open saved runs in the studio directly via URL (spec 6.2).
+- **Added** test `test_finished_run_log_is_publicly_readable` in `tests/api/test_sse_and_routes.py` verifying active runs reject strangers with 403 while finished runs return 200 for strangers and unauthenticated callers.
+- **Verified:** pytest passes (23 passed in `test_sse_and_routes.py`).
+
+### 2026-10-18: Persist params and title on RunRecord and SQLite store
+- **Added** migration 2 in `verity/store/migrations.py` adding `params_json TEXT` and `title TEXT` to the `runs` table.
+- **Updated** `RunRecord` and `RunPatch` in `verity/core/records.py` with `params: dict[str, Any] | None` and `title: str | None`.
+- **Updated** `SqliteStore` in `verity/store/sqlite.py` to insert, read and patch `params_json` and `title`.
+- **Updated** `RunManager.create_run` in `verity/runs/manager.py` to populate `params` and `title` when creating the run record, and `Emitter.spec` in `verity/orchestrator/events.py` to update the title when spec is emitted.
+- **Added** test `test_run_with_params_and_title_round_trip` in `tests/store/test_sqlite_store.py`.
+- **Verified:** pytest passes (8 passed in `test_sqlite_store.py`, 79 passed across `tests/api` and `tests/store`).
+
+### 2026-10-18: Public runs list (GET /runs)
+- **Added** `RunWinnerSummary`, `RunSummaryItem` and `RunsResponse` to `verity/contracts/api.py` and exported from `verity/contracts/__init__.py`.
+- **Added** `list_runs(limit, offset)` in `verity/store/sqlite.py` joining `runs` and `candidates` on `winner_id` to provide winner PPA metrics, presetId, params, title, status and finishedAt.
+- **Added** `list_runs` to `Store` and `RunService` protocols in `verity/core/protocols.py`, implemented on `RunManager` in `verity/runs/manager.py`.
+- **Added** public route `GET /runs` in `verity/api/routes.py` with parameter clamping (`limit` 1 to 100, `offset` >= 0) and `_json` wire serialization.
+- **Added** tests `test_list_runs_endpoint` in `tests/api/test_sse_and_routes.py` and `test_store_list_runs_with_winner` in `tests/store/test_sqlite_store.py`.
+- **Verified:** 382 passed across the test suite.
+
+### 2026-10-18: Quality and parity fixes (Knob validation, parity test, cache pruning, parse notes)
+- **Added** `@model_validator(mode="after")` on `Knob` in `verity/core/family.py` ensuring invalid defaults (e.g. out of range integers, non-boolean values, invalid bit patterns) fail early during knob definition.
+- **Added** `prune_render_cache` in `verity/core/family.py` keeping the rendered task pack cache bounded to the most recently accessed folders (default max 1024 folders).
+- **Added** informative note to `_interpret` in `verity/core/parse.py` when the LLM outputs unsupported parameter keys so dropped keys are explicitly reported in `ParseReply.note`.
+- **Added** automated parity and regression tests in `tests/core/test_knob_parity.py` checking knob parity between frontend `presets.ts` `FAMILIES` and backend task packs, knob default validation, cache pruning, and dropped parameter notes.
+- **Verified:** 386 passed, 24 skipped across the full backend pytest test suite (410 total tests).
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/

@@ -16,7 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from .errors import PackFormatError, PackIntegrityError
 from .pack import MANIFEST_NAME, TaskPack, _pack_files, write_manifest
@@ -35,6 +35,11 @@ class Knob(BaseModel):
     max: int | None = None
     min_len: int | None = None
     max_len: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_default(self) -> "Knob":
+        _check_knob(self, self.default)
+        return self
 
 
 class ParamsError(ValueError):
@@ -132,4 +137,22 @@ def render_pack(pack: TaskPack, params: Mapping[str, object] | None, cache_dir: 
                 raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    prune_render_cache(cache_dir)
     return TaskPack.load(dest)
+
+
+def prune_render_cache(cache_dir: Path, max_entries: int = 500) -> int:
+    """Keep the render cache bounded. Removes the oldest rendered folders when over max_entries."""
+    cache = Path(cache_dir)
+    if not cache.is_dir():
+        return 0
+    folders = [f for f in cache.iterdir() if f.is_dir() and not f.name.startswith(".tmp-")]
+    if len(folders) <= max_entries:
+        return 0
+    folders.sort(key=lambda p: p.stat().st_mtime)
+    to_remove = folders[: len(folders) - max_entries]
+    removed = 0
+    for folder in to_remove:
+        shutil.rmtree(folder, ignore_errors=True)
+        removed += 1
+    return removed

@@ -47,10 +47,24 @@ async def test_run_round_trip_and_partial_update(store, settings) -> None:
     assert got is not None and got.status == "running"  # the second patch did not touch status
     assert got.started_at is not None and got.spent.llm_calls == 2 and got.prompt_versions == {"planner": "p@1"}
 
-    await store.update_run("r_1", RunPatch(status="error", error_reason="boom"))
-    assert (await store.get_run("r_1")).error_reason == "boom"  # type: ignore[union-attr]
+    await store.update_run("r_1", RunPatch(status="error", error_reason="boom", title="Custom Title", params={"width": 16}))
+    got_err = await store.get_run("r_1")
+    assert got_err is not None and got_err.error_reason == "boom"
+    assert got_err.title == "Custom Title"
+    assert got_err.params == {"width": 16}
     with pytest.raises(NotFound):
         await store.update_run("missing", RunPatch(status="done"))
+
+
+async def test_run_with_params_and_title_round_trip(store, settings) -> None:
+    run = make_run(settings, "r_params", "s1", "running")
+    run.params = {"lanes": 6, "width": 6, "cycles": 20}
+    run.title = "6-lane MAC"
+    await store.create_run(run)
+    got = await store.get_run("r_params")
+    assert got is not None
+    assert got.title == "6-lane MAC"
+    assert got.params == {"lanes": 6, "width": 6, "cycles": 20}
 
 
 async def test_counts_and_status_queries(store, settings) -> None:
@@ -128,3 +142,38 @@ async def test_blobs_are_deduplicated_and_eval_rows_stored(store) -> None:
     await store.add_eval_result(
         EvalResultRow(eval_run_id="e_1", task_id="mac4", suite="packs", metrics={"ok": True}, created_at=datetime.now(UTC))
     )
+
+
+async def test_store_list_runs_with_winner(store, settings) -> None:
+    run = make_run(settings, "r_winner", "s1", "done")
+    run.params = {"lanes": 4, "width": 8}
+    run.title = "4-lane MAC Array"
+    run.winner_id = "c1"
+    run.ended_at = datetime.now(UTC)
+    await store.create_run(run)
+
+    candidate = Candidate(
+        id="c1",
+        label="v1",
+        parent_id=None,
+        round=0,
+        created_by="INIT",
+        status="measured",
+        reason="Baseline",
+        rtl="module m; endmodule",
+        ppa=PPA(area_um2=1840.5, clock_period_ns=3.2, pdk="Nangate45"),
+    )
+    await store.upsert_candidate("r_winner", candidate)
+
+    runs = await store.list_runs(limit=10)
+    matching = [r for r in runs if r.id == "r_winner"]
+    assert len(matching) == 1
+    item = matching[0]
+    assert item.preset_id == "mac4"
+    assert item.params == {"lanes": 4, "width": 8}
+    assert item.title == "4-lane MAC Array"
+    assert item.status == "done"
+    assert item.winner is not None
+    assert item.winner.label == "v1"
+    assert item.winner.area_um2 == pytest.approx(1840.5)
+    assert item.winner.clock_period_ns == pytest.approx(3.2)

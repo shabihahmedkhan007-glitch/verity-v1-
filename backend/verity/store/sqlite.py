@@ -16,7 +16,16 @@ from typing import Any
 import aiosqlite
 
 from ..config import Settings
-from ..contracts import Attempt, Candidate, EventBase, event_to_json, parse_event_json, to_json
+from ..contracts import (
+    Attempt,
+    Candidate,
+    EventBase,
+    RunSummaryItem,
+    RunWinnerSummary,
+    event_to_json,
+    parse_event_json,
+    to_json,
+)
 from ..core.budget import BudgetLimits, SpendSnapshot
 from ..core.errors import NotFound
 from ..core.records import ArtifactRef, AttemptMeta, EvalResultRow, RunPatch, RunRecord, RunStatus
@@ -70,6 +79,8 @@ _PATCH_COLUMNS: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "prompt_versions": ("prompt_versions_json", lambda v: _json(v)),
     "error_reason": ("error_reason", lambda v: v),
     "winner_id": ("winner_id", lambda v: v),
+    "title": ("title", lambda v: v),
+    "params": ("params_json", lambda v: _json(v) if v is not None else None),
 }
 
 
@@ -78,6 +89,9 @@ _NOT_NULLABLE = frozenset({"status", "spent", "models", "prompt_versions", "tool
 
 
 def _row_to_run(row: sqlite3.Row) -> RunRecord:
+    keys = row.keys()
+    params = json.loads(row["params_json"]) if "params_json" in keys and row["params_json"] else None
+    title = row["title"] if "title" in keys else None
     return RunRecord(
         id=row["id"],
         session_id=row["session_id"],
@@ -98,6 +112,8 @@ def _row_to_run(row: sqlite3.Row) -> RunRecord:
         error_reason=row["error_reason"],
         winner_id=row["winner_id"],
         git_sha=row["git_sha"],
+        params=params,
+        title=title,
     )
 
 
@@ -175,8 +191,8 @@ class SqliteStore:
             INSERT INTO runs (
                 id, session_id, preset_id, priority, mode, status, created_at, started_at, ended_at, heartbeat_at,
                 budget_json, spent_json, task_pack_sha256, tool_image_digest, models_json, prompt_versions_json,
-                error_reason, winner_id, git_sha
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                error_reason, winner_id, git_sha, params_json, title
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run.id,
@@ -198,6 +214,8 @@ class SqliteStore:
                 run.error_reason,
                 run.winner_id,
                 run.git_sha,
+                _json(run.params) if run.params is not None else None,
+                run.title,
             ),
         )
 
@@ -255,6 +273,42 @@ class SqliteStore:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         row = await self._fetchone(f"SELECT COUNT(*) FROM runs{where}", params)
         return int(row[0]) if row else 0
+
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> list[RunSummaryItem]:
+        rows = await self._fetchall(
+            """
+            SELECT r.id, r.preset_id, r.params_json, r.title, r.status, r.ended_at,
+                   c.label AS winner_label, c.ppa_json AS winner_ppa_json
+            FROM runs r
+            LEFT JOIN candidates c ON c.run_id = r.id AND c.id = r.winner_id
+            ORDER BY r.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        )
+        items: list[RunSummaryItem] = []
+        for row in rows:
+            params = json.loads(row["params_json"]) if row["params_json"] else None
+            winner = None
+            if row["winner_label"]:
+                ppa = json.loads(row["winner_ppa_json"]) if row["winner_ppa_json"] else {}
+                area = ppa.get("area_um2") if ppa.get("area_um2") is not None else ppa.get("areaUm2")
+                clock = ppa.get("clock_period_ns") if ppa.get("clock_period_ns") is not None else ppa.get("clockPeriodNs")
+                winner = RunWinnerSummary(label=row["winner_label"], area_um2=area, clock_period_ns=clock)
+            finished_at = _iso_opt(_dt_opt(row["ended_at"]))
+            title = row["title"] or row["preset_id"]
+            items.append(
+                RunSummaryItem(
+                    id=row["id"],
+                    preset_id=row["preset_id"],
+                    params=params,
+                    title=title,
+                    status=row["status"],
+                    finished_at=finished_at,
+                    winner=winner,
+                )
+            )
+        return items
 
     # ---------- candidates and attempts ----------
     async def upsert_candidate(self, run_id: str, candidate: Candidate) -> None:

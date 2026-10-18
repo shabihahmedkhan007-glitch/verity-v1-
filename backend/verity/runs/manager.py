@@ -35,6 +35,7 @@ from ..contracts import (
     Priority,
     RunLog,
     RunPhaseEvent,
+    RunsResponse,
     StopInput,
     ToggleSteer,
     WinnerOverrideSteer,
@@ -192,6 +193,10 @@ class RunManager:
         events = await self._store.events_after(run_id, 0)
         return build_run_log(run, events, self._settings)
 
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> RunsResponse:
+        items = await self._store.list_runs(limit=limit, offset=offset)
+        return RunsResponse(runs=items)
+
     async def stream(self, run_id: str, after_seq: int = 0) -> AsyncIterator[EventBase]:
         """Stored events with seq > after_seq, then live ones, no gap and no duplicate.
 
@@ -326,6 +331,8 @@ class RunManager:
                 tool_image_digest=await self._tool_image_digest(),
                 models=self._settings.models_by_role(),
                 git_sha=self._git_sha,
+                params=dict(params) if params else None,
+                title=pack.title or pack.module_name or preset_id,
             )
             await self._store.create_run(record)
         except BaseException:

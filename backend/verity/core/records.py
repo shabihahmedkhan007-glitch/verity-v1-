@@ -33,6 +33,8 @@ class RunRecord(BaseModel):
     error_reason: str | None = None
     winner_id: str | None = None
     git_sha: str | None = None
+    params: dict[str, Any] | None = None
+    title: str | None = None
 
 
 class RunPatch(BaseModel):
@@ -48,6 +50,8 @@ class RunPatch(BaseModel):
     prompt_versions: dict[str, str] | None = None
     error_reason: str | None = None
     winner_id: str | None = None
+    params: dict[str, Any] | None = None
+    title: str | None = None
 
 
 class AttemptMeta(BaseModel):

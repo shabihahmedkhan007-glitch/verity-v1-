@@ -20,8 +20,8 @@ sections 4 and 5. The frontend side of every item below is built and degrades ho
 | SSE event `human_ref` | IMPLEMENTED | |
 | `POST /runs/{id}/stop` | IMPLEMENTED | |
 | `POST /runs/{id}/steer` | IMPLEMENTED | Used by the reused detail panel (winner override) |
-| `GET /runs/{id}/log` | IMPLEMENTED (owner only); public read for finished runs **MISSING** | Not called by the bench. Needed for the studio split, spec 6.2 |
-| `GET /runs` | **MISSING** | Not called by the bench. Needed for the `/runs` list (spec 6.2) |
+| `GET /runs/{id}/log` | IMPLEMENTED (ownership enforced for active runs; public read for finished runs) | |
+| `GET /runs` | IMPLEMENTED | |
 
 ## Note: `params` is honoured
 
@@ -162,9 +162,8 @@ Event set consumed (all IMPLEMENTED):
 
 ## 7. Not consumed by the bench yet (studio split, spec 6.2)
 
-- `GET /runs/{id}/log`: IMPLEMENTED for the owning session only. **MISSING**: read-only access without ownership for
-  finished runs, so saved runs open in the studio for anyone (open question 3 in the spec).
-- `GET /runs`: **MISSING**. `200 { "runs": [{ "id", "presetId", "params", "title", "status", "finishedAt", "winner": { "label", "areaUm2", "clockPeriodNs" } | null }] }`.
+- `GET /runs/{id}/log`: IMPLEMENTED (active runs require session ownership; finished runs are readable without ownership so saved runs open in the studio for anyone, spec 6.2).
+- `GET /runs`: IMPLEMENTED. `200 { "runs": [{ "id", "presetId", "params", "title", "status", "finishedAt", "winner": { "label", "areaUm2", "clockPeriodNs" } | null }] }`.
 
 ## 8. CORS
 

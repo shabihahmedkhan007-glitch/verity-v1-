@@ -84,3 +84,23 @@ class ParseOutOfRange(WireModel):
 
 
 ParseReply = ParseInRange | ParseOutOfRange
+
+
+class RunWinnerSummary(WireModel):
+    label: str
+    area_um2: float | None = None
+    clock_period_ns: float | None = None
+
+
+class RunSummaryItem(WireModel):
+    id: str
+    preset_id: str
+    params: dict[str, int | bool | str] | None = None
+    title: str
+    status: str
+    finished_at: str | None = None
+    winner: RunWinnerSummary | None = None
+
+
+class RunsResponse(WireModel):
+    runs: list[RunSummaryItem]

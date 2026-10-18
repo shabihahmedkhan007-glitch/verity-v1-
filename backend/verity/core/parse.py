@@ -174,14 +174,20 @@ def _interpret(text: str, families: Mapping[str, list[Knob]]) -> ParseReply:
         return ParseOutOfRange(reason=UNREADABLE, closest=None)
     if not isinstance(family, str) or family not in families:
         return ParseOutOfRange(reason="That is not a chip family the bench can build.", closest=None)
-    params = _prepared(families[family], params)
+    knobs = families[family]
+    dropped_keys = sorted(set(params.keys()) - {k.id for k in knobs})
+    params = _prepared(knobs, params)
     try:
-        valid = validate_params(families[family], params)
+        valid = validate_params(knobs, params)
     except ParamsError as exc:
         reason = f"That is outside the bench's limits: {exc}"[:_MAX_REASON]
         return ParseOutOfRange(reason=reason, closest=_closest(families, {"family": family, "params": params}, clamp=True))
     note = data.get("note")
     note = note.strip()[:_MAX_NOTE] if isinstance(note, str) and note.strip() else None
+    if dropped_keys:
+        drop_note = f"Ignored unsupported settings: {', '.join(dropped_keys)}."
+        note = f"{note} {drop_note}" if note else drop_note
+        note = note[:_MAX_NOTE]
     return ParseInRange(family=family, params=valid, note=note)
 
 

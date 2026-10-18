@@ -22,6 +22,8 @@ from ..contracts import (
     PinInput,
     Priority,
     RunLog,
+    RunSummaryItem,
+    RunsResponse,
     ToggleInput,
     Verification,
 )
@@ -252,6 +254,8 @@ class Store(Protocol):
         created_since: datetime | None = None,
     ) -> int: ...
 
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> list[RunSummaryItem]: ...
+
     # ---- candidates and attempts ----
     async def upsert_candidate(self, run_id: str, candidate: Candidate) -> None:
         """Full upsert keyed by (run_id, candidate.id). Stores ppa/fitness/eqy JSON and the flags."""
@@ -354,6 +358,10 @@ class RunService(Protocol):
     async def parse(self, text: str) -> ParseReply:
         """POST /parse: one planner call, validated against the knob tables. Raises AdmissionDenied
         (maintenance | budget_exhausted) and LLMError. The call's cost is added to the daily spend."""
+        ...
+
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> RunsResponse:
+        """GET /runs: list recent runs with their summary and winner PPA."""
         ...
 
 
