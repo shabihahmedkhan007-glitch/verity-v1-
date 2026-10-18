@@ -225,7 +225,15 @@ export async function postParse(text: string): Promise<ParseResult> {
       clearSession();
       return { ok: false, reason: "unauthorized", error: "Enter the access code first, then ask again." };
     }
-    if (res.status === 429) return { ok: false, reason: "rate_limited", error: "Too many requests. Wait a minute and try again." };
+    if (res.status === 429) {
+      const body: unknown = await res.json().catch(() => null);
+      const spent = typeof body === "object" && body !== null && (body as { reason?: unknown }).reason === "budget_exhausted";
+      return {
+        ok: false,
+        reason: "rate_limited",
+        error: spent ? "Today's live budget is used up." : "Too many requests. Wait a minute and try again.",
+      };
+    }
     if (!res.ok) return { ok: false, reason: "failed", error: "The agent could not read that request. Use the knobs below." };
     const parsed = ParseReplySchema.safeParse(await res.json());
     if (!parsed.success) {
