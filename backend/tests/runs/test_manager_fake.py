@@ -124,10 +124,10 @@ async def test_admission_rules(tmp_path, packs) -> None:
     manager, store = await make_manager(settings, packs, delay_s=0.5)
     try:
         with pytest.raises(UnknownPreset):
-            await manager.create_run(session_id="s1", preset_id="add8", priority="area", mode="fast")  # eval_only pack
+            await manager.create_run(session_id="s1", preset_id="fsm_seq", priority="area", mode="fast")  # eval_only pack
         with pytest.raises(UnknownPreset):
             await manager.create_run(session_id="s1", preset_id="mac4", priority="turbo", mode="fast")  # type: ignore[arg-type]
-        assert set(manager.presets()) == {"mac4", "alu8", "matmul4"}
+        assert set(manager.presets()) == {"mac4", "alu8", "matmul4", "add8", "cnt8"}
 
         first = await manager.create_run(session_id="s1", preset_id="mac4", priority="area", mode="fast")
         second = await manager.create_run(session_id="s2", preset_id="mac4", priority="area", mode="fast")

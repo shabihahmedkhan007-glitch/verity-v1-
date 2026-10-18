@@ -1,6 +1,6 @@
 """cocotb testbench for cnt8 (locked: the agent never sees or edits this file).
 
-Exactly one cocotb test (run_all) runs 10 named cases: 7 directed, then 3 seeded random. A case is a list of
+The width and the optional en input come from golden.py (params.json). Exactly one cocotb test (run_all) runs 10 named cases: 7 directed, then 3 seeded random. A case is a list of
 (rst_n, en) stimuli, one per clock edge, checked against golden.golden_cnt8_step. For every step the testbench
 drives the inputs on the falling edge, checks q has NOT changed yet (registered), clocks once, then compares q.
 X or Z on q is a failure.
@@ -18,7 +18,12 @@ from cocotb.triggers import FallingEdge, RisingEdge
 from verity_tb import PASSED, Outcome, Recorder, fmt_hex, read_int, reset_dut, run_cases, settle, start_clock
 
 TOP = "cnt8"
+WIDTH = golden.WIDTH
+ENABLE = golden.ENABLE  # False: no en port, the counter is free-running
+MAXV = golden.MASK
 RANDOM_STEPS = 80
+WRAP_MAX_BITS = 10  # a full wrap needs 2**WIDTH + 2 edges; wider counters get a long count instead (no preload is possible)
+LONG_COUNT = 300  # edges for the long count; passes bit 8 so a counter truncated to 8 bits is caught up to this width
 
 
 @dataclass
@@ -29,12 +34,22 @@ class Case:
 
 
 def build_cases(rng):
+    if WIDTH <= WRAP_MAX_BITS:
+        wrap = Case(f"wrap_at_{MAXV}", f"en high for {(1 << WIDTH) + 2} edges", [(1, 1)] * ((1 << WIDTH) + 2))
+    else:
+        wrap = Case(f"count_long_{LONG_COUNT}", f"en high for {LONG_COUNT} edges", [(1, 1)] * LONG_COUNT)
+    if ENABLE:
+        hold = Case("hold_when_disabled", "count 3, then en low for 4 edges", [(1, 1)] * 3 + [(1, 0)] * 4)
+        alternate = Case("enable_every_other", "en alternates for 12 edges", [(1, i % 2) for i in range(12)])
+    else:
+        hold = Case("reset_then_count", "count 3, reset once, count 4", [(1, 1)] * 3 + [(0, 1)] + [(1, 1)] * 4)
+        alternate = Case("reset_every_fifth", "reset every fifth edge for 12 edges", [(0 if i % 5 == 4 else 1, 1) for i in range(12)])
     cases = [
         Case("reset_value", "reset held low, en low then high", [(0, 0), (0, 0), (0, 1), (0, 1)]),
         Case("count_up", "en high for 5 edges", [(1, 1)] * 5),
-        Case("hold_when_disabled", "count 3, then en low for 4 edges", [(1, 1)] * 3 + [(1, 0)] * 4),
-        Case("enable_every_other", "en alternates for 12 edges", [(1, i % 2) for i in range(12)]),
-        Case("wrap_at_255", "en high for 258 edges", [(1, 1)] * 258),
+        hold,
+        alternate,
+        wrap,
         Case("reset_mid_count", "count 7, reset, count 3", [(1, 1)] * 7 + [(0, 0)] + [(1, 1)] * 3),
         Case("reset_overrides_enable", "en high while reset is low", [(1, 1)] * 3 + [(0, 1)] * 3 + [(1, 1)] * 2),
     ]
@@ -48,18 +63,21 @@ async def run_case(dut, case):
     await reset_dut(dut.clk, dut.rst_n)
     q = read_int(dut.q)
     if q != 0:
-        return Outcome(False, "q=0x00 after reset", f"q={fmt_hex(q, 8)}", 0)
+        return Outcome(False, f"q={fmt_hex(0, WIDTH)} after reset", f"q={fmt_hex(q, WIDTH)}", 0)
     expected_q = 0
     for n, (rst_n, en) in enumerate(case.steps, start=1):
+        if not ENABLE:
+            en = 1  # no en port: the counter always counts
         dut.rst_n.value = rst_n
-        dut.en.value = en
+        if ENABLE:
+            dut.en.value = en
         await settle(1)
         early = read_int(dut.q)
         if early != expected_q:
             return Outcome(
                 False,
-                f"q unchanged before the edge: {fmt_hex(expected_q, 8)}",
-                f"q={fmt_hex(early, 8)} (changed before the edge)",
+                f"q unchanged before the edge: {fmt_hex(expected_q, WIDTH)}",
+                f"q={fmt_hex(early, WIDTH)} (changed before the edge)",
                 n,
                 f"step {n}: rst_n={rst_n} en={en}",
             )
@@ -68,9 +86,10 @@ async def run_case(dut, case):
         expected_q = golden.golden_cnt8_step(expected_q, rst_n, en)
         got = read_int(dut.q)
         if got != expected_q:
-            return Outcome(False, f"q={fmt_hex(expected_q, 8)}", f"q={fmt_hex(got, 8)}", n, f"step {n}: rst_n={rst_n} en={en}")
+            return Outcome(False, f"q={fmt_hex(expected_q, WIDTH)}", f"q={fmt_hex(got, WIDTH)}", n, f"step {n}: rst_n={rst_n} en={en}")
     dut.rst_n.value = 1
-    dut.en.value = 0
+    if ENABLE:
+        dut.en.value = 0
     return PASSED
 
 
@@ -79,7 +98,8 @@ async def run_all(dut):
     rec = Recorder(TOP)
     start_clock(dut, "clk")
     dut.rst_n.value = 1
-    dut.en.value = 0
+    if ENABLE:
+        dut.en.value = 0
     rng = random.Random(int(os.environ.get("VERITY_SEED", "1")))
     cases = build_cases(rng)
     await run_cases(rec, cases, lambda case: run_case(dut, case))

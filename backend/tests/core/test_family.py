@@ -1,6 +1,7 @@
 """Knob params: validation, render_pack, and the render cache (mac4 is the first family)."""
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -95,3 +96,60 @@ def test_render_cache_tampered_rerenders(mac4: TaskPack, tmp_path: Path) -> None
     again = render_pack(mac4, params, tmp_path)
     assert again.latency_cycles == 10
     assert "tampered" not in (again.root / "task.toml").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def add8() -> TaskPack:
+    return TaskPack.load(AGENT_ROOT / "tasks" / "add8")
+
+
+@pytest.fixture(scope="module")
+def cnt8() -> TaskPack:
+    return TaskPack.load(AGENT_ROOT / "tasks" / "cnt8")
+
+
+def test_render_add8_width_32(add8: TaskPack, tmp_path: Path) -> None:
+    pack = render_pack(add8, {"width": 32}, tmp_path)
+    assert pack is not add8 and pack.id == "add8" and pack.top == "add8"
+    assert [(p.name, p.width) for p in pack.ports] == [("a", 32), ("b", 32), ("cin", 1), ("sum", 32), ("cout", 1)]
+    assert pack.latency_cycles == 0 and pack.test_count == 12 and pack.live_preset
+    assert "carry out of bit 31" in pack.spec_text
+    assert "[31:0] sum" in (pack.reference_rtl() or "")
+
+
+def test_render_cnt8_no_enable(cnt8: TaskPack, tmp_path: Path) -> None:
+    pack = render_pack(cnt8, {"width": 16, "enable": False}, tmp_path)
+    assert pack.id == "cnt8" and pack.top == "cnt8"
+    assert [(p.name, p.width) for p in pack.ports] == [("clk", 1), ("rst_n", 1), ("q", 16)]
+    text = " ".join([pack.spec_text, *pack.coding_rules])
+    assert not re.search(r"en", text) and "enable" not in text and "wraps from 65535 to 0" in pack.spec_text
+    assert not re.search(r"en", pack.reference_rtl() or "")
+    assert pack.latency_cycles == 1 and pack.test_count == 10 and pack.live_preset
+
+
+def test_render_cnt8_with_enable_width_12(cnt8: TaskPack, tmp_path: Path) -> None:
+    pack = render_pack(cnt8, {"width": 12}, tmp_path)
+    assert [p.name for p in pack.ports] == ["clk", "rst_n", "en", "q"]
+    assert pack.port("q").width == 12 and "enable" in pack.spec_text
+
+
+def test_add8_cnt8_defaults_are_the_base_pack(add8: TaskPack, cnt8: TaskPack, tmp_path: Path) -> None:
+    assert render_pack(add8, {"width": 8}, tmp_path) is add8
+    assert render_pack(cnt8, {"width": 8, "enable": True}, tmp_path) is cnt8
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_add8_cnt8_knob_bounds(add8: TaskPack, cnt8: TaskPack, tmp_path: Path) -> None:
+    for pack, bad in ((add8, {"width": 3}), (add8, {"width": 33}), (cnt8, {"width": 33}), (cnt8, {"enable": 1})):
+        with pytest.raises(ParamsError):
+            render_pack(pack, bad, tmp_path)
+
+
+def test_add8_cnt8_rendered_defaults_match_checked_in_files(add8: TaskPack, cnt8: TaskPack) -> None:
+    for pack in (add8, cnt8):
+        module = family_module(pack)
+        assert module is not None
+        rendered = module.render({k["id"]: k["default"] for k in module.KNOBS})
+        assert rendered["reference.v"] == (pack.root / "reference.v").read_text(encoding="utf-8")
+        assert rendered["params.json"] == (pack.root / "params.json").read_text(encoding="utf-8")
+        assert rendered["task.toml"] == (pack.root / "task.toml").read_text(encoding="utf-8")

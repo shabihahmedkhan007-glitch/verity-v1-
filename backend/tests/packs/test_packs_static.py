@@ -14,7 +14,8 @@ from verity_test_support import WEB_ROOT
 TASKS = AGENT_ROOT / "tasks"
 PRESETS_TS = WEB_ROOT / "src" / "lib" / "contracts" / "presets.ts"
 EXPECTED_IDS = {"mac4", "alu8", "matmul4", "add8", "cnt8", "fsm_seq", "mm4_int4"}
-LIVE_IDS = {"mac4", "alu8", "matmul4"}
+LIVE_IDS = {"mac4", "alu8", "matmul4", "add8", "cnt8"}
+WEB_PRESET_IDS = {"mac4", "alu8", "matmul4"}  # add8 and cnt8 are knob-only in presets.ts (no presetId block)
 
 
 def test_all_expected_packs_load(packs: dict[str, TaskPack]) -> None:
@@ -89,7 +90,7 @@ def _presets_segment(source: str, pack_id: str) -> str:
 
 
 @pytest.mark.skipif(not PRESETS_TS.is_file(), reason="web presets.ts not found")
-@pytest.mark.parametrize("pack_id", sorted(LIVE_IDS))
+@pytest.mark.parametrize("pack_id", sorted(WEB_PRESET_IDS))
 def test_live_pack_matches_the_web_preset(packs: dict[str, TaskPack], pack_id: str) -> None:
     pack = packs[pack_id]
     segment = _presets_segment(PRESETS_TS.read_text(encoding="utf-8"), pack_id)

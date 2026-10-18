@@ -6,14 +6,14 @@ spec_text = "An 8-bit adder with carry in and carry out. sum is the low 8 bits o
 top = "add8"
 family = "adder"
 element_type = "uint8"
-latency_cycles = 0                  # combinational
+latency_cycles = 0
 max_lines = 60
 test_count = 12
 default_priority = "area"
 priorities = ["area", "speed", "power"]
 target_clock_ns = 10.0
 max_plan_blocks = 4
-eval_only = true                    # smoke test for the evals suite, not a live preset
+eval_only = false
 coding_rules = [
   "The design is purely combinational: no clock, no registers, no reset. sum and cout must follow a, b and cin immediately.",
 ]
