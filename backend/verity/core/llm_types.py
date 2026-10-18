@@ -25,6 +25,8 @@ class LLMRequest:
     # Non-prompt metadata: task_id, strategy, attempt, prompt_version. Used by FakeProvider cassettes and logs.
     # Never sent to the model.
     tags: dict[str, str] = field(default_factory=dict)
+    # None: the model default. False: ask the endpoint not to reason (chat_template_kwargs.enable_thinking).
+    thinking: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -93,7 +93,7 @@ class CallBudget(BaseModel):
 
 
 class ParseBudget(BaseModel):
-    max_output_tokens: int = 400
+    max_output_tokens: int = 600
 
 
 class BudgetConfig(BaseModel):

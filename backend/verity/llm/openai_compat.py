@@ -71,6 +71,9 @@ class OpenAICompatProvider:
         }
         if req.top_p is not None:
             kwargs["top_p"] = req.top_p
+        if req.thinking is not None:
+            # Measured on Nebius 2026-10-16 (backend/README.md): both models honour enable_thinking false.
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": req.thinking}}
         use_json = req.response_format == "json" and not self._json_mode_unsupported
         if use_json:
             # UNVERIFIED: JSON mode (response_format json_object) on Nebius for Nemotron. If the server rejects it

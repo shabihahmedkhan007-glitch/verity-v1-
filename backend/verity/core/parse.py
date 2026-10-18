@@ -7,19 +7,20 @@ answer only ever pre-fills the bench; it never becomes a reference, a test or a 
 
 import json
 import logging
+import math
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from ..config import Settings
 from ..contracts import ParseClosest, ParseInRange, ParseOutOfRange, ParseReply
-from ..core.budget import price_usd
-from ..core.family import Knob, ParamsError, family_module, validate_params
-from ..core.llm_types import LLMRequest
-from ..core.pack import TaskPack
-from ..core.protocols import LLMProvider
+from .budget import price_usd
+from .family import Knob, ParamsError, family_module, validate_params
+from .llm_types import LLMRequest
+from .pack import TaskPack
+from .protocols import LLMProvider
 
-log = logging.getLogger("verity.api")
+log = logging.getLogger("verity.parse")
 
 UNREADABLE = "Verity could not read that request. Pick a family below."
 PARSE_TAG = "parse"
@@ -115,7 +116,7 @@ def _clamped(knobs: list[Knob], raw: Mapping[str, object]) -> dict[str, object]:
     by_id = {k.id: k for k in knobs}
     for key, value in raw.items():
         knob = by_id.get(key)
-        if knob is None or knob.kind != "int" or isinstance(value, bool) or not isinstance(value, (int, float)):
+        if knob is None or knob.kind != "int" or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             continue
         out[key] = max(knob.min or 0, min(knob.max if knob.max is not None else int(value), int(value)))
     return out
@@ -161,7 +162,7 @@ def _interpret(text: str, families: Mapping[str, list[Knob]]) -> ParseReply:
     try:
         valid = validate_params(families[family], params)
     except ParamsError as exc:
-        reason = f"That is outside the bench's limits: {exc}"
+        reason = f"That is outside the bench's limits: {exc}"[:_MAX_REASON]
         return ParseOutOfRange(reason=reason, closest=_closest(families, {"family": family, "params": params}, clamp=True))
     note = data.get("note")
     note = note.strip()[:_MAX_NOTE] if isinstance(note, str) and note.strip() else None
@@ -189,6 +190,7 @@ async def parse_request(
         temperature=0.0,
         response_format="json",
         timeout_s=float(settings.llm_timeout_for("planner")),
+        thinking=False,  # a short classification: reasoning tokens would eat the output cap
         tags={"purpose": PARSE_TAG},
     )
     response = await llm.complete(request)
@@ -198,4 +200,10 @@ async def parse_request(
             await on_cost(usd)
         except Exception:
             log.exception("could not record the parse cost")
-    return _interpret(response.text, families)
+    if response.finish_reason == "length":
+        log.warning("parse: the model hit the %d token output cap", request.max_output_tokens)
+    try:
+        return _interpret(response.text, families)
+    except Exception:  # the model's text is untrusted: whatever it holds, the user gets the fallback, never a 500
+        log.exception("parse: could not interpret the model answer")
+        return ParseOutOfRange(reason=UNREADABLE, closest=None)

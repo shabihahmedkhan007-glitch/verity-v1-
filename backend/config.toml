@@ -72,7 +72,7 @@ rtl_max_output = 24_000        # 12_000 cut 11 of 20 matmul4 drafts and 6 repair
 max_prompt_tokens = 12_000
 
 [budget.parse]
-max_output_tokens = 400         # POST /parse: one short JSON answer from the planner model
+max_output_tokens = 600         # POST /parse: one short JSON answer; thinking is off for this call
 
 [limits]
 auth_per_ip = 10               # POST /auth/session per IP ...

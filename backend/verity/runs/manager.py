@@ -23,8 +23,6 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 
 from ..config import AGENT_ROOT, Settings
-from ..api.parse import parse_request
-from ..features import FEATURES
 from ..contracts import (
     AutopilotSteer,
     CaptionEvent,
@@ -45,6 +43,7 @@ from ..contracts import (
 )
 from ..core import captions as cap
 from ..core.family import render_pack
+from ..core.parse import parse_request
 from ..core.types import (
     ACTIVE_STATUSES,
     AdmissionDenied,
@@ -66,6 +65,7 @@ from ..core.types import (
     ToolRunner,
     UnknownPreset,
 )
+from ..features import FEATURES
 from ..llm.gateway import RunLLM
 from ..orchestrator import run_orchestrator
 from ..roles import default_roles
