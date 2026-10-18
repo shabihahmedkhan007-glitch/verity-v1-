@@ -364,6 +364,10 @@ _Last updated: 2026-10-04_
 - **Spend 2026-10-18:** about $1.13 on Nebius (earlier full bench run $0.37, parse checks, probe $0.69, judge-path run $0.03).
 - **Deferred minors (logged, not blocking):** render cache never cleaned (bounded, about 4k folders max); `Knob` does not self-check its default; lint/import order; stale comments in the locked mac4 testbench; parse drops model-invented knob keys without a note; a numeric pattern with a leading zero loses it. Run record does not store params (needed once a runs list exists).
 
+### 2026-10-18: Landing gives judges two ways in
+- **Changed** the landing hero (`components/sections/rack/RackHead.tsx`, `rack.css`): the two buttons became two equal rack panels, "Build one live" (to `/bench`, the one amber primary, user's choice) and "Watch a recorded run" (to `/studio?run=mac4-real`), each saying what you get and what it costs ("Real Nemotron run · a few minutes", "Real run · 1:10 replay · free"). The top bar's amber action now points to the live bench too ("Build one live"), so each view has one primary. The landing still makes no network call. Removed the unused `.ctas` rules.
+- **Verified:** typecheck, lint (1 old warning), build; browser at 1440 (panel titles on one line and aligned, one amber primary) and 390 (stacked, `scrollWidth` 390), 0 console errors; impeccable detector 0 findings.
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/

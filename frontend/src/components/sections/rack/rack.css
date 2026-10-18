@@ -53,7 +53,27 @@
 .rk .lead-box { grid-column: 2; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .rk .lead { font-size: 16.5px; line-height: 1.4; color: var(--rk-ink-2); max-width: 540px; }
 .rk .lead b { font-weight: 600; color: var(--rk-ink); }
-.rk .ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* The two ways in: equal panels; the live bench carries the one amber marking (the page's primary action). */
+.rk .choose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; max-width: 540px; text-align: left; }
+.rk .way {
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 16px 13px;
+  background: var(--rk-panel); border: 1px solid var(--rk-rule-2); transition: border-color .15s, background-color .15s;
+}
+.rk .way-t {
+  display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 900; font-size: 23px;
+  line-height: .95; text-transform: uppercase; color: var(--rk-ink);
+}
+.rk .way-m svg { width: 18px; height: 18px; margin-left: auto; flex: none; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: square; transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
+.rk .way-d { font-size: 14px; line-height: 1.4; color: var(--rk-ink-2); }
+.rk .way-m { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--rk-rule); font-family: var(--font-data); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--rk-ink-3); }
+.rk .way.live { border-color: var(--rk-a); }
+.rk .way.live .way-m svg { color: var(--rk-a); }
+.rk .way.live .way-m { color: var(--rk-ink-2); }
+.rk .way:hover { background: var(--rk-panel-2); border-color: var(--rk-ink-3); }
+.rk .way.live:hover { border-color: var(--rk-run); }
+.rk .way:hover .way-m svg { transform: translateX(3px); }
+.rk .way:focus-visible { outline-offset: 3px; }
 
 /* rack and modules */
 .rk .rack {
@@ -178,7 +198,7 @@
   .rk .head { grid-template-columns: 1fr; }
   .rk .l2, .rk .lead-box { grid-column: 1; }
   .rk .lead-box { align-items: flex-start; text-align: left; }
-  .rk .ctas { justify-content: flex-start; }
+  .rk .choose { max-width: 640px; }
   .rk .rack { grid-template-columns: 1fr; }
   .rk .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rk .foot-grid { grid-template-columns: 1fr; }
@@ -194,6 +214,8 @@
   .rk .big { font-size: 68px; }
   .rk .mod { padding: 0 26px 16px; }
   .rk .foot-links { flex-direction: row; flex-wrap: wrap; gap: 10px 20px; }
+  .rk .choose { grid-template-columns: 1fr; }
+  .rk .way-t { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rk *, .rk *::before, .rk *::after { animation: none !important; transition: none !important; }
