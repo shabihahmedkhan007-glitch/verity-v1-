@@ -94,7 +94,7 @@ def test_events_are_single_line_json_and_round_trip() -> None:
 
 def test_api_bodies_use_camel_case() -> None:
     health = to_wire(HealthResponse(live_enabled=True, cap_usd=0.5, provider="fake", models={"planner": "m"}))
-    assert set(health) == {"liveEnabled", "capUsd", "provider", "models", "authRequired"}  # reason omitted when None
+    assert set(health) == {"liveEnabled", "capUsd", "provider", "models", "authRequired", "features"}  # reason omitted when None
     assert to_wire(ErrorResponse(error="x")) == {"error": "x"}
     assert to_wire(ErrorResponse(error="x", reason="busy")) == {"error": "x", "reason": "busy"}
 

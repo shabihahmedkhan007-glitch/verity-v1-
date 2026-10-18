@@ -21,6 +21,7 @@ from ..contracts import (
     to_wire,
 )
 from ..contracts.view_types import STEER_ADAPTER
+from ..core.family import ParamsError
 from ..core.protocols import RunService
 from ..core.records import ACTIVE_STATUSES, RunRecord
 from .auth import AuthService, Principal, anonymous_sid, iso_z
@@ -191,8 +192,11 @@ async def create_run(request: Request, principal: Principal = Depends(session_gu
         raise rate_limited(wait)
     try:
         run = await state.service.create_run(
-            session_id=principal.sid, preset_id=body.preset_id, priority=body.priority, mode=mode
+            session_id=principal.sid, preset_id=body.preset_id, priority=body.priority, mode=mode, params=body.params
         )
+    except ParamsError as exc:
+        state.run_limiter.refund(principal.sid)
+        raise ApiError(422, str(exc)) from exc
     except BaseException:
         state.run_limiter.refund(principal.sid)  # refused before any work started
         raise

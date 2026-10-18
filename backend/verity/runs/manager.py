@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 
 from ..config import AGENT_ROOT, Settings
+from ..features import FEATURES
 from ..contracts import (
     AutopilotSteer,
     CaptionEvent,
@@ -41,6 +42,7 @@ from ..contracts import (
     to_json,
 )
 from ..core import captions as cap
+from ..core.family import render_pack
 from ..core.types import (
     ACTIVE_STATUSES,
     AdmissionDenied,
@@ -236,17 +238,28 @@ class RunManager:
             provider=getattr(self._provider, "name", self._settings.provider),
             models=self._settings.models_by_role(),
             auth_required=self._settings.auth.required,
+            features=list(FEATURES),
         )
 
     # ======================================================================
     # RunService: write side
     # ======================================================================
-    async def create_run(self, *, session_id: str, preset_id: str, priority: Priority, mode: PathMode) -> RunRecord:
+    async def create_run(
+        self,
+        *,
+        session_id: str,
+        preset_id: str,
+        priority: Priority,
+        mode: PathMode,
+        params: Mapping[str, object] | None = None,
+    ) -> RunRecord:
         pack = self._packs.get(preset_id)
         if pack is None or not pack.live_preset:
             raise UnknownPreset(f"unknown preset: {preset_id}")
         if priority not in pack.priorities:
             raise UnknownPreset(f"priority {priority} is not offered for {preset_id}")
+        # Raises ParamsError (a ValueError with a user-facing sentence) for bad knobs; the route maps it to 422.
+        pack = await asyncio.to_thread(render_pack, pack, params, self._settings.data_dir / "packs")
 
         if self._closing or self._maintenance():
             raise AdmissionDenied("maintenance", "live runs are offline")

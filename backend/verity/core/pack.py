@@ -23,8 +23,8 @@ TASK_FILE = "task.toml"
 GOLDEN_FILE = "golden.py"
 TESTBENCH_FILE = "test_dut.py"
 REFERENCE_FILE = "reference.v"
-# Files never copied into a sandbox: the reference design (evals only) and the manifest itself.
-SANDBOX_EXCLUDE: frozenset[str] = frozenset({REFERENCE_FILE, MANIFEST_NAME})
+# Files never copied into a sandbox: the reference design (evals only), the manifest, and family.py (knob renderer).
+SANDBOX_EXCLUDE: frozenset[str] = frozenset({REFERENCE_FILE, MANIFEST_NAME, "family.py"})
 _IGNORED_PARTS: frozenset[str] = frozenset({"__pycache__", ".pytest_cache"})
 
 ElementType = Literal["int4", "uint4", "int8", "uint8", "none"]

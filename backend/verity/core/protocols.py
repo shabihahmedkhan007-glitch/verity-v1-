@@ -315,9 +315,17 @@ class RunService(Protocol):
         """Live presets only (eval_only = false), keyed by id (= web presetId)."""
         ...
 
-    async def create_run(self, *, session_id: str, preset_id: str, priority: Priority, mode: PathMode) -> RunRecord:
+    async def create_run(
+        self,
+        *,
+        session_id: str,
+        preset_id: str,
+        priority: Priority,
+        mode: PathMode,
+        params: Mapping[str, object] | None = None,
+    ) -> RunRecord:
         """Admission (concurrency per session and global, daily spend), create the run row, start the asyncio
-        task. Raises UnknownPreset, AdmissionDenied(reason)."""
+        task. Raises UnknownPreset, AdmissionDenied(reason), ParamsError (bad knob values)."""
         ...
 
     async def steer(self, run_id: str, session_id: str, request: object) -> None:

@@ -15,6 +15,7 @@ from verity.config import AuthConfig, Settings, load_settings
 from verity.contracts import CaptionEvent, EventBase, HealthResponse, RunPhaseEvent, parse_event_json
 from verity.core.budget import BudgetLimits
 from verity.core.errors import AdmissionDenied, Conflict, NotFound
+from verity.core.family import render_pack
 from verity.core.pack import TaskPack
 from verity.core.records import RunRecord
 
@@ -94,6 +95,7 @@ class StubService:
         self.steers: list[object] = []
         self.stops: list[str] = []
         self.deny: str | None = None
+        self.rendered: TaskPack | None = None
 
     async def start(self) -> None: ...
     async def shutdown(self) -> None: ...
@@ -101,9 +103,12 @@ class StubService:
     def presets(self) -> Mapping[str, TaskPack]:
         return {k: p for k, p in self.packs.items() if p.live_preset}
 
-    async def create_run(self, *, session_id: str, preset_id: str, priority: str, mode: str) -> RunRecord:
+    async def create_run(
+        self, *, session_id: str, preset_id: str, priority: str, mode: str, params: Mapping[str, object] | None = None
+    ) -> RunRecord:
         if self.deny:
             raise AdmissionDenied(self.deny)
+        self.rendered = render_pack(self.packs[preset_id], params, self.settings.data_dir / "packs")
         run_id = f"r_{len(self.runs) + 1:04d}"
         record = RunRecord(
             id=run_id,
@@ -144,7 +149,7 @@ class StubService:
         return build_run_log(self.runs[run_id], self.events[run_id], self.settings)
 
     async def health(self) -> HealthResponse:
-        return HealthResponse(live_enabled=True, cap_usd=0.5, provider="fake", models={"planner": "m"})
+        return HealthResponse(live_enabled=True, cap_usd=0.5, provider="fake", models={"planner": "m"}, features=["params"])
 
 
 def code_hash(code: str) -> str:
@@ -290,3 +295,30 @@ def test_ownership_unknown_run_and_steer_stop(tmp_path, packs) -> None:
 
         assert client.post(f"/runs/{run_id}/stop", headers=owner).status_code == 202
         assert service.stops == [run_id]
+
+
+def test_health_lists_features(tmp_path, packs) -> None:
+    client, _ = make_client(tmp_path, packs, required=False)
+    with client:
+        assert client.get("/health").json()["features"] == ["params"]
+
+
+def test_run_with_bad_params_is_422_with_a_sentence(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=False)
+    with client:
+        res = client.post("/runs", json={"presetId": "mac4", "priority": "area", "params": {"lanes": 9}})
+    assert res.status_code == 422
+    assert "1 to 8" in res.json()["error"]
+    assert not service.runs
+
+
+def test_run_with_valid_params_renders_the_pack(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=False)
+    with client:
+        res = client.post(
+            "/runs", json={"presetId": "mac4", "priority": "area", "params": {"lanes": 6, "width": 12, "cycles": 20}}
+        )
+    assert res.status_code == 201, res.text
+    assert service.rendered is not None
+    a = service.rendered.port("a")
+    assert (a.count, a.width) == (6, 12)

@@ -18,6 +18,7 @@ class HealthResponse(WireModel):
     provider: str
     models: dict[str, str]  # role -> model id
     auth_required: bool = False
+    features: list[str] = []  # what this backend serves end to end, e.g. ["params"]
 
 
 class SessionRequest(WireModel):
@@ -33,6 +34,7 @@ class CreateRunRequest(WireModel):
     preset_id: str
     priority: Priority
     mode: PathMode | None = opt()
+    params: dict[str, int | bool | str] | None = opt()  # knob values; omitted = the chip's defaults
 
 
 class CreateRunResponse(WireModel):

@@ -36,6 +36,7 @@ LANES = golden.LANES
 WIDTH = golden.LANE_BITS
 CYCLES = golden.CYCLES
 ACC_BITS = golden.ACC_BITS
+MASK = (1 << WIDTH) - 1
 MAX_CYCLES = env_int("VERITY_MAX_CYCLES", 64)
 HOLD_EDGES = 3
 MID_RESET_AFTER = 5
@@ -68,7 +69,7 @@ def const(a_lanes, b_lanes):
 
 
 def random_lanes(rng):
-    return [rng.randrange(256) for _ in range(LANES)]
+    return [rng.randrange(1 << WIDTH) for _ in range(LANES)]
 
 
 def build_cases(rng):
@@ -78,26 +79,28 @@ def build_cases(rng):
         ac, bc = const(a, b)
         cases.append(Case(name, ac, bc, f"a={fmt_lanes(a)} b={fmt_lanes(b)} x{CYCLES}", **flags))
 
-    add_const("acc_zero", [0] * 4, [0] * 4)
-    add_const("acc_16_cycles_max", [255] * 4, [255] * 4)
-    add_const("acc_carry_boundary", [64, 0, 0, 0], [64, 0, 0, 0])
-    add_const("acc_lane0_only", [200, 0, 0, 0], [100, 0, 0, 0])
-    add_const("acc_lane_isolation", [1, 2, 3, 4], [5, 6, 7, 8])
-    add_const("acc_lane3_only", [0, 0, 0, 255], [0, 0, 0, 255])
-    add_const("acc_b_zero", [255] * 4, [0] * 4)
+    zeros = [0] * LANES
+    top_bit = 1 << (WIDTH - 2)
+    add_const("acc_zero", zeros, zeros)
+    add_const("acc_16_cycles_max", [MASK] * LANES, [MASK] * LANES)
+    add_const("acc_carry_boundary", [top_bit] + [0] * (LANES - 1), [top_bit] + [0] * (LANES - 1))
+    add_const("acc_lane0_only", [200 & MASK] + [0] * (LANES - 1), [100 & MASK] + [0] * (LANES - 1))
+    add_const("acc_lane_isolation", [(i + 1) & MASK for i in range(LANES)], [(i + 5) & MASK for i in range(LANES)])
+    add_const("acc_lane3_only", [0] * (LANES - 1) + [MASK], [0] * (LANES - 1) + [MASK])
+    add_const("acc_b_zero", [MASK] * LANES, zeros)
 
-    a_var = [[(k * 17 + lane * 5 + 3) % 256 for lane in range(LANES)] for k in range(CYCLES)]
-    b_var = [[(k * 29 + lane * 11 + 7) % 256 for lane in range(LANES)] for k in range(CYCLES)]
-    cases.append(Case("acc_changing_inputs", a_var, b_var, "different a and b every cycle (formula), x16"))
+    a_var = [[(k * 17 + lane * 5 + 3) % (1 << WIDTH) for lane in range(LANES)] for k in range(CYCLES)]
+    b_var = [[(k * 29 + lane * 11 + 7) % (1 << WIDTH) for lane in range(LANES)] for k in range(CYCLES)]
+    cases.append(Case("acc_changing_inputs", a_var, b_var, f"different a and b every cycle (formula), x{CYCLES}"))
 
-    add_const("acc_start_held_high", [9, 8, 7, 6], [1, 2, 3, 4], hold_start=True)
-    add_const("acc_junk_on_start_edge", [10, 20, 30, 40], [1, 1, 1, 1], junk_first=True)
-    add_const("acc_reset_mid_run", [250, 251, 252, 253], [3, 3, 3, 3], mid_reset=True)
+    add_const("acc_start_held_high", [(9 - i) & MASK for i in range(LANES)], [(i + 1) & MASK for i in range(LANES)], hold_start=True)
+    add_const("acc_junk_on_start_edge", [(10 * (i + 1)) & MASK for i in range(LANES)], [1] * LANES, junk_first=True)
+    add_const("acc_reset_mid_run", [(250 + i) & MASK for i in range(LANES)], [3 & MASK] * LANES, mid_reset=True)
 
     for i in range(5):
         a_cycles = [random_lanes(rng) for _ in range(CYCLES)]
         b_cycles = [random_lanes(rng) for _ in range(CYCLES)]
-        cases.append(Case(f"acc_random_{i + 1}", a_cycles, b_cycles, f"random lanes every cycle, seed {os.environ.get('VERITY_SEED', '1')}, x16"))
+        cases.append(Case(f"acc_random_{i + 1}", a_cycles, b_cycles, f"random lanes every cycle, seed {os.environ.get('VERITY_SEED', '1')}, x{CYCLES}"))
     return cases
 
 
@@ -114,7 +117,7 @@ async def idle_edge(h):
 
 async def start_edge(h, case, rng):
     """Edge 0: start high (inputs ignored by contract: junk or zero), then back to the case's start level."""
-    junk_a, junk_b = (random_lanes(rng), random_lanes(rng)) if case.junk_first else ([0] * 4, [0] * 4)
+    junk_a, junk_b = (random_lanes(rng), random_lanes(rng)) if case.junk_first else ([0] * LANES, [0] * LANES)
     drive(h, start=1, a_lanes=junk_a, b_lanes=junk_b)
     await RisingEdge(h.clk)
     await FallingEdge(h.clk)
@@ -126,7 +129,7 @@ async def run_case(h, case, rng):
     expected_hex = fmt_hex(expected, ACC_BITS)
     await reset_dut(h.clk, h.rst_n)
     if case.mid_reset:
-        drive(h, start=0, a_lanes=[0] * 4, b_lanes=[0] * 4)
+        drive(h, start=0, a_lanes=[0] * LANES, b_lanes=[0] * LANES)
         await idle_edge(h)
         await start_edge(h, case, rng)
         for _ in range(MID_RESET_AFTER):
@@ -139,7 +142,7 @@ async def run_case(h, case, rng):
         got = f"acc={fmt_hex(acc0, ACC_BITS)} done={'X' if done0 is None else done0}"
         return Outcome(False, f"acc={fmt_hex(0, ACC_BITS)} done=0 after reset", got, 0)
 
-    drive(h, start=0, a_lanes=[0] * 4, b_lanes=[0] * 4)
+    drive(h, start=0, a_lanes=[0] * LANES, b_lanes=[0] * LANES)
     await idle_edge(h)
     await start_edge(h, case, rng)
 
@@ -186,7 +189,7 @@ async def run_all(dut):
     rec = Recorder(TOP)
     h = Handles(dut)
     start_clock(dut, "clk")
-    drive(h, start=0, a_lanes=[0] * 4, b_lanes=[0] * 4)
+    drive(h, start=0, a_lanes=[0] * LANES, b_lanes=[0] * LANES)
     h.rst_n.value = 1
     rng = random.Random(int(os.environ.get("VERITY_SEED", "1")))
     cases = build_cases(rng)
