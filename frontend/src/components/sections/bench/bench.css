@@ -181,3 +181,8 @@
 .vs .b-text:hover:not(:disabled), .vs .b-bits:hover:not(:disabled) { border-color: var(--rk-ink-3); }
 .vs .b-text:focus-visible, .vs .b-bits:focus-visible { outline: none; border-color: var(--rk-a); box-shadow: inset 0 0 0 1px var(--rk-a); }
 .vs .b-bits[aria-invalid="true"]:focus-visible { border-style: dashed; }
+
+/* The scoreboard reuses the versions table look but must fit its column: no inherited 460px floor, cells wrap. */
+.vs.bench .b-score { min-width: 0; table-layout: auto; }
+.vs.bench .b-score :is(td, th) { white-space: normal; overflow-wrap: break-word; hyphens: manual; }
+.vs.bench .b-score .t1-d { white-space: normal; }

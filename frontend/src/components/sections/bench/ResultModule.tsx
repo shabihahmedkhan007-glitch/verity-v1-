@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import type { Equivalence, PPA, RunState } from "@/lib/contracts/types";
 import type { LiveConnection } from "@/lib/contracts/view-types";
@@ -8,7 +9,7 @@ import { useVerityStore } from "@/lib/store";
 import { Mod } from "../studio/chrome/Mod";
 import { Seg7 } from "../studio/chrome/Seg7";
 import { Sq } from "../studio/loop/LoopModule";
-import { TERMINAL, discardWhy, scoreRows, type ScoreRow } from "./derive";
+import { TERMINAL, discardWhy, dropNotesOf, scoreRows, type ScoreRow } from "./derive";
 
 const PHASE_WORD: Record<RunState["phase"], string> = {
   idle: "No run",
@@ -164,13 +165,15 @@ export function ResultModule({
   human: { ppa: PPA; eqy: Equivalence } | null;
   humanFeature: boolean;
 }) {
+  const log = useVerityStore((s) => s.log);
+  const dropNotes = useMemo(() => (hasRun ? dropNotesOf(log) : new Map<string, string>()), [hasRun, log]);
   const finished = hasRun && TERMINAL.has(run.phase);
   const winner = run.winnerId ? run.candidates[run.winnerId] : null;
   const base = run.baselineId ? run.candidates[run.baselineId] : null;
   const discarded = run.candidateOrder
     .map((id) => run.candidates[id])
     .filter((c) => c !== undefined)
-    .map((c) => ({ c, why: discardWhy(c, run) }))
+    .map((c) => ({ c, why: discardWhy(c, run, dropNotes) }))
     .filter((d): d is { c: (typeof d)["c"]; why: string } => d.why !== null);
 
   return (

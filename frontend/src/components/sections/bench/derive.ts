@@ -13,12 +13,16 @@ export function currentCandidate(run: RunState, pinned: Selection | null, follow
   return last ? (run.candidates[last] ?? null) : null;
 }
 
-/** Why a version was discarded, read from its own run record. Null for versions still in play. */
-export function discardWhy(c: Candidate, run: RunState): string | null {
+/**
+ * Why a version was discarded, read from its own run record. A version dropped before any test has no record of its own,
+ * so the agent's caption about it is used (`dropNotes`). Null for versions still in play.
+ */
+export function discardWhy(c: Candidate, run: RunState, dropNotes?: ReadonlyMap<string, string>): string | null {
   if (c.id === run.winnerId) return null;
   if (c.status === "rejected") {
     const v = c.attempts.at(-1)?.verification ?? c.verification;
     const tries = c.attempts.length === 1 ? "1 attempt" : `${c.attempts.length} attempts`;
+    if (c.attempts.length === 0) return dropNotes?.get(c.label) ?? "Dropped before any locked test ran.";
     if (!v) return `Rejected after ${tries}.`;
     if (v.lint === "fail") {
       const line = v.lintLog?.split("\n").find((l) => l.trim() !== "")?.trim();
@@ -36,6 +40,17 @@ export function discardWhy(c: Candidate, run: RunState): string | null {
     return "Passed and measured, but not chosen.";
   }
   return null;
+}
+
+/** The agent's own caption for each version it dropped before testing, e.g. "v6 was identical to v2 and was dropped." */
+export function dropNotesOf(log: RunEvent[]): Map<string, string> {
+  const notes = new Map<string, string>();
+  for (const e of log) {
+    if (e.t !== "caption") continue;
+    const m = /^(v\d+) .*\bdropped\b/.exec(e.text);
+    if (m) notes.set(m[1], e.text);
+  }
+  return notes;
 }
 
 /** The last human_ref event in a live log (spec 5.3), or null when the agent has not sent one. */
