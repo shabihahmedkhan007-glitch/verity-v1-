@@ -69,7 +69,7 @@ def test_fake_gpu_is_out_of_range_with_mac4_closest(packs, settings) -> None:
     reply = parse("an RTX 6090", packs, settings, FakeProvider(settings, delay_s=0))
     assert isinstance(reply, ParseOutOfRange)
     assert reply.closest is not None and reply.closest.family == "mac4"
-    assert reply.closest.params == {"lanes": 8, "width": 16, "cycles": 32}
+    assert reply.closest.params == {"lanes": 8, "width": 8, "cycles": 32}
 
 
 # ---------- server-side validation is the authority ----------
@@ -252,7 +252,7 @@ def test_route_in_range_and_out_of_range_wire_shape(tmp_path, packs) -> None:
     assert gpu.status_code == 200
     body = gpu.json()
     assert body["result"] == "out_of_range"
-    assert body["closest"] == {"family": "mac4", "params": {"lanes": 8, "width": 16, "cycles": 32}}
+    assert body["closest"] == {"family": "mac4", "params": {"lanes": 8, "width": 8, "cycles": 32}}
 
 
 def test_route_text_length_limits(tmp_path, packs) -> None:

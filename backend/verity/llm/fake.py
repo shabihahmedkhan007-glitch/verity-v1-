@@ -49,7 +49,7 @@ def _fake_parse_json(request: str) -> str:
         answer: dict[str, Any] = {
             "result": "out_of_range",
             "reason": "That is a full GPU: thousands of cores, memories and caches. Verity builds small single-module blocks.",
-            "closest": {"family": "mac4", "params": {"lanes": 8, "width": 16, "cycles": 32}},
+            "closest": {"family": "mac4", "params": {"lanes": 8, "width": 8, "cycles": 32}},
         }
     elif "counter" in low:
         answer = {"result": "in_range", "family": "cnt8", "params": width}

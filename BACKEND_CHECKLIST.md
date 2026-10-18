@@ -58,7 +58,7 @@ Request `{ "accessCode": "..." }`. `200 { "token": "...", "expiresAt": "2026-10-
 Request:
 
 ```json
-{ "presetId": "mac4", "priority": "area", "params": { "lanes": 6, "width": 12, "cycles": 20 } }
+{ "presetId": "mac4", "priority": "area", "params": { "lanes": 6, "width": 6, "cycles": 20 } }
 ```
 
 - `presetId` names the family (the task pack folder): `mac4`, `add8`, `cnt8`, `fsm_seq`.
@@ -69,7 +69,7 @@ Request:
 | presetId | knob id | type | range | default |
 |---|---|---|---|---|
 | `mac4` | `lanes` | int | 1 to 8 | 4 |
-| `mac4` | `width` | int | 4 to 16 | 8 |
+| `mac4` | `width` | int | 4 to 8 | 8 |
 | `mac4` | `cycles` | int | 4 to 32 | 16 |
 | `add8` | `width` | int | 4 to 32 | 8 |
 | `cnt8` | `width` | int | 4 to 16 | 8 |
@@ -94,14 +94,14 @@ Request: `{ "text": "a 6-lane multiply-accumulate with 12-bit inputs" }` (1 to 3
 Responses (`200`, strict JSON, validated server side against the same knob tables before sending):
 
 ```json
-{ "result": "in_range", "family": "mac4", "params": { "lanes": 6, "width": 12, "cycles": 16 }, "note": "Cycles not given; kept 16." }
+{ "result": "in_range", "family": "mac4", "params": { "lanes": 6, "width": 6, "cycles": 16 }, "note": "Cycles not given; kept 16." }
 ```
 
 ```json
 {
   "result": "out_of_range",
   "reason": "An RTX 6090 is a full GPU: thousands of cores, memories and caches. Verity builds small single-module blocks.",
-  "closest": { "family": "mac4", "params": { "lanes": 8, "width": 16, "cycles": 32 } }
+  "closest": { "family": "mac4", "params": { "lanes": 8, "width": 8, "cycles": 32 } }
 }
 ```
 

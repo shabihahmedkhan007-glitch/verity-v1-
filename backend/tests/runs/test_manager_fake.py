@@ -214,12 +214,12 @@ async def test_params_render_the_pack_and_reach_the_spec_event(tmp_path, packs) 
         assert (await manager.health()).features == ["params", "human_ref", "parse"]
 
         run = await manager.create_run(
-            session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 6, "width": 12, "cycles": 20}
+            session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 6, "width": 6, "cycles": 20}
         )
         events = await asyncio.wait_for(drain(manager, run.id), timeout=60)
         spec = next(e for e in events if isinstance(e, SpecEvent)).spec
         by_name = {p.name: p for p in spec.ports}
-        assert (by_name["a"].count, by_name["a"].width, by_name["acc"].width) == (6, 12, 31)
+        assert (by_name["a"].count, by_name["a"].width, by_name["acc"].width) == (6, 6, 19)
         assert "6-lane" in spec.title
     finally:
         await close(manager, store)
@@ -228,7 +228,7 @@ async def test_params_render_the_pack_and_reach_the_spec_event(tmp_path, packs) 
 @pytest.mark.parametrize(
     ("preset", "params", "mode"),
     [
-        ("mac4", {"lanes": 6, "width": 12, "cycles": 20}, "full"),
+        ("mac4", {"lanes": 6, "width": 6, "cycles": 20}, "full"),
         ("cnt8", {"width": 12, "enable": False}, "fast"),
     ],
 )

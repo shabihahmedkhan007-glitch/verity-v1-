@@ -17,8 +17,8 @@ from verity_test_support import make_settings
 
 EDGES = [
     ("mac4", {"lanes": 1, "width": 4, "cycles": 4}),
-    ("mac4", {"lanes": 8, "width": 16, "cycles": 32}),
-    ("mac4", {"lanes": 6, "width": 12, "cycles": 20}),
+    ("mac4", {"lanes": 8, "width": 8, "cycles": 32}),
+    ("mac4", {"lanes": 6, "width": 6, "cycles": 20}),
     ("add8", {"width": 4}),
     ("add8", {"width": 8}),
     ("add8", {"width": 32}),

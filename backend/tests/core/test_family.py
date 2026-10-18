@@ -46,6 +46,10 @@ def test_validate_rejects_out_of_range(mac4: TaskPack) -> None:
     with pytest.raises(ParamsError) as err:
         validate_params(knobs(mac4), {"lanes": 9})
     assert "1 to 8" in str(err.value)
+    for bad_width in (9, 12):
+        with pytest.raises(ParamsError) as werr:
+            validate_params(knobs(mac4), {"width": bad_width})
+        assert "4 to 8" in str(werr.value)
 
 
 def test_validate_bits_and_bool() -> None:
@@ -66,12 +70,12 @@ def test_render_defaults_returns_base_pack(mac4: TaskPack, tmp_path: Path) -> No
     assert list(tmp_path.iterdir()) == []
 
 
-def test_render_mac4_6x12x20(mac4: TaskPack, tmp_path: Path) -> None:
-    pack = render_pack(mac4, {"lanes": 6, "width": 12, "cycles": 20}, tmp_path)
+def test_render_mac4_6x6x20(mac4: TaskPack, tmp_path: Path) -> None:
+    pack = render_pack(mac4, {"lanes": 6, "width": 6, "cycles": 20}, tmp_path)
     assert pack is not mac4 and pack.id == "mac4"
     a, b, acc = pack.port("a"), pack.port("b"), pack.port("acc")
-    assert (a.width, a.count, b.width, b.count) == (12, 6, 12, 6)
-    assert acc.width == 2 * 12 + 7 == 31
+    assert (a.width, a.count, b.width, b.count) == (6, 6, 6, 6)
+    assert acc.width == 2 * 6 + 7 == 19
     assert pack.latency_cycles == 20
     files = pack.sandbox_files()
     assert "params.json" in files and "reference.v" not in files and "family.py" not in files

@@ -316,9 +316,9 @@ def test_run_with_valid_params_renders_the_pack(tmp_path, packs) -> None:
     client, service = make_client(tmp_path, packs, required=False)
     with client:
         res = client.post(
-            "/runs", json={"presetId": "mac4", "priority": "area", "params": {"lanes": 6, "width": 12, "cycles": 20}}
+            "/runs", json={"presetId": "mac4", "priority": "area", "params": {"lanes": 6, "width": 6, "cycles": 20}}
         )
     assert res.status_code == 201, res.text
     assert service.rendered is not None
     a = service.rendered.port("a")
-    assert (a.count, a.width) == (6, 12)
+    assert (a.count, a.width) == (6, 6)

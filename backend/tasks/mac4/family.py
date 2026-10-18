@@ -8,7 +8,7 @@ import json
 
 KNOBS: list[dict] = [
     {"id": "lanes", "kind": "int", "default": 4, "min": 1, "max": 8},
-    {"id": "width", "kind": "int", "default": 8, "min": 4, "max": 16},
+    {"id": "width", "kind": "int", "default": 8, "min": 4, "max": 8},
     {"id": "cycles", "kind": "int", "default": 16, "min": 4, "max": 32},
 ]
 
