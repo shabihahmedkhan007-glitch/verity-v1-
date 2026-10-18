@@ -33,7 +33,7 @@ image), `tasks/self_test.md` (pack self-test). Frontend contract: `frontend/src/
 | `verity/api/` | FastAPI app, routes, hand-rolled SSE, auth tokens, rate limits, log redaction |
 | `verity/evals/` | evals CLI, harness, bug injectors, report generator |
 | `sandbox/` | the `verity-tools:0.1` image: Dockerfile and `/verity/bin/{verify,measure,eqy,bundle}` |
-| `tasks/` | task packs: `mac4`, `alu8`, `matmul4` (live presets) and `add8`, `cnt8`, `fsm_seq`, `mm4_int4` (eval only) |
+| `tasks/` | task packs: `mac4`, `alu8`, `matmul4`, `add8`, `cnt8`, `fsm_seq` (live presets; `mac4`, `add8`, `cnt8`, `fsm_seq` are knob families rendered per run) and `mm4_int4` (eval only) |
 | `tests/` | pytest files (written, not yet run) |
 | `evals/` | generated: `results/*.jsonl`, `report.md`, throwaway `work/` (all gitignored) |
 

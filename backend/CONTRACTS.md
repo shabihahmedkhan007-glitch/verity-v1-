@@ -32,7 +32,7 @@ The shared code already exists and is the source of truth for every type named h
 
 | Builder | Owns (write only here) | Must export (exact names) |
 |---|---|---|
-| **A** | `sandbox/` (Dockerfile + `/verity/bin` scripts + `/verity/lib`), `tasks/`, `verity/evals/`, `evals/` (cassettes, results, report) | Image `verity-tools:0.1` with `/verity/bin/verify`, `/verity/bin/measure`, `/verity/bin/eqy`, `/verity/bin/bundle`; `/verity/lib/verity_tb.py`; task packs `mac4`, `alu8`, `matmul4` (live, must equal `frontend/src/lib/contracts/presets.ts`), `add8`, `cnt8`, `fsm_seq`, `mm4_int4` (`eval_only = true`); `verity.evals.__main__:main` |
+| **A** | `sandbox/` (Dockerfile + `/verity/bin` scripts + `/verity/lib`), `tasks/`, `verity/evals/`, `evals/` (cassettes, results, report) | Image `verity-tools:0.1` with `/verity/bin/verify`, `/verity/bin/measure`, `/verity/bin/eqy`, `/verity/bin/bundle`; `/verity/lib/verity_tb.py`; task packs `mac4`, `alu8`, `matmul4`, `add8`, `cnt8`, `fsm_seq` (live, must equal `frontend/src/lib/contracts/presets.ts`) and `mm4_int4` (`eval_only = true`); `mac4`, `add8`, `cnt8`, `fsm_seq` are knob families (`family.py`); `verity.evals.__main__:main` |
 | **B** | `verity/llm/`, `verity/roles/` (+ `roles/prompts/*.md`) | `verity.llm.factory.build_provider(settings) -> LLMProvider`; `verity.llm.gateway.RunLLM(provider, settings, ledger)` implementing `LLMGateway`; `verity.llm.nebius.NebiusProvider`, `OpenAICompatProvider`; `verity.llm.fake.FakeProvider`; `verity.roles.planner.plan`, `verity.roles.rtl_gen.generate_rtl`, `verity.roles.repair.repair`, `verity.roles.optimizer.optimize`; `verity.roles.default_roles() -> Roles` |
 | **C** | `verity/tools/` | `verity.tools.factory.build_tool_runner(settings) -> ToolRunner`; `verity.tools.local_docker.LocalDockerRunner`; `verity.tools.nebius_sandbox.NebiusSandboxRunner`; `verity.tools.parse.parse_stdout_json(stdout) -> dict` |
 | **D** | `verity/orchestrator/`, `verity/runs/` | `verity.orchestrator.run_orchestrator(ctx: RunContext) -> None`; `verity.orchestrator.feasibility.check_plan(plan, pack, settings) -> list[str]`; `verity.runs.manager.RunManager(settings, store, provider, tools, packs)` implementing `RunService`; `verity.runs.ledger.RunLedger(limits, settings)` implementing `Ledger`; `verity.runs.runlog.build_run_log(run, events, settings) -> RunLog` |
@@ -66,7 +66,7 @@ Protocols and signatures: `verity/core/protocols.py`. Run context: `verity/core/
 | S4 | Sandbox scripts print exactly one JSON object as the LAST line of stdout. Everything else goes to stderr. |
 | S5 | `maxLines` counts non-blank lines. RTL max 20,000 bytes, ASCII only. |
 | S6 | Pack hashes are SHA-256 over file bytes with CRLF normalized to LF. Pack hash = SHA-256 of `MANIFEST.sha256`. Use `write_manifest(root)` to (re)generate. |
-| S7 | `reference.v` never enters a sandbox for a run and never reaches a role. `FakeProvider` may use it as canned RTL. |
+| S7 | `reference.v` never enters a sandbox for a run and never reaches a role. `FakeProvider` may use it as canned RTL, and the orchestrator measures it once per run for the `human_ref` event. |
 | S8 | `ppa.powerMw` is an OpenSTA `report_power` estimate (section 3.6), `null` when it is not available (older records, failed estimate). Fitness drops a missing metric and renormalizes. Recorded `Fitness.weights` are the effective (renormalized) weights. |
 | S9 | `seq` and `tMs` are stamped by the `EventSink`. Producers create events with the defaults (0). |
 | S10 | Canvas `add_node` and `connect` ops use `by: "ai"`, `update_status` uses `by: "system"`, exactly like `golden.json`, so a recorded run is a drop-in fixture. (ARCHITECTURE 9.1 says `system` for all; flagged, golden.json wins because the web is built against it.) |
@@ -472,9 +472,10 @@ Chapter labels are the constants `CH_*` in `captions.py`; `round_chapter(r)` pic
 
 | Method and path | Auth (when `auth.required`) | Request | Response |
 |---|---|---|---|
-| `GET /health` | none | | `HealthResponse` |
+| `GET /health` | none | | `HealthResponse {liveEnabled, reason?, capUsd, provider, models, authRequired, features}` |
 | `POST /auth/session` | none, `limits.auth_per_ip` per `auth_window_s` | `SessionRequest {accessCode}` | `200 SessionResponse {token, expiresAt}` or `401` |
-| `POST /runs` | session | `CreateRunRequest {presetId, priority, mode?}` | `201 CreateRunResponse {runId, capUsd, streamToken}`; `429 {error, reason}`; `422` |
+| `POST /runs` | session | `CreateRunRequest {presetId, priority, mode?, params?}` | `201 CreateRunResponse {runId, capUsd, streamToken}`; `429 {error, reason}`; `422 {error}` |
+| `POST /parse` | session, `limits` parse bucket per session | `ParseRequest {text}` (1 to 300 characters) | `200 ParseReply`; `422`; `429 {error, reason}`; `502`; `503 {error, reason: "maintenance"}` |
 | `GET /runs/{id}/events` | `?st=<stream token>` | `Last-Event-ID` header or `?after=<seq>` | SSE |
 | `GET /runs/{id}/log` | session, owner | | `RunLog` |
 | `POST /runs/{id}/steer` | session, owner | `SteerRequest` | `202` |
@@ -487,6 +488,12 @@ Chapter labels are the constants `CH_*` in `captions.py`; `round_chapter(r)` pic
 - Rate limits (in-process token buckets, `[limits]`): auth per IP, API requests per session per minute, new runs per session per hour (429 `rate_limited`). Concurrency (per session, global) and daily spend are the RunManager's admission (`busy`, `budget_exhausted`).
 - Health: `liveEnabled` false with `reason`: `maintenance` (provider `nebius`/`openai_compat` without an API key, or tool backend not configured), `budget_exhausted` (today's spend >= `limits.daily_usd`), `busy` (global concurrency full). `capUsd` = `budget.run.max_usd`; `models` = `settings.models_by_role()`.
 - CORS: `settings.cors_origin_list`, methods GET/POST/OPTIONS, headers `Authorization`, `Content-Type`, `Last-Event-ID`.
+- `features` (on `GET /health`): `string[]` of what this backend serves end to end. Today `["params", "human_ref", "parse"]`. Unknown values are ignored by clients; absent means `[]`.
+- `params` (on `POST /runs`): optional `{ "<knob id>": int | bool | string }`. Omitted means the chip's defaults. Keys and values are validated against the family's `KNOBS` table (`tasks/<id>/family.py`): an unknown key, a wrong type (a bool is not an int) or an out-of-range value is `422 {error}` with a sentence meant to be shown as is; a chip with no knobs and a non-empty `params` is `422 "This chip has no settings."`. The run executes against the pack rendered at those knobs (`verity.core.family.render_pack`), so the `spec` event and every test describe that chip. Knobs: `mac4` lanes 1 to 8 (4), width 4 to 16 (8), cycles 4 to 32 (16); `add8` width 4 to 32 (8); `cnt8` width 4 to 16 (8), enable bool (true); `fsm_seq` pattern string of 0/1, length 3 to 8 ("1011"), overlap bool (true).
+- `POST /parse`: the sentence goes only in the user message of one planner-model call (no reasoning tokens); the server re-validates family and knobs against the knob tables, so the reply only pre-fills the bench. `ParseReply` is one of
+  `{ "result": "in_range", "family": "<id>", "params": { ... }, "note"?: "<one sentence>" }` (params fully filled with defaults) or
+  `{ "result": "out_of_range", "reason": "<sentence>", "closest": { "family": "<id>", "params": { ... } } | null }` (`closest` is always present; the model is told to suggest the nearest buildable family and clamps its values into range, `null` only when nothing relates). Unreadable model output is an `out_of_range` with a fixed fallback reason, never a 500. A provider failure is `502`; `budget_exhausted` is `429 {error, reason}`.
+- `human_ref` (SSE event): `{ "seq", "tMs", "t": "human_ref", "ppa": PPA, "eqy": Equivalence }`, emitted once after the `winner` event and before the terminal `run` event (also on the cap_reached path when a winner exists), only when the pack has a `reference.v`. A `caption` "Measuring the human-written design with the same tools." precedes it. `ppa` is `reference.v` (rendered at the run's knobs) through the same synth, timing and power flow as the candidates, with nulls for anything not measured. `eqy` is EQY of the reference (gold) against the winner (gate), `againstId` = the winner id, `status` one of `proven | not_equivalent | inconclusive | not_run`. EQY is `not_run` (reason in `log`) when equivalence is off for the task, the wall limit was reached, or the winner's own prove EQY timed out. A failure here never changes the run's status.
 - Logs never include `Authorization` headers, tokens, access codes or API keys.
 
 ---
@@ -512,7 +519,7 @@ Chapter labels are the constants `CH_*` in `captions.py`; `round_chapter(r)` pic
 ## 11. LLM layer notes (builder B)
 
 - `NebiusProvider` and `OpenAICompatProvider` share one class over `openai.AsyncOpenAI(base_url, api_key, timeout)`; `request_id` from the response id (or the `x-request-id` header); usage from `response.usage` (add `completion_tokens_details.reasoning_tokens` if reported separately). `# UNVERIFIED: Nemotron reasoning token reporting and JSON mode on Nebius.`
-- `FakeProvider`: zero network. Cassettes `backend/evals/cassettes/<task_id>/<role>[.<strategy>][.<n>].txt` keyed by `LLMRequest.tags` (`task_id`, `strategy`, `attempt`); without a cassette it returns a canned plan built from the pack and `tasks/<id>/reference.v` as the RTL, so the full pipeline runs at $0.
+- `FakeProvider`: zero network. Cassettes `backend/evals/cassettes/<task_id>/<role>[.<strategy>][.<n>].txt` keyed by `LLMRequest.tags` (`task_id`, `strategy`, `attempt`); without a cassette it returns a canned plan built from the run's pack (tag `pack_root`, the rendered pack of a knob run; never put in a prompt) and its `reference.v` as the RTL, so the full pipeline runs at $0.
 - Prompt version: `"<template file name>@<sha256(template)[:12]>"`, recorded per attempt.
 - Roles extract exactly one fenced Verilog block (accept `verilog`, `systemverilog`, `v` or bare fences; if several, take the one containing `module <top>`). Planner JSON: tolerate fences, retry once (`plan.json_retries`), then `RoleOutputError`. Truncate `reason` to 200 chars and `diagnosis` to 300.
 - Repair prompts get the RTL plus either the lint log (first 4,000 chars) or at most 5 failing cases; never `golden.py`, `test_dut.py` or `reference.v`.

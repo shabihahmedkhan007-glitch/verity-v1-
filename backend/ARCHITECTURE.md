@@ -529,7 +529,8 @@ backend/tasks/<task_id>/
   golden.py          # Python reference model (pure function of inputs)
   test_dut.py        # cocotb testbench: directed + seeded random vectors, compares to golden.py
   vectors/           # optional fixed vectors
-  reference.v        # optional human-written RTL, used ONLY by evals and to validate the pack
+  reference.v        # optional human-written RTL: used by evals, pack validation and the run's `human_ref` measurement; never shown to a role or a sandbox
+  family.py          # knob families only (mac4, add8, cnt8, fsm_seq): KNOBS table + render(params); a run renders the pack at its knobs
   MANIFEST.sha256    # hash of every file above
 ```
 

@@ -1,7 +1,7 @@
 # Backend checklist for /bench
 
 What the live bench (`frontend/src/components/sections/bench/`) consumes, with exact wire shapes (camelCase JSON), each
-marked **IMPLEMENTED** or **MISSING** from what is in `backend/` on 2026-10-17 (`verity/api/routes.py`,
+marked **IMPLEMENTED** or **MISSING** from what is in `backend/` on 2026-10-18 (`verity/api/routes.py`,
 `verity/contracts/api.py`, `backend/CONTRACTS.md` section 9). Design source: `docs/superpowers/specs/2026-10-17-bench-envelope-design.md`
 sections 4 and 5. The frontend side of every item below is built and degrades honestly until the backend ships it.
 
@@ -10,26 +10,26 @@ sections 4 and 5. The frontend side of every item below is built and degrades ho
 | Item | Status | Bench behaviour until it ships |
 |---|---|---|
 | `GET /health` | IMPLEMENTED | |
-| `GET /health` field `features` | **MISSING** | Treated as `[]`: no parse, no knobs, no human comparison |
+| `GET /health` field `features` | IMPLEMENTED (`["params", "human_ref", "parse"]`) | |
 | `POST /auth/session` | IMPLEMENTED | |
 | `POST /runs` | IMPLEMENTED | |
-| `POST /runs` field `params` | **MISSING** | Never sent. Only the MAC array at default knobs can run |
-| Live presets `add8`, `cnt8`, `fsm_seq` | **MISSING** (packs are `eval_only = true`) | Adder, Counter, Sequence detector show "runs land with knob support" |
-| `POST /parse` | **MISSING** | English box reads "Plain-English parse lands with the backend. Use the knobs below for now." |
+| `POST /runs` field `params` | IMPLEMENTED | |
+| Live presets `add8`, `cnt8`, `fsm_seq` | IMPLEMENTED (`eval_only = false`, knob families) | |
+| `POST /parse` | IMPLEMENTED | |
 | `GET /runs/{id}/events` (SSE) | IMPLEMENTED | |
-| SSE event `human_ref` | **MISSING** | Result reads "Comparison with the human-written design is not available from this backend yet." |
+| SSE event `human_ref` | IMPLEMENTED | |
 | `POST /runs/{id}/stop` | IMPLEMENTED | |
 | `POST /runs/{id}/steer` | IMPLEMENTED | Used by the reused detail panel (winner override) |
-| `GET /runs/{id}/log` | IMPLEMENTED (owner only) | Not called by the bench. Public read for finished runs is MISSING (needed for the studio split, spec 6.2) |
+| `GET /runs/{id}/log` | IMPLEMENTED (owner only); public read for finished runs **MISSING** | Not called by the bench. Needed for the studio split, spec 6.2 |
 | `GET /runs` | **MISSING** | Not called by the bench. Needed for the `/runs` list (spec 6.2) |
 
-## Warning: `params` today is silently ignored
+## Note: `params` is honoured
 
-`WireModel` uses `extra="ignore"`, so a `POST /runs` body with `params` is accepted and the default chip runs. That is why
-the bench never sends `params` unless `/health` lists `"params"` in `features`. Ship `features: ["params"]` in the same
-change that makes `params` actually change the rendered pack, never before.
+`POST /runs` validates `params` against the family's knob table and runs the pack rendered at those knobs. `WireModel` still
+uses `extra="ignore"`, so an older backend would silently run the default chip; the bench therefore sends `params` only
+when `/health` lists `"params"` in `features`.
 
-## 1. `GET /health`: IMPLEMENTED, one field MISSING
+## 1. `GET /health`: IMPLEMENTED
 
 ```json
 {
@@ -43,7 +43,7 @@ change that makes `params` actually change the rendered pack, never before.
 }
 ```
 
-- **MISSING `features: string[]`**. List only what is live end to end. Values the bench reads: `"params"` (POST /runs
+- `features: string[]` (IMPLEMENTED). Lists only what is live end to end. Values the bench reads: `"params"` (POST /runs
   honours knobs for all four families), `"parse"` (POST /parse exists), `"human_ref"` (runs emit the `human_ref` event).
   Unknown values are ignored. Absent or not an array = `[]`.
 - `reason` is omitted when `liveEnabled` is true (existing behaviour).
@@ -53,7 +53,7 @@ change that makes `params` actually change the rendered pack, never before.
 Request `{ "accessCode": "..." }`. `200 { "token": "...", "expiresAt": "2026-10-17T12:00:00Z" }`, `401` wrong code,
 `429` rate limited. Bench sends `Authorization: Bearer <token>` on POST /runs, /parse, /stop, /steer.
 
-## 3. `POST /runs`: IMPLEMENTED, `params` MISSING
+## 3. `POST /runs`: IMPLEMENTED
 
 Request:
 
@@ -62,8 +62,8 @@ Request:
 ```
 
 - `presetId` names the family (the task pack folder): `mac4`, `add8`, `cnt8`, `fsm_seq`.
-- **MISSING `params`** (optional; omitted = pack defaults). Validate every key against the family's `[params]` table in
-  `task.toml` (spec 5.1); unknown key or out-of-range value = `422 { "error": "..." }` with a sentence the bench shows as is.
+- `params` (IMPLEMENTED; optional, omitted = pack defaults). Every key is validated against the family's `KNOBS` table in
+  `tasks/<id>/family.py` (spec 5.1); unknown key or out-of-range value = `422 { "error": "..." }` with a sentence the bench shows as is.
 - Knob tables the bench renders (DRAFT, `frontend/src/lib/contracts/presets.ts` `FAMILIES`; backend must use the same ids):
 
 | presetId | knob id | type | range | default |
@@ -78,14 +78,14 @@ Request:
 | `fsm_seq` | `overlap` | bool | | true |
 
   When the range probe (spec 7) narrows a range, change it in both places in one commit.
-- **MISSING live presets**: `add8`, `cnt8`, `fsm_seq` are `eval_only = true`, so `POST /runs` answers 422 for them today.
+- Live presets (IMPLEMENTED): `add8`, `cnt8`, `fsm_seq` are live (`eval_only = false`) alongside `mac4`.
 - Responses (existing): `201 { "runId": "r_...", "capUsd": 0.5, "streamToken": "..." }`; `401`; `422 { "error" }`;
   `429 { "error", "reason": "busy | budget_exhausted | maintenance | rate_limited" }`. The bench maps every reason to its
   own message, including `rate_limited`.
 - The agent's first `spec` event must describe the chip at the requested knobs (title, ports, text), because the bench
   does not seed the preset text when knobs were sent.
 
-## 4. `POST /parse`: MISSING
+## 4. `POST /parse`: IMPLEMENTED
 
 Session-guarded (same as POST /runs), rate-limited, Nemotron call with about 400 output tokens, spend logged to the session.
 
@@ -105,20 +105,20 @@ Responses (`200`, strict JSON, validated server side against the same knob table
 }
 ```
 
-- `note` optional. `closest` may be `null` when nothing is close.
+- `note` optional. `closest` is always present; it is `null` only when nothing relates to any family (the model is told to suggest the nearest buildable chip, and the server clamps its values into range).
 - `params` may omit knobs (the bench fills defaults), but every value sent must be in range: the bench re-checks against
   its table and refuses to apply a reply that is not.
 - Errors: `401` (session), `429` (rate limited), anything else non-2xx = "could not read that request". `404`/`405` are read
   as "parse not available", so do not use them for other failures.
 - The sentence is input only. It never becomes a reference or a test (decision O9).
 
-## 5. `GET /runs/{id}/events?st=<streamToken>` (SSE): IMPLEMENTED, one event MISSING
+## 5. `GET /runs/{id}/events?st=<streamToken>` (SSE): IMPLEMENTED
 
 Each message `id: <seq>` and `data: <RunEvent JSON>`. Every event is validated with `RunEventSchema`
 (`frontend/src/lib/contracts/schemas.ts`); an invalid one is dropped and logged in development. Reconnect resumes with
 `Last-Event-ID`; a finished run replays and ends (this is how "Open in studio" works today).
 
-Event set consumed (all IMPLEMENTED except `human_ref`):
+Event set consumed (all IMPLEMENTED):
 
 | `t` | Shape (besides `seq`, `tMs`) | Bench use |
 |---|---|---|
@@ -135,9 +135,9 @@ Event set consumed (all IMPLEMENTED except `human_ref`):
 | `caption` | `text`, `chapter?` | Monitor narration |
 | `credits` | `usedUsd`, `capUsd` | cost meter, Status |
 | `artifact` | `path`, `content` | studio export |
-| `human_ref` | **MISSING**, see below | vs-human scoreboard |
+| `human_ref` | IMPLEMENTED, see below | vs-human scoreboard |
 
-**MISSING `human_ref`** (spec 5.3). Emit once, after the winner is chosen and before the terminal `run` event:
+`human_ref` (IMPLEMENTED, spec 5.3). Emitted once, after the winner is chosen and before the terminal `run` event:
 
 ```json
 {
@@ -151,8 +151,9 @@ Event set consumed (all IMPLEMENTED except `human_ref`):
 - `ppa`: the pack's `reference.v`, rendered at the run's knobs, through the same synth, timing and power flow and settings
   as the candidates. `null` for any metric not measured.
 - `eqy`: EQY of the winner (`againstId` = winner candidate id) against that reference. `status` is one of
-  `proven | not_equivalent | inconclusive | not_run`.
-- The reference is never shown to any agent role (`core/pack.py` isolation stays).
+  `proven | not_equivalent | inconclusive | not_run`. `not_run` (reason in `log`) when equivalence is off for the task, the
+  wall limit was reached, or the winner's own prove EQY timed out.
+- The reference is never shown to any agent role or sandbox (`core/pack.py` isolation stays). A caption "Measuring the human-written design with the same tools." precedes the event.
 - Send it even when the human design wins; the bench shows the loss.
 
 ## 6. `POST /runs/{id}/stop` and `POST /runs/{id}/steer`: IMPLEMENTED
