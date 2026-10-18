@@ -1,4 +1,4 @@
-// Human-written reference for add8 (task pack self-test and evals only; never shown to a model).
+// Human-written reference for add8 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 module add8 (
     input  [7:0] a,
     input  [7:0] b,

@@ -39,7 +39,7 @@ async def generate_rtl(
         system=system,
         user=user,
         parse=lambda text: parse_rtl_answer(text, pack.top),
-        tags={"task_id": pack.id, "priority": priority, "attempt": "1"},
+        tags={"task_id": pack.id, "pack_root": str(pack.root), "priority": priority, "attempt": "1"},
         format_hint=FORMAT_HINT,
         sampling={k: v for k, v in (("temperature", temperature), ("top_p", top_p)) if v is not None},
     )

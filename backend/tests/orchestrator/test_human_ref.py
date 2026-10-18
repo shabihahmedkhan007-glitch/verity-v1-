@@ -2,7 +2,7 @@
 
 import pytest
 
-from verity.contracts import HumanRefEvent, RunPhaseEvent, WinnerEvent, event_to_wire
+from verity.contracts import CaptionEvent, HumanRefEvent, RunPhaseEvent, WinnerEvent, event_to_wire
 from verity.core.pack import TaskPack
 from verity.core.rtl import normalize_rtl_text
 from verity.core.types import ToolInfraError
@@ -190,5 +190,31 @@ async def test_end_budget_path_with_a_winner_emits_human_ref(settings, mac4: Tas
         ref = next(i for i, e in enumerate(run.events) if isinstance(e, HumanRefEvent))
         term = next(i for i, e in enumerate(run.events) if isinstance(e, RunPhaseEvent) and e.phase == "cap_reached")
         assert ref < term
+    finally:
+        await run.store.close()
+
+
+async def test_caption_precedes_the_measurement(settings, mac4: TaskPack) -> None:
+    run = await execute_fake_run(settings, mac4, mode="fast", tools=FakeToolRunner())
+    try:
+        text = "Measuring the human-written design with the same tools."
+        idx = [i for i, e in enumerate(run.events) if isinstance(e, CaptionEvent) and e.text == text]
+        assert len(idx) == 1
+        ref = next(i for i, e in enumerate(run.events) if isinstance(e, HumanRefEvent))
+        assert idx[0] < ref
+    finally:
+        await run.store.close()
+
+
+async def test_prove_timeout_skips_the_reference_eqy(settings, mac4: TaskPack) -> None:
+    tools = FakeToolRunner(eqy_status="timeout")
+    run = await execute_fake_run(settings, mac4, mode="full", tools=tools)
+    try:
+        assert run.outcome is not None and run.outcome.status == "done"
+        assert tools.eqy_calls >= 1, "the winner prove ran and timed out"
+        (ev,) = refs(run.events)
+        assert ev.eqy.status == "not_run"
+        assert ev.eqy.log == "Not run: equivalence timed out on this design size."
+        assert ev.ppa.area_um2 is not None, "the reference was still measured"
     finally:
         await run.store.close()

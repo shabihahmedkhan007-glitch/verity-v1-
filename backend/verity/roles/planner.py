@@ -41,6 +41,7 @@ async def plan(
     )
     tags = {
         "task_id": pack.id,
+        "pack_root": str(pack.root),
         "priority": priority,
         "attempt": "2" if previous is not None else "1",
         "steering": json.dumps([_steer_wire(s) for s in steering], sort_keys=True),

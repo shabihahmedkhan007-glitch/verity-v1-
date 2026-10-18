@@ -23,7 +23,7 @@ TASK_FILE = "task.toml"
 GOLDEN_FILE = "golden.py"
 TESTBENCH_FILE = "test_dut.py"
 REFERENCE_FILE = "reference.v"
-# Files never copied into a sandbox: the reference design (evals only), the manifest, and family.py (knob renderer).
+# Files never copied into a sandbox: the reference design (the orchestrator measures it at run time for human_ref, never in a sandbox), the manifest, and family.py (knob renderer).
 SANDBOX_EXCLUDE: frozenset[str] = frozenset({REFERENCE_FILE, MANIFEST_NAME, "family.py"})
 _IGNORED_PARTS: frozenset[str] = frozenset({"__pycache__", ".pytest_cache"})
 
@@ -291,7 +291,7 @@ class TaskPack(BaseModel):
         return (self._root / TESTBENCH_FILE).read_text(encoding="utf-8")
 
     def reference_rtl(self) -> str | None:
-        """reference.v for evals and pack self-tests only. Never passed to a role."""
+        """reference.v for evals, pack self-tests and the human_ref measurement. Never passed to a role or a sandbox."""
         path = self._root / REFERENCE_FILE
         return path.read_text(encoding="utf-8") if path.is_file() else None
 
@@ -355,7 +355,7 @@ def verify_manifest(root: Path) -> str:
 
 
 def write_manifest(root: Path) -> str:
-    """Author-side helper (pack creation only, never at run time). Rewrites MANIFEST.sha256; returns the pack hash."""
+    """Author-side helper (pack creation and tests; a run only verifies the manifest). Rewrites MANIFEST.sha256; returns the pack hash."""
     root = root.resolve()
     lines = [f"{_hash_file(root / rel)}  {rel}" for rel in _pack_files(root)]
     (root / MANIFEST_NAME).write_bytes(("\n".join(lines) + "\n").encode("utf-8"))

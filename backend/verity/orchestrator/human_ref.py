@@ -9,6 +9,7 @@ import asyncio
 import logging
 
 from ..contracts import PPA, Equivalence
+from ..core import captions as cap
 from ..core.errors import RtlRejected
 from ..core.results import DEFAULT_PDK, not_run_equivalence
 from ..core.rtl import Rtl
@@ -37,6 +38,7 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
             eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
             await em.human_ref(ppa, eqy)
             return
+        await em.caption(cap.measuring_human_reference())
         try:
             ref = Rtl.validate(text, top=pack.top, max_lines=REFERENCE_MAX_LINES, max_bytes=REFERENCE_MAX_BYTES)
         except RtlRejected as exc:
@@ -57,6 +59,8 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
             eqy = not_run_equivalence(winner_id, "Equivalence checking is turned off for this task.")
         elif ctx.ledger.exhausted() == "max_wall_s":
             eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
+        elif winner.eqy_timed_out:
+            eqy = not_run_equivalence(winner_id, "Not run: equivalence timed out on this design size.")
         else:
             try:
                 eqy = (await evolve.run_eqy(ctx, ref, winner.rtl_obj)).to_equivalence(winner_id)

@@ -1,4 +1,4 @@
-// Human-written reference for cnt8 (task pack self-test and evals only; never shown to a model).
+// Human-written reference for cnt8 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 module cnt8 (
     input        clk,
     input        rst_n,

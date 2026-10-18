@@ -108,7 +108,7 @@ def _reference_v(pattern: str, overlap: bool) -> str:
     mode = "overlaps allowed" if overlap else "overlaps not allowed (a detection uses up its bits)"
     saturate = f"(seen == 4'd{n - 1}) ? seen : seen + 4'd1"
     seen_next = saturate if overlap else f"hit ? 4'd0 : {saturate}"
-    return f"""// Human-written reference for fsm_seq (task pack self-test and evals only; never shown to a model).
+    return f"""// Human-written reference for fsm_seq (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Detects {pattern}, {mode}. detect is registered (latency 1).
 // hist holds the last {n - 1} bits; seen counts how many of them are valid since reset (saturates at {n - 1}).
 module fsm_seq (

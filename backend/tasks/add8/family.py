@@ -69,7 +69,7 @@ def _task_toml(width: int) -> str:
 
 def _reference_v(width: int) -> str:
     top = width - 1
-    return f"""// Human-written reference for add8 (task pack self-test and evals only; never shown to a model).
+    return f"""// Human-written reference for add8 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 module add8 (
     input  [{top}:0] a,
     input  [{top}:0] b,

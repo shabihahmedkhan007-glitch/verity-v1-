@@ -103,7 +103,7 @@ def _reference_v(lanes: int, width: int, cycles: int) -> str:
     acc = 2 * width + _clog2(lanes * cycles)
     cw = max(1, _clog2(cycles))
     bus = lanes * width
-    return f"""// Human-written reference for mac4 (task pack self-test and evals only; never shown to a model).
+    return f"""// Human-written reference for mac4 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Rendered for lanes={lanes}, width={width}, cycles={cycles}.
 // Edge 0: start accepted, acc cleared. Edges 1 to {cycles}: acc += sum of the lane products.
 // done rises after edge {cycles} and stays until reset.

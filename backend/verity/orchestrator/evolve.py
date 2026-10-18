@@ -241,6 +241,7 @@ async def _prove(st: RunState, winner_id: str) -> str:
         result = await _run_eqy(st, base, win)
         eq = result.to_equivalence(base.id)
         win.eqy = eq
+        win.eqy_timed_out = result.status == "timeout"
         await em.candidate(win)
         report = result.log or result.message or eq.status
         await em.artifact(f"reports/eqy_{win.label}_vs_v1.log", report)

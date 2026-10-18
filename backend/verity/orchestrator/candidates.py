@@ -30,6 +30,7 @@ class Cand:
     rtl_obj: Rtl | None = None  # the last RTL that passed validation (what the sandbox saw)
     measure: MeasureResult | None = None
     signatures: list[str] = field(default_factory=list)  # failure signature per failed attempt (R5 stall detection)
+    eqy_timed_out: bool = False  # the winner's prove EQY hit its time limit (human_ref then skips the reference EQY)
     auto_fixes: int = 0  # deterministic declaration fixes applied (R2), not counted in fix_count
 
     @property

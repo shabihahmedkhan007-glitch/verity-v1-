@@ -75,6 +75,7 @@ async def optimize(
         parse=lambda text: parse_rtl_answer(text, pack.top),
         tags={
             "task_id": pack.id,
+            "pack_root": str(pack.root),
             "strategy": strategy,
             "priority": priority,
             "attempt": "1",

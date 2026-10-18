@@ -1,4 +1,4 @@
-// Human-written reference for mm4_int4 (task pack self-test and evals only; never shown to a model).
+// Human-written reference for mm4_int4 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Same protocol as matmul4 with signed 4-bit lanes and signed 10-bit results.
 // Edge 0: start accepted. Edges 1 to 4: row r of A and B captured. Edges 5 to 20: one result element per edge.
 // done rises after edge 24 and stays until reset.

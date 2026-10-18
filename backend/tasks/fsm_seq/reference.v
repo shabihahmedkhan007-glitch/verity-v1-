@@ -1,4 +1,4 @@
-// Human-written reference for fsm_seq (task pack self-test and evals only; never shown to a model).
+// Human-written reference for fsm_seq (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Detects 1011, overlaps allowed. detect is registered (latency 1).
 // hist holds the last 3 bits; seen counts how many of them are valid since reset (saturates at 3).
 module fsm_seq (

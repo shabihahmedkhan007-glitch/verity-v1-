@@ -1,4 +1,4 @@
-"""Edge proof for the add8, cnt8 and fsm_seq knob families: at min, default and max knobs, the rendered pack's reference.v must
+"""Edge proof for the mac4, add8, cnt8 and fsm_seq knob families: at min, default and max knobs, the rendered pack's reference.v must
 pass its own locked testbench (golden + cocotb + Icarus) in the real sandbox image. Skipped when Docker or the image
 is missing.
 """
@@ -16,6 +16,9 @@ from verity.tools.local_docker import LocalDockerRunner
 from verity_test_support import make_settings
 
 EDGES = [
+    ("mac4", {"lanes": 1, "width": 4, "cycles": 4}),
+    ("mac4", {"lanes": 8, "width": 16, "cycles": 32}),
+    ("mac4", {"lanes": 6, "width": 12, "cycles": 20}),
     ("add8", {"width": 4}),
     ("add8", {"width": 8}),
     ("add8", {"width": 32}),
@@ -29,6 +32,7 @@ EDGES = [
     ("fsm_seq", {"pattern": "111", "overlap": False}),
     ("fsm_seq", {"pattern": "10110011", "overlap": True}),
     ("fsm_seq", {"pattern": "10110011", "overlap": False}),
+    ("fsm_seq", {"pattern": "0010", "overlap": False}),
     ("fsm_seq", {"pattern": "100", "overlap": True}),  # no border: overlap cannot matter
 ]
 

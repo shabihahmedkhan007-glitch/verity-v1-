@@ -14,7 +14,8 @@ Variants differ only textually, so the fake children have the same area and cloc
 cassettes of real model answers to see evolution with real PPA differences.
 
 Tags read from LLMRequest.tags (set by the roles): task_id, strategy, attempt, priority, steering (JSON),
-source_sha (repair), parent_sha (optimizer), call_seq (set by the gateway).
+source_sha (repair), parent_sha (optimizer), call_seq (set by the gateway), pack_root (the run's rendered pack,
+so knob runs get their own reference; tags are never put in a prompt).
 """
 
 import asyncio
@@ -90,7 +91,7 @@ class FakeProvider:
         task_id = tags.get("task_id", "")
         if not task_id:
             raise LLMError("fake provider needs the task_id tag", retryable=False)
-        pack = self._pack(task_id)
+        pack = self._pack(task_id, tags.get("pack_root", ""))
         strategy = tags.get("strategy", "")
         attempt = tags.get("attempt", "")
 
@@ -130,16 +131,19 @@ class FakeProvider:
         )
 
     # ---------- sources ----------
-    def _pack(self, task_id: str) -> TaskPack:
-        pack = self._packs.get(task_id)
+    def _pack(self, task_id: str, pack_root: str = "") -> TaskPack:
+        """The run's own rendered pack when the roles pass its root (knob runs), else tasks/<id> (default knobs)."""
+        if not re.fullmatch(r"[a-z0-9_]+", task_id):
+            raise LLMError(f"bad task id {task_id!r}", retryable=False)
+        root = Path(pack_root) if pack_root else self._tasks_dir / task_id
+        key = str(root)
+        pack = self._packs.get(key)
         if pack is None:
-            if not re.fullmatch(r"[a-z0-9_]+", task_id):
-                raise LLMError(f"bad task id {task_id!r}", retryable=False)
             try:
-                pack = TaskPack.load(self._tasks_dir / task_id)
+                pack = TaskPack.load(root)
             except (VerityError, OSError) as exc:
                 raise LLMError(f"fake provider cannot load task pack {task_id}: {exc}", retryable=False) from exc
-            self._packs[task_id] = pack
+            self._packs[key] = pack
         return pack
 
     def _cassette(self, task_id: str, role: str, strategy: str, attempt: str) -> str | None:

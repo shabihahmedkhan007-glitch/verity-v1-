@@ -223,3 +223,27 @@ async def test_params_render_the_pack_and_reach_the_spec_event(tmp_path, packs) 
         assert "6-lane" in spec.title
     finally:
         await close(manager, store)
+
+
+@pytest.mark.parametrize(
+    ("preset", "params", "mode"),
+    [
+        ("mac4", {"lanes": 6, "width": 12, "cycles": 20}, "full"),
+        ("cnt8", {"width": 12, "enable": False}, "fast"),
+    ],
+)
+async def test_fake_provider_follows_the_runs_knobs(tmp_path, packs, preset, params, mode) -> None:
+    """The fake LLM answers from the run's rendered pack, so a non-default knob run still ends done with a passing winner."""
+    from verity.contracts import CandidateEvent, WinnerEvent
+
+    settings = make_settings(tmp_path / "data")
+    manager, store = await make_manager(settings, packs)
+    try:
+        run = await manager.create_run(session_id="s1", preset_id=preset, priority="area", mode=mode, params=params)
+        events = await asyncio.wait_for(drain(manager, run.id), timeout=120)
+        assert [e.phase for e in events if isinstance(e, RunPhaseEvent)] == ["running", "done"]
+        winner = [e for e in events if isinstance(e, WinnerEvent)][-1]
+        cand = [e.candidate for e in events if isinstance(e, CandidateEvent) and e.candidate.id == winner.candidate_id][-1]
+        assert cand.verification is not None and cand.verification.passed == cand.verification.total > 0
+    finally:
+        await close(manager, store)

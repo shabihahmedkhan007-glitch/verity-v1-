@@ -218,6 +218,10 @@ def proven(baseline_label: str = "v1") -> str:
     return f"Proven equal to {baseline_label}."
 
 
+def measuring_human_reference() -> str:
+    return "Measuring the human-written design with the same tools."
+
+
 def not_proven() -> str:
     return "Tested, not proven: EQY could not decide in time."
 

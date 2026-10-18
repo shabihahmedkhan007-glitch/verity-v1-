@@ -84,8 +84,36 @@ def test_out_of_range_knob_becomes_out_of_range_with_clamped_closest(packs, sett
 def test_unknown_family_and_unknown_knob_are_refused(packs, settings) -> None:
     bad_family = json.dumps({"result": "in_range", "family": "cpu9", "params": {}})
     assert isinstance(parse("x", packs, settings, Scripted(bad_family)), ParseOutOfRange)
-    bad_knob = json.dumps({"result": "in_range", "family": "add8", "params": {"depth": 3}})
-    assert isinstance(parse("x", packs, settings, Scripted(bad_knob)), ParseOutOfRange)
+    assert parse("x", packs, settings, Scripted(bad_family)).reason == "That is not a chip family the bench can build."
+
+
+def test_unknown_knobs_from_the_model_are_dropped(packs, settings) -> None:
+    text = json.dumps({"result": "in_range", "family": "add8", "params": {"depth": 3, "width": 12}})
+    reply = parse("x", packs, settings, Scripted(text))
+    assert isinstance(reply, ParseInRange) and reply.params == {"width": 12}
+    closest = json.dumps({"result": "out_of_range", "reason": "No.", "closest": {"family": "add8", "params": {"depth": 3}}})
+    out = parse("x", packs, settings, Scripted(closest))
+    assert isinstance(out, ParseOutOfRange) and out.closest is not None and out.closest.params == {"width": 8}
+
+
+def test_bits_knob_written_as_a_number_is_read_as_digits(packs, settings) -> None:
+    text = json.dumps({"result": "in_range", "family": "fsm_seq", "params": {"pattern": 110}})
+    reply = parse("x", packs, settings, Scripted(text))
+    assert isinstance(reply, ParseInRange) and reply.params["pattern"] == "110"
+    bad = json.dumps({"result": "in_range", "family": "fsm_seq", "params": {"pattern": 123}})
+    assert isinstance(parse("x", packs, settings, Scripted(bad)), ParseOutOfRange)
+
+
+def test_prose_with_braces_after_the_object_is_ignored(packs, settings) -> None:
+    obj = json.dumps({"result": "in_range", "family": "add8", "params": {"width": 16}})
+    reply = parse("x", packs, settings, Scripted("Sure. " + obj + " Note: {width} is in bits."))
+    assert isinstance(reply, ParseInRange) and reply.params == {"width": 16}
+
+
+def test_prompt_asks_for_a_closest_suggestion(packs) -> None:
+    prompt = build_system_prompt(packs)
+    assert "always your best suggestion" in prompt and "largest multiply-accumulate array" in prompt
+    assert "Use null only when nothing" in prompt
 
 
 def test_in_range_fills_defaults_and_keeps_a_short_note(packs, settings) -> None:
@@ -95,10 +123,17 @@ def test_in_range_fills_defaults_and_keeps_a_short_note(packs, settings) -> None
     assert reply.params == {"lanes": 6, "width": 8, "cycles": 16} and reply.note == "Cycles not given; kept 16."
 
 
-def test_invalid_closest_becomes_null(packs, settings) -> None:
+def test_out_of_range_closest_is_clamped(packs, settings) -> None:
     text = json.dumps(
-        {"result": "out_of_range", "reason": "Too big.", "closest": {"family": "mac4", "params": {"lanes": 500}}}
+        {"result": "out_of_range", "reason": "Too big.", "closest": {"family": "mac4", "params": {"lanes": 99}}}
     )
+    reply = parse("x", packs, settings, Scripted(text))
+    assert isinstance(reply, ParseOutOfRange) and reply.reason == "Too big."
+    assert reply.closest is not None and reply.closest.params["lanes"] == 8
+
+
+def test_invalid_closest_becomes_null(packs, settings) -> None:
+    text = json.dumps({"result": "out_of_range", "reason": "Too big.", "closest": {"family": "cpu9", "params": {}}})
     reply = parse("x", packs, settings, Scripted(text))
     assert isinstance(reply, ParseOutOfRange) and reply.reason == "Too big." and reply.closest is None
 
@@ -134,7 +169,7 @@ def test_any_interpretation_crash_falls_back_to_unreadable(packs, settings, monk
 
 
 def test_long_params_error_is_truncated(packs, settings) -> None:
-    text = json.dumps({"result": "in_range", "family": "mac4", "params": {"k" * 900: 1}})
+    text = json.dumps({"result": "in_range", "family": "mac4", "params": {"lanes": "k" * 900}})
     reply = parse("x", packs, settings, Scripted(text))
     assert isinstance(reply, ParseOutOfRange) and len(reply.reason) <= 400
 

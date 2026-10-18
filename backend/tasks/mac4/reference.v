@@ -1,4 +1,4 @@
-// Human-written reference for mac4 (task pack self-test and evals only; never shown to a model).
+// Human-written reference for mac4 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Edge 0: start accepted, acc cleared. Edges 1 to 16: acc += sum of the four lane products.
 // done rises after edge 16 and stays until reset.
 module mac4 (

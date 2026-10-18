@@ -101,7 +101,7 @@ def _reference_v(width: int, enable: bool) -> str:
     top = width - 1
     en_port = "    input        en,\n" if enable else ""
     cond = "else if (en)" if enable else "else"
-    return f"""// Human-written reference for cnt8 (task pack self-test and evals only; never shown to a model).
+    return f"""// Human-written reference for cnt8 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 module cnt8 (
     input        clk,
     input        rst_n,

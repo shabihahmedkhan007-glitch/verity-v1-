@@ -48,6 +48,7 @@ async def repair(
         parse=lambda text: parse_rtl_answer(text, pack.top, want_diagnosis=True),
         tags={
             "task_id": pack.id,
+            "pack_root": str(pack.root),
             "attempt": str(attempt_n),
             "source_sha": hashlib.sha256(rtl_text.encode("utf-8", errors="replace")).hexdigest(),
         },

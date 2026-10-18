@@ -1,4 +1,4 @@
-// Human-written reference for alu8 (task pack self-test and evals only; never shown to a model).
+// Human-written reference for alu8 (pack self-test, evals and the bench human reference; never shown to a model or a sandbox).
 // Registered outputs: y, zero and carry load on the clock edge (latency 1). Synchronous active-low reset.
 module alu8 (
     input        clk,
