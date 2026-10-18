@@ -211,7 +211,7 @@ async def test_params_render_the_pack_and_reach_the_spec_event(tmp_path, packs) 
         with pytest.raises(ParamsError) as bad:
             await manager.create_run(session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 9})
         assert "1 to 8" in str(bad.value)
-        assert (await manager.health()).features == ["params"]
+        assert (await manager.health()).features == ["params", "human_ref", "parse"]
 
         run = await manager.create_run(
             session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 6, "width": 12, "cycles": 20}

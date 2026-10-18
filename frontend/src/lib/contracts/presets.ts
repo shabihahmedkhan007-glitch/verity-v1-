@@ -131,7 +131,7 @@ export const FAMILIES: Family[] = [
     name: "Counter",
     summary: "Up counter that wraps, with a synchronous reset.",
     knobs: [
-      { id: "width", label: "Width", kind: "int", min: 4, max: 32, default: 8, unit: "bits" },
+      { id: "width", label: "Width", kind: "int", min: 4, max: 16, default: 8, unit: "bits" },
       { id: "enable", label: "Enable input", kind: "bool", default: true, on: "With enable", off: "Free-running" },
     ],
     liveAtDefaults: false,
