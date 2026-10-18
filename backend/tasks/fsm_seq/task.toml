@@ -6,14 +6,14 @@ spec_text = "A serial sequence detector. One bit arrives on din each clock edge.
 top = "fsm_seq"
 family = "fsm"
 element_type = "none"
-latency_cycles = 1                  # detect shows right after the edge that receives the last bit
+latency_cycles = 1
 max_lines = 100
 test_count = 12
 default_priority = "area"
 priorities = ["area", "speed", "power"]
 target_clock_ns = 10.0
 max_plan_blocks = 4
-eval_only = true                    # evals suite only, not a live preset
+eval_only = false
 coding_rules = [
   "detect is a register: at each rising clock edge it becomes 1 exactly when the last four bits received on din (including the bit sampled at this edge) are 1, 0, 1, 1 in arrival order, otherwise 0. It changes only on a clock edge.",
   "rst_n low at the edge clears detect to 0 and forgets all earlier bits. The first bit received after reset is the first bit of any pattern.",

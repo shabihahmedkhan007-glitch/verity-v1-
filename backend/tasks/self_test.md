@@ -62,9 +62,9 @@ in that file).
 | cnt8 | step_two | `q <= q + 8'd1;` | `q <= q + 8'd2;` | sim_fail |
 | cnt8 | missing_reset | `if (!rst_n)` | `if (1'b0)` | sim_fail |
 | cnt8 | q_too_narrow | `output reg [7:0] q` | `output reg [6:0] q` | contract_fail |
-| fsm_seq | wrong_pattern | `(hist == 3'b101) && din` | `(hist == 3'b100) && din` | sim_fail |
-| fsm_seq | detect_early | `detect <= (hist == 3'b101) && din;` | `detect <= (hist == 3'b101);` | sim_fail |
-| fsm_seq | history_kept_on_reset | `hist   <= 3'b000;` | `hist   <= hist;` | sim_fail |
+| fsm_seq | wrong_pattern | `(window == 4'b1011)` | `(window == 4'b1010)` | sim_fail |
+| fsm_seq | detect_early | `detect <= hit;` | `detect <= (seen == 4'd3) && (hist == 3'b101);` | sim_fail |
+| fsm_seq | detect_kept_on_reset | `detect <= 1'b0;` | `detect <= detect;` | sim_fail |
 | fsm_seq | missing_reset | `if (!rst_n) begin` | `if (1'b0) begin` | sim_fail |
 | fsm_seq | detect_too_wide | `output reg   detect` | `output reg [1:0] detect` | contract_fail |
 | mm4_int4 | done_early | `cnt == 5'd23` | `cnt == 5'd22` | sim_fail |

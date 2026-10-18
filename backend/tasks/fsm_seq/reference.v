@@ -1,5 +1,6 @@
 // Human-written reference for fsm_seq (task pack self-test and evals only; never shown to a model).
-// Detects 1011 with overlaps. detect is registered (latency 1).
+// Detects 1011, overlaps allowed. detect is registered (latency 1).
+// hist holds the last 3 bits; seen counts how many of them are valid since reset (saturates at 3).
 module fsm_seq (
     input        clk,
     input        rst_n,
@@ -7,14 +8,19 @@ module fsm_seq (
     output reg   detect
 );
     reg [2:0] hist;
+    reg [3:0] seen;
+    wire [3:0] window = {hist, din};
+    wire hit = (seen == 4'd3) && (window == 4'b1011);
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            hist   <= 3'b000;
+            hist   <= 3'd0;
+            seen   <= 4'd0;
             detect <= 1'b0;
         end else begin
-            hist   <= {hist[1:0], din};
-            detect <= (hist == 3'b101) && din;
+            hist   <= window[2:0];
+            seen   <= (seen == 4'd3) ? seen : seen + 4'd1;
+            detect <= hit;
         end
     end
 endmodule

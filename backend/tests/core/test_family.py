@@ -1,7 +1,9 @@
 """Knob params: validation, render_pack, and the render cache (mac4 is the first family)."""
 
+import importlib.util
 import json
 import os
+import random
 import re
 from pathlib import Path
 
@@ -162,3 +164,95 @@ def test_cnt8_wrap_length_is_single_sourced(cnt8: TaskPack, tmp_path: Path) -> N
         params = json.loads((pack.root / "params.json").read_text(encoding="utf-8"))
         assert params["wrap_edges"] == (1 << width) + 2
         assert pack.sim.max_cycles_per_case >= params["wrap_edges"] + 4  # 3 reset edges plus the release edge
+
+
+@pytest.fixture(scope="module")
+def fsm_seq() -> TaskPack:
+    return TaskPack.load(AGENT_ROOT / "tasks" / "fsm_seq")
+
+
+def _load_golden(root: Path):
+    spec = importlib.util.spec_from_file_location(f"golden_{root.parent.name}_{root.name}", root / "golden.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_render_fsm_pattern_110101_no_overlap(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    pack = render_pack(fsm_seq, {"pattern": "110101", "overlap": False}, tmp_path)
+    assert pack.id == "fsm_seq" and pack.top == "fsm_seq" and pack.live_preset
+    assert "110101" in pack.spec_text and "do not overlap" in pack.spec_text
+    assert "110101" in pack.title and "overlaps not allowed" in pack.summary
+    assert "six bits" in " ".join(pack.coding_rules) and "1, 1, 0, 1, 0, 1" in " ".join(pack.coding_rules)
+    assert "6'b110101" in (pack.reference_rtl() or "")
+    assert json.loads((pack.root / "params.json").read_text(encoding="utf-8")) == {"pattern": "110101", "overlap": False}
+
+
+def test_render_fsm_pattern_overlap_wording(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    with_border = render_pack(fsm_seq, {"pattern": "111"}, tmp_path)
+    assert "1111 is detected twice" in with_border.spec_text and "do not overlap" not in with_border.spec_text
+    no_border = render_pack(fsm_seq, {"pattern": "100"}, tmp_path)
+    assert "cannot overlap itself" in no_border.spec_text and "detected twice" not in no_border.spec_text
+
+
+def test_fsm_seq_rejects_bad_patterns(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    for bad in ({"pattern": "10201"}, {"pattern": "10"}, {"pattern": "101100110"}, {"pattern": ""}, {"pattern": 1011}, {"overlap": "yes"}, {"overlap": 1}):
+        with pytest.raises(ParamsError):
+            render_pack(fsm_seq, bad, tmp_path)
+
+
+def test_fsm_seq_defaults_are_the_base_pack_and_match_checked_in_files(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    assert render_pack(fsm_seq, {"pattern": "1011", "overlap": True}, tmp_path) is fsm_seq
+    assert list(tmp_path.iterdir()) == []
+    assert fsm_seq.live_preset
+    module = family_module(fsm_seq)
+    assert module is not None
+    rendered = module.render({k["id"]: k["default"] for k in module.KNOBS})
+    for name in ("task.toml", "reference.v", "params.json"):
+        assert rendered[name] == (fsm_seq.root / name).read_text(encoding="utf-8")
+
+
+def _detections(golden, stream) -> list[int]:
+    history, out = (), []
+    for rst_n, din in stream:
+        history, detect = golden.golden_fsm_seq_step(history, rst_n, din)
+        out.append(detect)
+    return out
+
+
+def test_fsm_seq_golden_matches_a_brute_force_matcher(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    rng = random.Random(7)
+    for pattern, overlap in (("1011", True), ("1011", False), ("111", True), ("111", False), ("000", False), ("0010", True), ("10110011", False)):
+        golden = _load_golden(render_pack(fsm_seq, {"pattern": pattern, "overlap": overlap}, tmp_path).root)
+        stream = [(0 if rng.random() < 0.05 else 1, rng.getrandbits(1)) for _ in range(400)]
+        expected, start, bits = [], 0, []
+        for rst_n, din in stream:  # bits since the last reset (or since the last detection when overlap is off)
+            if not rst_n:
+                bits, hit = [], 0
+            else:
+                bits.append(din)
+                hit = int("".join(map(str, bits[-len(pattern):])) == pattern and len(bits) >= len(pattern))
+                if hit and not overlap:
+                    bits = []
+            expected.append(hit)
+        assert _detections(golden, stream) == expected, (pattern, overlap)
+        assert sum(expected) > 0, (pattern, overlap)
+
+
+def test_fsm_seq_overlap_knob_changes_the_golden_on_the_overlap_stream(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    # The locked testbench's overlapping_chain case streams pattern + (pattern minus its longest border) * 3.
+    for pattern in ("1011", "111", "1010", "10110011", "110101", "0110"):
+        border = next(k for k in range(len(pattern) - 1, 0, -1) if pattern[:k] == pattern[-k:])
+        stream = [(1, int(ch)) for ch in pattern + pattern[border:] * 3]
+        yes = _detections(_load_golden(render_pack(fsm_seq, {"pattern": pattern, "overlap": True}, tmp_path).root), stream)
+        no = _detections(_load_golden(render_pack(fsm_seq, {"pattern": pattern, "overlap": False}, tmp_path).root), stream)
+        assert sum(yes) == 4 and sum(no) < sum(yes), pattern
+
+
+def test_fsm_seq_no_border_pattern_is_overlap_independent(fsm_seq: TaskPack, tmp_path: Path) -> None:
+    rng = random.Random(3)
+    stream = [(1, rng.getrandbits(1)) for _ in range(500)]
+    yes = _detections(_load_golden(render_pack(fsm_seq, {"pattern": "100", "overlap": True}, tmp_path).root), stream)
+    no = _detections(_load_golden(render_pack(fsm_seq, {"pattern": "100", "overlap": False}, tmp_path).root), stream)
+    assert yes == no and sum(yes) > 0

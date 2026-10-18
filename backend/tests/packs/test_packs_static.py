@@ -14,8 +14,8 @@ from verity_test_support import WEB_ROOT
 TASKS = AGENT_ROOT / "tasks"
 PRESETS_TS = WEB_ROOT / "src" / "lib" / "contracts" / "presets.ts"
 EXPECTED_IDS = {"mac4", "alu8", "matmul4", "add8", "cnt8", "fsm_seq", "mm4_int4"}
-LIVE_IDS = {"mac4", "alu8", "matmul4", "add8", "cnt8"}
-WEB_PRESET_IDS = {"mac4", "alu8", "matmul4"}  # known gap: add8 and cnt8 are live but have no presetId block in presets.ts (bench knob families live in FAMILIES, not PRESETS)
+LIVE_IDS = {"mac4", "alu8", "matmul4", "add8", "cnt8", "fsm_seq"}
+WEB_PRESET_IDS = {"mac4", "alu8", "matmul4"}  # known gap: add8, cnt8 and fsm_seq are live but have no presetId block in presets.ts (bench knob families live in FAMILIES, not PRESETS)
 
 
 def test_all_expected_packs_load(packs: dict[str, TaskPack]) -> None:

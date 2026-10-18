@@ -1,4 +1,4 @@
-"""Edge proof for the add8 and cnt8 knob families: at min, default and max knobs, the rendered pack's reference.v must
+"""Edge proof for the add8, cnt8 and fsm_seq knob families: at min, default and max knobs, the rendered pack's reference.v must
 pass its own locked testbench (golden + cocotb + Icarus) in the real sandbox image. Skipped when Docker or the image
 is missing.
 """
@@ -24,6 +24,12 @@ EDGES = [
     ("cnt8", {"width": 4, "enable": False}),
     ("cnt8", {"width": 16, "enable": True}),
     ("cnt8", {"width": 16, "enable": False}),
+    ("fsm_seq", {"pattern": "1011", "overlap": True}),
+    ("fsm_seq", {"pattern": "111", "overlap": True}),
+    ("fsm_seq", {"pattern": "111", "overlap": False}),
+    ("fsm_seq", {"pattern": "10110011", "overlap": True}),
+    ("fsm_seq", {"pattern": "10110011", "overlap": False}),
+    ("fsm_seq", {"pattern": "100", "overlap": True}),  # no border: overlap cannot matter
 ]
 
 
@@ -50,3 +56,19 @@ async def test_reference_passes_its_testbench_at_the_edges(tmp_path: Path, pack_
     assert result.lint is None or result.lint.ok
     again = await runner.verify(rtl, pack)
     assert (again.status, again.sim.total if again.sim else None) == (result.status, result.sim.total if result.sim else None)
+
+
+@pytest.mark.parametrize("pattern", ["1011", "111", "1010", "10110011"])
+async def test_fsm_seq_locked_tests_tell_overlap_from_no_overlap(tmp_path: Path, pattern: str) -> None:
+    """For a pattern with a border, the reference of one overlap setting must FAIL the locked tests of the other."""
+    settings = make_settings(tmp_path / "data")
+    if not _docker_image_ready(settings.tools.image):
+        pytest.skip("docker or the verity-tools image is not available")
+    base = TaskPack.load(AGENT_ROOT / "tasks" / "fsm_seq")
+    runner = LocalDockerRunner(settings)
+    packs = {flag: render_pack(base, {"pattern": pattern, "overlap": flag}, tmp_path / "packs") for flag in (True, False)}
+    for flag, pack in packs.items():
+        other = packs[not flag]
+        rtl = pack.validate_rtl(other.reference_rtl() or "", max_bytes=settings.rtl.max_bytes)
+        result = await runner.verify(rtl, pack)
+        assert not result.passed_all(pack.test_count), f"{pattern}: the overlap={not flag} design passed the overlap={flag} tests"
