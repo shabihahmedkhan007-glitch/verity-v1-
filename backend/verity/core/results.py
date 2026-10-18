@@ -209,11 +209,27 @@ class TimingResult(_Result):
     tool: str = "OpenSTA"
 
 
+class PowerResult(_Result):
+    """OpenSTA `report_power` estimate (not signoff). Measured at a fixed reference clock so deltas vs v1 are fair."""
+
+    ok: bool
+    power_mw: float | None = None
+    internal_mw: float | None = None
+    switching_mw: float | None = None
+    leakage_mw: float | None = None
+    method: str = "vectorless"  # how switching activity was set: "vectorless" (default input activity), never a guess
+    input_activity: float | None = None  # toggles per clock cycle on every non-clock input
+    reference_clock_ns: float | None = None  # the pack's target_clock_ns, identical for v1 and every child
+    log: str = ""
+    tool: str = "OpenSTA"
+
+
 class MeasureResult(_Result):
     schema_: Literal["verity.measure/1"] = Field(default="verity.measure/1", alias="schema")
     status: MeasureStatus
     synth: SynthResult | None = None
     sta: TimingResult | None = None
+    power: PowerResult | None = None  # absent in results from older images: power stays null
     circuit: CircuitGraph | None = None
     pdk: str = "Nangate45"
     duration_ms: int = 0
@@ -248,7 +264,11 @@ class MeasureResult(_Result):
                 if self.sta is not None and self.sta.ok and self.sta.clock_period_ns is not None
                 else None
             ),
-            power_mw=None,  # not measured in the MVP (ARCHITECTURE 11.4, O8)
+            power_mw=(
+                round(self.power.power_mw, 4)
+                if self.power is not None and self.power.ok and self.power.power_mw is not None
+                else None
+            ),
             tools=tools,
             pdk=self.pdk,
         )

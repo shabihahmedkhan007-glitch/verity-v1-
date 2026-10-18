@@ -67,7 +67,7 @@ Protocols and signatures: `verity/core/protocols.py`. Run context: `verity/core/
 | S5 | `maxLines` counts non-blank lines. RTL max 20,000 bytes, ASCII only. |
 | S6 | Pack hashes are SHA-256 over file bytes with CRLF normalized to LF. Pack hash = SHA-256 of `MANIFEST.sha256`. Use `write_manifest(root)` to (re)generate. |
 | S7 | `reference.v` never enters a sandbox for a run and never reaches a role. `FakeProvider` may use it as canned RTL. |
-| S8 | Power is `null` in the MVP. Fitness drops it and renormalizes. Recorded `Fitness.weights` are the effective (renormalized) weights. |
+| S8 | `ppa.powerMw` is an OpenSTA `report_power` estimate (section 3.6), `null` when it is not available (older records, failed estimate). Fitness drops a missing metric and renormalizes. Recorded `Fitness.weights` are the effective (renormalized) weights. |
 | S9 | `seq` and `tMs` are stamped by the `EventSink`. Producers create events with the defaults (0). |
 | S10 | Canvas `add_node` and `connect` ops use `by: "ai"`, `update_status` uses `by: "system"`, exactly like `golden.json`, so a recorded run is a drop-in fixture. (ARCHITECTURE 9.1 says `system` for all; flagged, golden.json wins because the web is built against it.) |
 | S11 | `auth.required = false` by default: the current `frontend/src/lib/sources/live.ts` sends no token and no `?st=`. Anonymous session id = `"anon-" + sha256(client_ip)[:16]`. The production guard forces `required = true` (web change O5 needed first). |
@@ -165,6 +165,8 @@ Steps:
 2. **Synth**: `synth -top <top> -flatten; dfflibmap -liberty $LIB; abc -liberty $LIB; opt_clean; stat -liberty $LIB; write_verilog -noattr /work/out/netlist.v`. `area_um2` = "Chip area" from `stat`; `cell_count` = number of cells; `cells` = per-cell counts.
 3. **Timing** (OpenSTA, post-synthesis, no wires): read liberty and `netlist.v`, `link_design <top>`; clocked design: `create_clock -name clk -period <target_clock_ns> [get_ports <clock>]`; combinational design (`clock.name == ""`): virtual clock `create_clock -name vclk -period <target_clock_ns>`; `set_input_delay 0` on all inputs except the clock and `set_output_delay 0` on all outputs; worst setup slack `wns_ns`; `clock_period_ns = target_clock_ns - wns_ns` (the minimum period). `# UNVERIFIED: OpenSTA command names and report parsing.`
 
+4. **Power** (OpenSTA `report_power`, same netlist and constraints as step 3, a separate `sta` run so a power failure never fails timing): `set_power_activity -input -activity 0.1 -duty 0.5`, then `report_power -digits 6`; the `Total` row (Watts) is converted to mW. Method `vectorless`: every non-clock input toggles 0.1 times per cycle, activity propagates through the logic, so it is a relative figure for comparing a candidate with v1, not a measurement of a real workload. The clock is fixed to the pack's `target_clock_ns` (NOT the measured minimum period, which differs per candidate), so v1 and every child are measured identically. Estimate only (open-source tools, Nangate45 typical liberty, no wires or clock tree), not signoff. Simulation-derived activity (VCD/SAIF) is not used: the measure stage does not run the testbench, and RTL signal names do not map onto the gate-level netlist.
+
 Stdout (last line), matching `MeasureResult`:
 
 ```json
@@ -173,6 +175,7 @@ Stdout (last line), matching `MeasureResult`:
   "status": "ok | synth_fail | sta_fail | timeout | input_error | internal_error",
   "synth": {"ok": true, "area_um2": 1840.2, "cell_count": 412, "cells": {"NAND2_X1": 40}, "log": "...", "tool": "Yosys 0.45"},
   "sta":   {"ok": true, "clock_period_ns": 3.2, "wns_ns": 6.8, "target_period_ns": 10.0, "clocked": true, "log": "...", "tool": "OpenSTA 2.6"},
+  "power": {"ok": true, "power_mw": 1.870394, "internal_mw": 1.037427, "switching_mw": 0.784294, "leakage_mw": 0.048673, "method": "vectorless", "input_activity": 0.1, "reference_clock_ns": 10.0, "log": "...", "tool": "OpenSTA 3.1.0"},
   "circuit": { "format": "verity.circuit/1", "candidateId": "", "top": "mac4", "...": "see 3.8" },
   "pdk": "Nangate45",
   "duration_ms": 18000,
@@ -181,7 +184,7 @@ Stdout (last line), matching `MeasureResult`:
 }
 ```
 
-A candidate is **measured** when `synth.ok` and `area_um2` is present (`MeasureResult.measured`). `sta_fail` keeps the area and sends `clockPeriodNs: null`. `synth_fail` means rejected (child) or run error (baseline). PPA mapping: `MeasureResult.to_ppa()`.
+A candidate is **measured** when `synth.ok` and `area_um2` is present (`MeasureResult.measured`). `sta_fail` keeps the area and sends `clockPeriodNs: null`. `power` is optional (absent from older results); when `power.ok` is false the PPA sends `powerMw: null` and the status stays `ok`. `synth_fail` means rejected (child) or run error (baseline). PPA mapping: `MeasureResult.to_ppa()`.
 
 ### 3.7 `/verity/bin/eqy`
 

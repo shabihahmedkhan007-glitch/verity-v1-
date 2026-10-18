@@ -861,7 +861,7 @@ Structured output: the Planner asks for JSON and validates with pydantic; whethe
 | O5 | Frontend contract additions | Stream token in `live.ts`; login prompt on Try; optional `CircuitGraph` viewer; whether to add `timed_out` to `RunPhase` | Do the first two now; keep `timed_out` mapped to `error` |
 | O6 | `timed_out` in the UI | New phase or `error` with message | `error` with message (no contract change) |
 | O7 | Fixed latency for optimizer children | Fixed by pack (EQY-friendly) or free (more optimization room) | Fixed for the MVP |
-| O8 | Power metric | `null`, or OpenSTA default-activity estimate labeled as estimate | `null` until SAIF is wired |
+| O8 | Power metric | `null`, or OpenSTA default-activity estimate labeled as estimate | Decided 2026-10-16: OpenSTA vectorless estimate (input activity 0.1, pack target clock), labeled as estimate; `null` when it fails. SAIF/VCD not wired |
 | O9 | Free-text specs before submission | Build reference-proposal flow, or presets only | Presets only [DECIDED D7]; reopen only after the 2026-10-25 freeze passes |
 | O10 | Run budget numbers | Section 20 defaults | Confirm after M2 measurements |
 | O11 | Reuse of REvolution code | Study only, or vendor parts (MIT, needs credit) | Study only; our loop is small enough to write, which keeps "new work" clear |

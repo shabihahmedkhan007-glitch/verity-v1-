@@ -73,6 +73,7 @@ from .results import (
     LintResult,
     MeasureResult,
     ParsedPort,
+    PowerResult,
     SimCase,
     SimResult,
     SynthResult,

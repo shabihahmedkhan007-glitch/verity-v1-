@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""/verity/bin/measure: Yosys synthesis on Nangate45 (area, cells), OpenSTA timing, and the circuit graph.
+"""/verity/bin/measure: Yosys synthesis on Nangate45 (area, cells), OpenSTA timing and power, and the circuit graph.
 
 Contract: backend/CONTRACTS.md section 3.6 (stdout is one JSON object, schema verity.measure/1).
 One Yosys run does both the pre-techmap `write_json` (for the circuit graph) and the full synthesis, then OpenSTA
 reads the written netlist. Area comes from `stat -liberty`; the minimum clock period is target period minus the
-worst setup slack, post-synthesis, no wires.
+worst setup slack, post-synthesis, no wires. Power is an OpenSTA `report_power` estimate (vectorless, see stage_power).
 """
 
 from __future__ import annotations
@@ -24,6 +24,11 @@ import verity_circuit as vcirc  # noqa: E402
 import verity_common as vc  # noqa: E402
 
 LOG_CAP = 4_000
+# Power estimate settings. Fixed so v1 and every child are measured the same way: the clock is the pack's
+# target_clock_ns (not the measured minimum period, which differs per candidate), every non-clock input toggles
+# INPUT_ACTIVITY times per clock cycle with duty 0.5, and activity propagates through the logic.
+POWER_METHOD = "vectorless"
+INPUT_ACTIVITY = 0.1
 
 
 # ---------- synthesis ----------
@@ -155,8 +160,8 @@ def stage_synth(task: dict[str, Any], dut: Path, scratch: Path, result: dict[str
 
 
 # ---------- timing ----------
-def sta_script(top: str, netlist: Path, clock: str, period: float) -> str:
-    # UNVERIFIED: OpenSTA command names (all_inputs -no_clocks, report_worst_slack) for the pinned OpenSTA commit.
+def sta_constraints(top: str, netlist: Path, clock: str, period: float) -> list[str]:
+    # UNVERIFIED: OpenSTA command names (all_inputs -no_clocks) for the pinned OpenSTA commit.
     lines = [
         "read_liberty $::env(VERITY_LIBERTY)",
         f"read_verilog {netlist}",
@@ -175,9 +180,24 @@ def sta_script(top: str, netlist: Path, clock: str, period: float) -> str:
             "set_input_delay 0.0 -clock vclk [all_inputs]",
             "set_output_delay 0.0 -clock vclk [all_outputs]",
         ]
+    return lines
+
+
+def sta_script(top: str, netlist: Path, clock: str, period: float) -> str:
+    lines = sta_constraints(top, netlist, clock, period)
     lines += [
         "report_checks -path_delay max -format full -digits 3",
         "report_worst_slack -max -digits 4",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def power_script(top: str, netlist: Path, clock: str, period: float) -> str:
+    lines = sta_constraints(top, netlist, clock, period)
+    lines += [
+        f"set_power_activity -input -activity {INPUT_ACTIVITY} -duty 0.5",
+        "report_power -digits 6",
         "",
     ]
     return "\n".join(lines)
@@ -224,6 +244,46 @@ def stage_sta(task: dict[str, Any], scratch: Path, result: dict[str, Any], versi
     return None
 
 
+# ---------- power ----------
+_NUM = r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?"
+
+
+def parse_report_power(text: str) -> dict[str, float] | None:
+    """Total row of OpenSTA `report_power` (internal, switching, leakage, total; the table header says Watts) in mW."""
+    if not re.search(r"Power \(Watts\)", text):
+        return None
+    match = re.search(rf"^Total\s+({_NUM})\s+({_NUM})\s+({_NUM})\s+({_NUM})", text, re.MULTILINE)
+    if not match:
+        return None
+    internal, switching, leakage, total = (float(g) * 1e3 for g in match.groups())
+    return {"internal_mw": internal, "switching_mw": switching, "leakage_mw": leakage, "power_mw": total}
+
+
+def stage_power(task: dict[str, Any], scratch: Path, result: dict[str, Any], versions: dict[str, str]) -> None:
+    """Power estimate at the pack's fixed target clock. A failure here never fails the measurement (power stays null)."""
+    top = task["top"]
+    clock = str(task.get("clock", {}).get("name", "clk"))
+    target = float(task.get("target_clock_ns", 10.0))
+    base = {
+        "method": POWER_METHOD,
+        "input_activity": INPUT_ACTIVITY,
+        "reference_clock_ns": target,
+        "tool": f"OpenSTA {versions.get('opensta', 'unknown')}",
+    }
+    empty = {"ok": False, "power_mw": None, "internal_mw": None, "switching_mw": None, "leakage_mw": None}
+    script = scratch / "power.tcl"
+    script.write_text(power_script(top, vc.out_dir() / "netlist.v", clock, target), encoding="ascii")
+    env = dict(os.environ)
+    env["VERITY_LIBERTY"] = str(vc.liberty_path())
+    proc = vc.run(["sta", "-no_splash", "-exit", str(script)], timeout_s=vc.env_float("VERITY_STA_TIMEOUT_S", 60), env=env)
+    text = vc.scrub_paths(proc.output)
+    parsed = None if proc.timed_out or proc.rc != 0 else parse_report_power(text)
+    if parsed is None or not parsed["power_mw"] > 0:
+        result["power"] = {**empty, "log": vc.tail(text, LOG_CAP), **base}
+        return
+    result["power"] = {"ok": True, **{k: round(v, 6) for k, v in parsed.items()}, "log": vc.tail(text, LOG_CAP), **base}
+
+
 # ---------- main ----------
 def run_stages(task: dict[str, Any], dut: Path, result: dict[str, Any]) -> str:
     versions = vc.tool_versions(("yosys", "opensta"))
@@ -234,7 +294,11 @@ def run_stages(task: dict[str, Any], dut: Path, result: dict[str, Any]) -> str:
         return "synth_fail"
     if status:
         return status
-    return stage_sta(task, scratch, result, versions) or "ok"
+    status = stage_sta(task, scratch, result, versions)
+    if status:
+        return status
+    stage_power(task, scratch, result, versions)
+    return "ok"
 
 
 def main() -> None:
@@ -244,6 +308,7 @@ def main() -> None:
         "status": "internal_error",
         "synth": None,
         "sta": None,
+        "power": None,
         "circuit": None,
         "pdk": "Nangate45",
         "duration_ms": 0,

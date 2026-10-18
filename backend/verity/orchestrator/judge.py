@@ -5,7 +5,7 @@ reimplement). It was compared line by line with `frontend/src/lib/run/fitness.ts
   - weights per priority {area 0.60/0.25/0.15, speed 0.25/0.60/0.15, power 0.25/0.15/0.60}: identical,
   - gain = 100 * (v1 - c) / v1 per metric, lower is better: identical,
   - a metric that is null for v1 or for the candidate is dropped and the rest renormalized: identical
-    (the MVP always has power = null, so area and timing are renormalized to sum 1),
+    (power is null for older records or when the power estimate fails, then the rest are renormalized to sum 1),
   - a total weight of 0 gives score 0: identical.
 The extra part in core/fitness.py is the recorded `weights` field, which holds the EFFECTIVE (renormalized) weights so
 the web breakdown rows add up to the score.

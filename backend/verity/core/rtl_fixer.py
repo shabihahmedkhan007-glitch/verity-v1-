@@ -1,7 +1,8 @@
 """R2/R5 helpers, pure text, no tools and no model: lint tag parsing, guidance, the declaration fixer, failure signatures.
 
 The fixer is deliberately conservative. It only rewrites declarations (wire/reg to logic, a body redeclaration of a
-port or signal, stray generate/endgenerate keywords). It never touches an expression, an assignment or a block.
+port or signal, stray generate/endgenerate keywords, a declaration inside an always block hoisted to module level).
+It never touches an expression or the logic of a block.
 """
 
 import re
@@ -39,6 +40,15 @@ GUIDANCE: dict[str, str] = {
         "Undeclared identifier: declare every internal signal as `logic` with its width before use, and check the "
         "spelling against the port list."
     ),
+    "LATCH": (
+        "Latch inferred: an always_comb output or temporary is not assigned on every path. On the first line of the "
+        "block give every signal it assigns a default (for example `y = '0;`), then override it in the branches, and "
+        "end every case with a `default`."
+    ),
+    "NESTING": (
+        "Invalid nesting: declare every signal, int and loop temporary at module level, before the first always "
+        "block. Never write a `logic`, `int` or `integer` declaration inside an always block."
+    ),
     "MULTIMODULE": "The file must contain exactly one module: inline every helper module into the top module.",
 }
 
@@ -55,6 +65,9 @@ _TAGGED_RE = re.compile(r"^%(?:Error|Warning)-([A-Z0-9_]+):\s*(.*)$", re.MULTILI
 _UNTAGGED_RE = re.compile(r"^%Error:\s*(.*)$", re.MULTILINE)
 _SIGNAL_RE = re.compile(r"'([A-Za-z_][A-Za-z0-9_$]*)'")
 _LOCATION_RE = re.compile(r"^[^\s:]+:\d+(?::\d+)?:\s*")
+# Yosys contract errors reach the repair prompt as "- ERROR: ..." bullets, not as %Error lines.
+_LATCH_RE = re.compile(r"Latch inferred for signal\s+[`']([^`']+)'")
+_NESTING_RE = re.compile(r"Invalid nesting of always blocks")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +97,10 @@ def lint_issues(log: str | None) -> list[LintIssue]:
             tag = "UNDECLARED"
         if tag:
             found.append((m.start(), _issue(tag, message)))
+    for m in _LATCH_RE.finditer(log):
+        found.append((m.start(), LintIssue("LATCH", _leaf(m.group(1)))))
+    for m in _NESTING_RE.finditer(log):
+        found.append((m.start(), LintIssue("NESTING")))
     seen: set[LintIssue] = set()
     out: list[LintIssue] = []
     for _, issue in sorted(found, key=lambda pair: pair[0]):
@@ -95,7 +112,13 @@ def lint_issues(log: str | None) -> list[LintIssue]:
 
 def _issue(tag: str, message: str) -> LintIssue:
     m = _SIGNAL_RE.search(_LOCATION_RE.sub("", message))
-    return LintIssue(tag, m.group(1) if m else "")
+    name = m.group(1) if m else ""
+    return LintIssue(tag, _leaf(name) if tag == "LATCH" else name)
+
+
+def _leaf(hier: str) -> str:
+    """Last component of a hierarchical name such as `matmul4.unnamedblk1.row_i` (Yosys prefixes a backslash)."""
+    return re.split(r"[.\\]", hier)[-1]
 
 
 def structural_tags(text: str) -> list[str]:
@@ -168,7 +191,7 @@ _GEN_LINE_RE = re.compile(r"^\s*(?:generate|endgenerate)\s*(?://.*)?$")
 
 
 # Lint tags the declaration fixer can act on. Any other lint failure goes straight to the repair role.
-FIXABLE_TAGS = frozenset({"PROCASSWIRE", "DUPLICATE", "GENERATE"})
+FIXABLE_TAGS = frozenset({"PROCASSWIRE", "DUPLICATE", "GENERATE", "NESTING"})
 
 
 def fixer_applies(lint_log: str | None) -> bool:
@@ -228,8 +251,66 @@ def fix_declarations(text: str) -> FixResult:
             changes.append(f"removed {len(lines) - len(stripped)} generate/endgenerate keyword line(s)")
             out = "\n".join(stripped)
 
+    # 5. A declaration inside an always block goes to module level (Yosys: "Invalid nesting of always blocks").
+    out, hoisted = _hoist_block_declarations(out)
+    changes.extend(hoisted)
+
     return FixResult(out if changes else text, changes)
 
 
 def _norm_range(rng: str | None) -> str:
     return re.sub(r"\s+", "", rng or "")
+
+
+_ALWAYS_RE = re.compile(r"\balways(?:_comb|_ff|_latch)?\b")
+_BEGIN_RE = re.compile(r"\bbegin\b")
+_END_RE = re.compile(r"\bend\b")
+_LOCAL_DECL_RE = re.compile(
+    r"^(\s*)(logic|int|integer|bit|byte)\s+(signed\s+)?(\[[^\]]*\]\s*)?([A-Za-z_]\w*)\s*(?:=\s*([^;]+))?;\s*(?://.*)?$"
+)
+
+
+def _hoist_block_declarations(text: str) -> tuple[str, list[str]]:
+    """Move `logic x;` / `int x = e;` found inside an always block to module level, just above that block.
+
+    A declaration with an initializer stays as an assignment at the old position (`x = e;`). A name already declared
+    in the file with a different type or width is left alone.
+    """
+    module_decls: dict[str, str] = {}
+    for m in _PORT_RE.finditer(strip_comments(text)):
+        module_decls[m.group(4)] = "port"
+    out: list[str] = []
+    changes: list[str] = []
+    depth = 0  # begin/end nesting inside the current always block
+    in_always = False
+    block_start = 0  # index in `out` of the line holding the `always` keyword
+    hoisted: list[str] = []
+    for line in text.split("\n"):
+        code = line.split("//", 1)[0]
+        m = _LOCAL_DECL_RE.match(line)
+        if not in_always and _ALWAYS_RE.search(code):
+            in_always, depth, block_start, hoisted = True, 0, len(out), []
+        elif not in_always and m:
+            module_decls.setdefault(m.group(5), _decl_text(m))
+        elif in_always and depth > 0 and m:
+            name, decl = m.group(5), _decl_text(m)
+            if module_decls.get(name, decl) == decl:
+                if name not in module_decls:
+                    module_decls[name] = decl
+                    hoisted.append(f"    {decl};")
+                changes.append(f"moved the declaration of {name} out of an always block to module level")
+                if m.group(6) is not None:
+                    out.append(f"{m.group(1)}{name} = {m.group(6).strip()};")
+                continue
+        out.append(line)
+        if in_always:
+            depth += len(_BEGIN_RE.findall(code)) - len(_END_RE.findall(code))
+            if depth <= 0 and (_BEGIN_RE.search(code) or _END_RE.search(code) or ";" in code):
+                in_always = False
+                out[block_start:block_start] = hoisted
+    return "\n".join(out), changes
+
+
+def _decl_text(m: re.Match[str]) -> str:
+    parts = (m.group(2), (m.group(3) or "").strip(), _norm_range(m.group(4)), m.group(5))
+    return " ".join(p for p in parts if p)

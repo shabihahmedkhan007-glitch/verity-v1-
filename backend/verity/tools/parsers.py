@@ -12,7 +12,7 @@ import math
 from typing import Any
 
 from ..contracts import CircuitGraph
-from ..core.results import EquivalenceResult, MeasureResult, SynthResult, TimingResult, VerifyResult
+from ..core.results import EquivalenceResult, MeasureResult, PowerResult, SynthResult, TimingResult, VerifyResult
 
 
 def parse_verify(payload: dict[str, Any], *, expected_total: int) -> VerifyResult:
@@ -57,6 +57,13 @@ def _clean_sta(sta: TimingResult) -> TimingResult:
     return sta.model_copy(update={"ok": ok, "clock_period_ns": period, "wns_ns": wns})
 
 
+def _clean_power(power: PowerResult) -> PowerResult:
+    total = power.power_mw
+    if total is not None and (not math.isfinite(total) or total <= 0):
+        total = None
+    return power.model_copy(update={"ok": power.ok and total is not None, "power_mw": total})
+
+
 def _circuit_is_consistent(circuit: CircuitGraph) -> bool:
     """Every edge endpoint must be a node, and node ids must be unique. Otherwise the web viewer would break."""
     ids = [node.id for node in circuit.nodes]
@@ -73,6 +80,8 @@ def parse_measure(payload: dict[str, Any]) -> MeasureResult:
         updates["synth"] = _clean_synth(result.synth)
     if result.sta is not None:
         updates["sta"] = _clean_sta(result.sta)
+    if result.power is not None:
+        updates["power"] = _clean_power(result.power)
     if result.circuit is not None and not _circuit_is_consistent(result.circuit):
         updates["circuit"] = None
     result = result.model_copy(update=updates) if updates else result

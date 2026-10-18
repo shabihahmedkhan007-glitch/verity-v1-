@@ -182,3 +182,84 @@ def test_fixer_only_applies_to_declaration_tags() -> None:
     assert fixer_applies(LOG_PROCASSWIRE) and fixer_applies(LOG_DUPLICATE) and fixer_applies(LOG_GENERATE)
     assert not fixer_applies(LOG_UNDECLARED) and not fixer_applies(LOG_WIDTH)
     assert not fixer_applies("Rejected before simulation:\n- initial blocks are not allowed")
+
+
+# ---- latch and nesting (matmul4 gate failures, 2026-10-16) ----
+LOG_NESTING = (
+    "Interface check failed:\n- dut.v:51: ERROR:Invalid nesting of always blocks and/or initializations."
+)
+LOG_LATCH_CONTRACT = (
+    "Interface check failed:\n"
+    "- ERROR: Latch inferred for signal `\\matmul4.$unnamed_block$5.row_i' from always_comb process "
+    "`\\matmul4.$proc$dut.v:18$12'."
+)
+LOG_LATCH_VERILATOR = (
+    "%Warning-LATCH: dut.v:18:5: Latch inferred for signal 'matmul4.unnamedblk1.b_row_k' "
+    "(not all control paths of combinational always assign a value)\n"
+)
+
+NESTED_DECL = """module matmul4 (
+    input  logic        clk,
+    input  logic        rst_n,
+    output logic [31:0] acc
+);
+    logic [4:0] cycle_ctr;
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            cycle_ctr <= 5'd0;
+            acc <= 32'd0;
+        end else begin
+            logic [7:0] tmp;
+            int idx = cycle_ctr - 5;
+            tmp = idx[7:0];
+            acc <= {24'd0, tmp};
+            cycle_ctr <= cycle_ctr + 5'd1;
+        end
+    end
+endmodule
+"""
+
+
+def test_latch_and_nesting_issues_parse_from_contract_bullets() -> None:
+    assert [(i.tag, i.signal) for i in lint_issues(LOG_NESTING)] == [("NESTING", "")]
+    assert [(i.tag, i.signal) for i in lint_issues(LOG_LATCH_CONTRACT)] == [("LATCH", "row_i")]
+    assert [(i.tag, i.signal) for i in lint_issues(LOG_LATCH_VERILATOR)] == [("LATCH", "b_row_k")]
+
+
+def test_latch_and_nesting_guidance_reaches_the_repair_prompt() -> None:
+    lines = guidance_for(LOG_LATCH_CONTRACT, "module m(); endmodule")
+    assert len(lines) == 1 and "default" in lines[0] and "first line" in lines[0]
+    lines = guidance_for(LOG_NESTING, "module m(); endmodule")
+    assert len(lines) == 1 and "module level" in lines[0]
+    v = Verification(lint="fail", lint_log=LOG_NESTING, passed=0, total=16, failures=[], tool="Yosys interface check", duration_ms=1)
+    text = _failure_text(v, NESTED_DECL)
+    assert "Invalid nesting" in text and "Known fixes for these errors:" in text and "module level" in text
+
+
+def test_failure_signature_names_latch_signal() -> None:
+    assert failure_signature("fail", LOG_LATCH_CONTRACT, None) == "lint:LATCH:row_i"
+    assert failure_signature("fail", LOG_NESTING, None) == "lint:NESTING:"
+
+
+def test_fixer_hoists_declarations_out_of_an_always_block() -> None:
+    assert fixer_applies(LOG_NESTING)
+    result = fix_declarations(NESTED_DECL)
+    assert result.changed
+    lines = result.text.split("\n")
+    always_at = next(i for i, ln in enumerate(lines) if "always_ff" in ln)
+    head = "\n".join(lines[:always_at])
+    assert "logic [7:0] tmp;" in head and "int idx;" in head
+    body = "\n".join(lines[always_at:])
+    assert "logic [7:0] tmp;" not in body and "int idx;" not in body
+    assert "idx = cycle_ctr - 5;" in body and "int idx" not in body
+    assert "tmp = idx[7:0];" in body
+    assert fix_declarations(result.text).text == result.text  # idempotent
+
+
+def test_fixer_hoist_leaves_conflicting_and_module_level_declarations_alone() -> None:
+    clean = NESTED_DECL.replace("            logic [7:0] tmp;\n            int idx = cycle_ctr - 5;\n", "")
+    assert not fix_declarations(clean).changed
+    conflict = NESTED_DECL.replace("    logic [4:0] cycle_ctr;\n", "    logic [4:0] cycle_ctr;\n    logic [15:0] tmp;\n")
+    result = fix_declarations(conflict)
+    assert "            logic [7:0] tmp;" in result.text  # different width: not touched
+    assert "int idx;" in result.text

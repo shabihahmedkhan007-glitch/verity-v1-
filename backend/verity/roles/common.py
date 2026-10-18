@@ -16,7 +16,7 @@ T = TypeVar("T")
 PRIORITY_TEXT: dict[str, str] = {
     "area": "smallest area (fewest and smallest cells)",
     "speed": "shortest clock period (highest clock speed)",
-    "power": "lowest power (power is not measured in this build, so keep the logic small and avoid needless toggling)",
+    "power": "lowest estimated power (keep the logic small and avoid needless toggling)",
 }
 
 RETRY_NOTE = (
@@ -149,7 +149,8 @@ def format_ppa(ppa: PPA) -> str:
     area = f"{ppa.area_um2:.1f} um2" if ppa.area_um2 is not None else "not measured"
     cells = f"{ppa.cell_count} cells" if ppa.cell_count is not None else "cells unknown"
     clock = f"{ppa.clock_period_ns:.2f} ns" if ppa.clock_period_ns is not None else "not measured"
-    return f"area {area}, {cells}, clock period {clock}, power not measured"
+    power = f"{ppa.power_mw:.3f} mW (estimate)" if ppa.power_mw is not None else "not measured"
+    return f"area {area}, {cells}, clock period {clock}, power {power}"
 
 
 def relative_note(parent: PPA, baseline: PPA) -> str:

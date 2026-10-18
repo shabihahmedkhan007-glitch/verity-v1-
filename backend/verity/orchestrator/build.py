@@ -575,6 +575,13 @@ def _sta_report(result: MeasureResult) -> str:
             lines.append(f"Target period {sta.target_period_ns:.3f} ns, worst setup slack {sta.wns_ns:.3f} ns")
     else:
         lines.append("Timing was not measured.")
+    power = result.power
+    if power is not None and power.ok and power.power_mw is not None:
+        lines.append(
+            f"Power estimate: {power.power_mw:.4f} mW at {power.reference_clock_ns} ns reference clock "
+            f"({power.method}, input activity {power.input_activity}; internal {power.internal_mw:.4f}, "
+            f"switching {power.switching_mw:.4f}, leakage {power.leakage_mw:.4f} mW; not signoff)"
+        )
     if sta.log:
         lines += ["", "--- log (tail) ---", sta.log]
     return "\n".join(lines) + "\n"
