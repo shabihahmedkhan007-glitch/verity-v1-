@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { TryView } from "@/components/sections/try/TryView";
+import { TryRedirect } from "./TryRedirect";
 
-export const metadata: Metadata = { title: "Try live" };
+export const metadata: Metadata = { title: "Live bench" };
 
+/** /try moved to /bench (D15). A static export has no server redirects, so the page forwards on the client. */
 export default function TryPage() {
-  return <TryView />;
+  return <TryRedirect />;
 }

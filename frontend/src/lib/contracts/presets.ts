@@ -80,3 +80,120 @@ export const PRESETS: Preset[] = [
     },
   },
 ];
+
+// ---------- bench envelope (spec 2026-10-17 section 4) ----------
+// DRAFT ranges: encoded once here from the design spec and rendered from this table. The shipped ranges are the ones
+// the real-model range probe passes (spec section 7); until then every range is labelled draft on the page.
+
+export const RANGES_ARE_DRAFT = true;
+
+export type KnobValue = number | boolean | string;
+export type KnobDef =
+  | { id: string; label: string; kind: "int"; min: number; max: number; default: number; unit: string }
+  | { id: string; label: string; kind: "bool"; default: boolean; on: string; off: string }
+  | { id: string; label: string; kind: "bits"; minLen: number; maxLen: number; default: string };
+
+export type Family = {
+  /** Backend preset id (the task pack that renders this family). */
+  id: string;
+  name: string;
+  summary: string;
+  knobs: KnobDef[];
+  /** The backend runs this pack live today at its default knobs, before knob support (health feature "params"). */
+  liveAtDefaults: boolean;
+  /** Plain title for a set of knob values, e.g. "MAC array, 4 lanes x 8-bit, 16 cycles". */
+  describe(v: Record<string, KnobValue>): string;
+};
+
+export const FAMILIES: Family[] = [
+  {
+    id: "mac4",
+    name: "MAC array",
+    summary: "Lanes of unsigned multiply-accumulate over a fixed number of cycles.",
+    knobs: [
+      { id: "lanes", label: "Lanes", kind: "int", min: 1, max: 8, default: 4, unit: "lanes" },
+      { id: "width", label: "Input width", kind: "int", min: 4, max: 16, default: 8, unit: "bits" },
+      { id: "cycles", label: "Accumulate cycles", kind: "int", min: 4, max: 32, default: 16, unit: "cycles" },
+    ],
+    liveAtDefaults: true,
+    describe: (v) => `MAC array, ${v.lanes} lanes x ${v.width}-bit, ${v.cycles} cycles`,
+  },
+  {
+    id: "add8",
+    name: "Adder",
+    summary: "Combinational adder with carry in and carry out.",
+    knobs: [{ id: "width", label: "Width", kind: "int", min: 4, max: 32, default: 8, unit: "bits" }],
+    liveAtDefaults: false,
+    describe: (v) => `${v.width}-bit adder with carry`,
+  },
+  {
+    id: "cnt8",
+    name: "Counter",
+    summary: "Up counter that wraps, with a synchronous reset.",
+    knobs: [
+      { id: "width", label: "Width", kind: "int", min: 4, max: 32, default: 8, unit: "bits" },
+      { id: "enable", label: "Enable input", kind: "bool", default: true, on: "With enable", off: "Free-running" },
+    ],
+    liveAtDefaults: false,
+    describe: (v) => `${v.width}-bit counter, ${v.enable ? "with enable" : "free-running"}`,
+  },
+  {
+    id: "fsm_seq",
+    name: "Sequence detector",
+    summary: "Serial detector for a bit pattern you choose.",
+    knobs: [
+      { id: "pattern", label: "Pattern", kind: "bits", minLen: 3, maxLen: 8, default: "1011" },
+      { id: "overlap", label: "Overlapping matches", kind: "bool", default: true, on: "Overlaps count", off: "No overlaps" },
+    ],
+    liveAtDefaults: false,
+    describe: (v) => `Sequence detector for ${v.pattern}, ${v.overlap ? "overlaps count" : "no overlaps"}`,
+  },
+];
+
+/** What the bench says no to, shown next to the knobs. */
+export const OUT_OF_RANGE: string[] = [
+  "Processors, CPUs and GPUs",
+  "Caches and memories",
+  "Floating point",
+  "Analog or mixed-signal",
+  "Designs with more than one module",
+  "Anything past the knob limits above",
+];
+
+export function familyById(id: string): Family | undefined {
+  return FAMILIES.find((f) => f.id === id);
+}
+
+export function knobDefaults(f: Family): Record<string, KnobValue> {
+  return Object.fromEntries(f.knobs.map((k) => [k.id, k.default]));
+}
+
+/** Why a value is outside its knob's range, or null when it is in range. */
+export function knobError(k: KnobDef, value: KnobValue | undefined): string | null {
+  switch (k.kind) {
+    case "int":
+      return typeof value === "number" && Number.isInteger(value) && value >= k.min && value <= k.max
+        ? null
+        : `${k.label} must be a whole number from ${k.min} to ${k.max}.`;
+    case "bool":
+      return typeof value === "boolean" ? null : `${k.label} must be on or off.`;
+    case "bits":
+      return typeof value === "string" && value.length >= k.minLen && value.length <= k.maxLen && /^[01]+$/.test(value)
+        ? null
+        : `${k.label} must be ${k.minLen} to ${k.maxLen} bits of 0 and 1.`;
+  }
+}
+
+/** Keeps only the family's own knobs, each in range; anything else falls back to its default. */
+export function sanitizeKnobs(f: Family, raw: Record<string, unknown>): Record<string, KnobValue> {
+  return Object.fromEntries(
+    f.knobs.map((k) => {
+      const v = raw[k.id] as KnobValue | undefined;
+      return [k.id, knobError(k, v) === null ? (v as KnobValue) : k.default];
+    }),
+  );
+}
+
+export function isDefaultKnobs(f: Family, v: Record<string, KnobValue>): boolean {
+  return f.knobs.every((k) => v[k.id] === k.default);
+}

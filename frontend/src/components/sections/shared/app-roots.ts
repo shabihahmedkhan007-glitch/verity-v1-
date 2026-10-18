@@ -2,7 +2,7 @@ import { RACK_FACES } from "./rack-fonts";
 import "./datasheet-base.css";
 import "./app-pages.css";
 
-/** Root class of /try: the rack scope (.vt) plus the rack font variables (D12). */
+/** Root class of the /try forwarding page: the rack scope (.vt) plus the rack font variables (D12). */
 export const TRY_ROOT = `vt ${RACK_FACES}`;
 
 /** Root class of /results: the rack scope (.vr) plus the rack font variables. */

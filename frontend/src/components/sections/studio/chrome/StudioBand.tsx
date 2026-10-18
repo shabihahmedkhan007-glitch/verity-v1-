@@ -18,7 +18,7 @@ export function StudioBand({ mode }: { mode: "replay" | "live" }) {
   return (
     <RackBar
       current="studio"
-      actions={mode === "live" ? undefined : <RackBarLink href="/try">Try it live</RackBarLink>}
+      actions={mode === "live" ? undefined : <RackBarLink href="/bench">Try it live</RackBarLink>}
     />
   );
 }

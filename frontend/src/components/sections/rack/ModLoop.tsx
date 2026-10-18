@@ -1,16 +1,14 @@
 import type { CSSProperties } from "react";
 import { Ears } from "./Ears";
+import { REAL } from "./real-run";
 
 const STAGES = ["PLAN", "LOCK", "BUILD", "TEST", "EVOLVE", "PROVE"];
-const FIXES: [string, string][] = [
-  ["F1", "v1"],
-  ["F2", "v3"],
-  ["F3", "v6 rejected"],
-];
+// One marker per version that failed a check, labelled F1, F2, ... in version order.
+const FIXES: [string, string][] = REAL.failed.map((f, i) => [`F${i + 1}`, f.rejected ? `${f.label} rejected` : f.label]);
 const SEG_H = 19;
 const SEG_GAP = 3;
-// The three fail markers sit beside the TEST column at these segment rows (0 = bottom).
-const MARK_ROWS = [3, 5, 7];
+// The fail markers sit beside the TEST column at these segment rows (0 = bottom).
+const MARK_ROWS = [3, 5, 7].slice(0, FIXES.length);
 
 /** MOD 2: six LED stage columns that light stage by stage on load, the three fails, and the round dial. */
 export function ModLoop() {
@@ -49,7 +47,7 @@ export function ModLoop() {
       </div>
       <div className="fixes">
         <span className="lab" style={{ marginRight: 2 }}>
-          3 versions failed
+          {FIXES.length} versions failed
         </span>
         {FIXES.map(([id, v]) => (
           <i key={id}>
@@ -63,12 +61,14 @@ export function ModLoop() {
           <circle cx="32" cy="32" r="29" fill="var(--rk-inset)" stroke="var(--rk-rule-2)" strokeWidth="1.5" />
           <circle cx="32" cy="32" r="29" fill="none" stroke="var(--rk-a)" strokeWidth="3" transform="rotate(-90 32 32)" />
           <text x="32" y="36" textAnchor="middle" className="svgm" fontSize="13" fill="var(--rk-ink)">
-            2/2
+            {REAL.rounds}/{REAL.rounds}
           </text>
         </svg>
         <p>
-          <span className="lab strong">ROUND 2 / 2</span>
-          Six versions built, two fixes kept, one rejected. Human inputs: 2.
+          <span className="lab strong">
+            ROUND {REAL.rounds} / {REAL.rounds}
+          </span>
+          {REAL.versions} versions built, {REAL.fixes} fixes kept, {REAL.rejected} rejected. Human inputs: {REAL.humanInputs}.
         </p>
       </div>
     </section>

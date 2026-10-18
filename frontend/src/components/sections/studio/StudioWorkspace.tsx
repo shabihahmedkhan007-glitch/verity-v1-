@@ -117,10 +117,10 @@ export function StudioWorkspace({ mode }: { mode: "replay" | "live" }) {
           title="This live run is not available anymore."
           action={
             <div className="s-empty-acts">
-              <Link prefetch={false} href="/studio?run=golden" className="btn sm">
+              <Link prefetch={false} href="/studio?run=mac4-real" className="btn sm">
                 Watch the recorded run
               </Link>
-              <Link prefetch={false} href="/try" className="btn ghost sm">
+              <Link prefetch={false} href="/bench" className="btn ghost sm">
                 Try it live
               </Link>
             </div>

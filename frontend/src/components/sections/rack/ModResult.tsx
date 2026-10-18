@@ -1,16 +1,14 @@
 import type { CSSProperties } from "react";
 import { Ears } from "./Ears";
+import { num, REAL } from "./real-run";
 
-const MINUS = "−";
-
-type Bar = { v: string; pct: number; kind: "base" | "better" | "plain"; label: string };
-const BARS: Bar[] = [
-  { v: "v1", pct: (1840 / 2000) * 100, kind: "base", label: "1,840 base" },
-  { v: "v2", pct: (1690 / 2000) * 100, kind: "better", label: `1,690 ${MINUS}8.2%` },
-  { v: "v3", pct: (1610 / 2000) * 100, kind: "better", label: `1,610 ${MINUS}12.5%` },
-  { v: "v4", pct: (1950 / 2000) * 100, kind: "plain", label: "1,950 +6.0%" },
-  { v: "v5", pct: (1520 / 2000) * 100, kind: "better", label: `1,520 ${MINUS}17.4%` },
-];
+type Bar = { v: string; pct: number; kind: "base" | "better" | "plain" | "rej"; label: string };
+const BARS: Bar[] = REAL.areaRows.map((r) => ({
+  v: r.label,
+  pct: r.area !== null ? (r.area / REAL.areaMax) * 100 : 0,
+  kind: r.rejected ? "rej" : r.isBaseline ? "base" : r.isWinner ? "better" : "plain",
+  label: r.rejected ? "rejected, not measured" : r.isBaseline ? `${num(r.area ?? 0)} base` : `${num(r.area ?? 0)} ${r.delta}`,
+}));
 
 function KnobTicks() {
   const out = [];
@@ -33,6 +31,8 @@ function KnobTicks() {
   return <g stroke="var(--rk-ink-3)" strokeWidth="1">{out}</g>;
 }
 
+const W = { area: REAL.weights.area.toFixed(2), timing: REAL.weights.timing.toFixed(2) };
+
 /** MOD 3: the measured result, the priority knob, area bars per version and the equivalence lamp. */
 export function ModResult() {
   return (
@@ -41,19 +41,22 @@ export function ModResult() {
       <div className="mh">
         <span className="eng">MOD 3 · RESULT</span>
         <span className="mh-r">
-          <span className="word dim">Sample data</span>
+          <span className="word dim">Real run</span>
         </span>
       </div>
       <div className="res">
         <div>
-          <div className="big">{MINUS}17.4%</div>
-          <div className="sub">Area vs v1 · v5 · sample</div>
+          <div className="big">{REAL.winner.areaDelta}</div>
+          <div className="sub">Area vs {REAL.v1.label} · {REAL.winner.label} · real run</div>
           <div className="sub dim" style={{ marginTop: 8 }}>
-            1,840 to 1,520 <span className="unit">µm²</span>
+            {num(REAL.v1.area ?? 0)} to {num(REAL.winner.area ?? 0)} <span className="unit">µm²</span>
+          </div>
+          <div className="sub dim" style={{ marginTop: 4 }}>
+            Clock {REAL.winner.clockDelta} vs {REAL.v1.label} · power not measured
           </div>
         </div>
         <div className="knob">
-          <svg viewBox="0 0 150 116" role="img" aria-label="Priority knob pointing at area. Weights: area 0.6, timing 0.25, power 0.15">
+          <svg viewBox="0 0 150 116" role="img" aria-label={`Priority knob pointing at area. Weights: area ${W.area}, timing ${W.timing}, power not measured`}>
             <path d="M21 90 A56 56 0 0 1 129 90" stroke="var(--rk-rule-2)" strokeWidth="1" fill="none" />
             <KnobTicks />
             <g transform="translate(75 72)">
@@ -79,7 +82,7 @@ export function ModResult() {
               PRIORITY
             </text>
           </svg>
-          <div className="wts">0.6 / 0.25 / 0.15</div>
+          <div className="wts">{W.area} / {W.timing} / n/a</div>
         </div>
         <div className="bars">
           <div className="lab bars-h">
@@ -87,31 +90,24 @@ export function ModResult() {
             <span>vs v1</span>
           </div>
           {BARS.map((b, i) => (
-            <div className="brow" key={b.v}>
+            <div className={b.kind === "rej" ? "brow nm" : "brow"} key={b.v}>
               <span>{b.v}</span>
-              <span className="t">
+              <span className={b.kind === "rej" ? "t clear" : "t"}>
                 <span
                   className={`f ${b.kind === "plain" ? "" : b.kind}`}
-                  style={{ width: `${b.pct}%`, "--bd": `${0.9 + i * 0.1}s` } as CSSProperties}
+                  style={{ ...(b.kind === "rej" ? {} : { width: `${b.pct}%` }), "--bd": `${0.9 + i * 0.1}s` } as CSSProperties}
                 />
               </span>
               <span className="v">{b.label}</span>
             </div>
           ))}
-          <div className="brow nm">
-            <span>v6</span>
-            <span className="t clear">
-              <span className="f rej" />
-            </span>
-            <span className="v">rejected, not measured</span>
-          </div>
         </div>
       </div>
       <div className="lamp">
         <span className="sq" />
-        <span className="word">EQY PROVEN EQUAL</span>
+        <span className="word">{REAL.winner.eqy === "proven" ? "EQY PROVEN EQUAL" : "EQY NOT PROVEN"}</span>
         <span className="lab" style={{ marginLeft: "auto" }}>
-          v5 vs v1
+          {REAL.winner.label} vs {REAL.v1.label}
         </span>
       </div>
     </section>

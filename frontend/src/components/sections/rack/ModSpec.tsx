@@ -1,14 +1,5 @@
 import { Ears } from "./Ears";
-
-const PORTS: [string, string, string][] = [
-  ["clk", "in", "1"],
-  ["rst_n", "in", "1"],
-  ["start", "in", "1"],
-  ["a[0:3]", "in", "4 x 8"],
-  ["b[0:3]", "in", "4 x 8"],
-  ["acc", "out", "22"],
-  ["done", "out", "1"],
-];
+import { REAL } from "./real-run";
 
 /** MOD 1: the plain-English spec and the port list. */
 export function ModSpec() {
@@ -18,16 +9,15 @@ export function ModSpec() {
       <div className="mh">
         <span className="eng">MOD 1 · SPEC IN</span>
         <span className="mh-r">
-          <span className="word dim">VRT-MAC4</span>
+          <span className="word dim">{REAL.part}</span>
         </span>
       </div>
       <div className="field-l lab">
         <span>Plain English spec</span>
-        <span>4-lane MAC array, 8-bit</span>
+        <span>{REAL.spec.title}</span>
       </div>
       <div className="field" role="textbox" aria-readonly="true" aria-label="Spec typed into the input">
-        A 4-lane multiply-accumulate unit. Each cycle it multiplies four pairs of unsigned 8-bit inputs and adds the four products to a
-        running sum. After 16 cycles it raises done and holds the 22-bit result until reset. Smallest area matters most.
+        {REAL.spec.text}
         <span className="caret" aria-hidden="true" />
       </div>
       <div className="ports">
@@ -43,11 +33,11 @@ export function ModSpec() {
             </tr>
           </thead>
           <tbody>
-            {PORTS.map(([p, d, b]) => (
-              <tr key={p}>
-                <td>{p}</td>
-                <td>{d}</td>
-                <td className="num">{b}</td>
+            {REAL.ports.map((p) => (
+              <tr key={p.name}>
+                <td>{p.name}</td>
+                <td>{p.dir}</td>
+                <td className="num">{p.bits}</td>
               </tr>
             ))}
           </tbody>

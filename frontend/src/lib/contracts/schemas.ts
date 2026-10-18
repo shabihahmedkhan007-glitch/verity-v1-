@@ -222,6 +222,7 @@ export const RunEventSchema = z.discriminatedUnion("t", [
   z.object({ ...eventBase, t: z.literal("caption"), text: z.string(), chapter: z.string().optional() }),
   z.object({ ...eventBase, t: z.literal("credits"), usedUsd: z.number(), capUsd: z.number().nullable() }),
   z.object({ ...eventBase, t: z.literal("artifact"), path: z.string(), content: z.string() }),
+  z.object({ ...eventBase, t: z.literal("human_ref"), ppa: PPASchema, eqy: EquivalenceSchema }),
 ]);
 
 // ---------- recorded log ----------

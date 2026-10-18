@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import type { KnobValue } from "@/lib/contracts/presets";
 import type { Chapter, Priority, RunState } from "@/lib/contracts/types";
 import type {
   InspectorTab,
@@ -98,7 +99,7 @@ export function useLive(): {
   runId: string | null;
   error: string | null;
   pendingSteers: SteerRequest[];
-  startLive(presetId: string, priority: Priority): Promise<StartLiveResult>;
+  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string): Promise<StartLiveResult>;
   steer(req: SteerRequest): Promise<void>;
   stopRun(): Promise<void>;
   overrideWinnerLocal(candidateId: string): void;

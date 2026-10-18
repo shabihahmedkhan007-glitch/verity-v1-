@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import "./rack-bar.css";
 
-export type RackPage = "home" | "studio" | "try" | "results" | "other";
+export type RackPage = "home" | "studio" | "bench" | "results" | "other";
 
 export type RackBarProps = {
   /** The page this bar sits on, so its link is marked current. */
@@ -16,8 +16,8 @@ export type RackBarProps = {
 const LINKS: { href: string; label: string; page?: RackPage }[] = [
   { href: "/#loop", label: "How it works" },
   { href: "/#inside", label: "Why trust it" },
-  { href: "/studio?run=golden", label: "Studio", page: "studio" },
-  { href: "/try", label: "Try live", page: "try" },
+  { href: "/studio?run=mac4-real", label: "Studio", page: "studio" },
+  { href: "/bench", label: "Live bench", page: "bench" },
 ];
 
 /** The rack top bar shared by every page (D12): brand, the four page links, a context slot and an actions slot. */
@@ -48,13 +48,13 @@ export function RackBar({ current = "other", context, actions }: RackBarProps) {
   );
 }
 
-/** The dashed sample-data stamp from the landing bar. */
-export function RackSampleBadge({ part = "VRT-MAC4" }: { part?: string }) {
+/** The dashed stamp from the landing bar: the figures come from one real recorded run. */
+export function RackRealBadge({ part, date }: { part: string; date: string }) {
   return (
     <div className="rkbar-badge" role="note">
-      <b>SAMPLE RUN · {part}</b>
+      <b>REAL RUN · {part}</b>
       <br />
-      FIGURES ARE SAMPLE DATA
+      NEBIUS · {date}
     </div>
   );
 }

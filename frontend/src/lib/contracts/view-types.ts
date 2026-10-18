@@ -30,4 +30,6 @@ export type RunSummary = {
   credits: Credits; recordedUsd: number | null; priority: Priority | null;
   candidates: CandidateListItem[];
 };
-export type LiveHealth = { status: "checking" | "ready" | "not_configured" | "budget_exhausted" | "busy" | "error"; capUsd: number | null; authRequired?: boolean };
+export type LiveHealth = { status: "checking" | "ready" | "not_configured" | "budget_exhausted" | "busy" | "error"; capUsd: number | null; authRequired?: boolean;
+  /** Bench capabilities the agent reports in GET /health ("params", "parse", "human_ref"); empty when it reports none. */
+  features?: string[] };

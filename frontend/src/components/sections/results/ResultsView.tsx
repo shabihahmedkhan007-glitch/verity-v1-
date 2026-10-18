@@ -36,8 +36,11 @@ function rankRows(order: string[], candidates: Record<string, Candidate>): Candi
   return [...scored, ...rest];
 }
 
-function ResultsReplay() {
-  useReplayDriver({ src: "/runs/golden.json", autoplay: false, loop: false });
+/** Recordings under public/runs/. Any other `?run=` id is a live run. */
+const REPLAY_RUNS = ["golden", "mac4-real"];
+
+function ResultsReplay({ name }: { name: string }) {
+  useReplayDriver({ src: `/runs/${name}.json`, autoplay: false, loop: false });
   const { status, tMs, durationMs, seek } = usePlayback();
   const jumped = useRef(false);
 
@@ -64,7 +67,7 @@ function ResultsReplay() {
     );
   }
   if (!ready) return <ResultsSkeleton />;
-  return <ResultsBody runId="golden" />;
+  return <ResultsBody runId={name} />;
 }
 
 function ResultsLive({ runId }: { runId: string }) {
@@ -82,10 +85,10 @@ function ResultsLive({ runId }: { runId: string }) {
           action={
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Button asChild className="h-10 px-4">
-                <Link prefetch={false} href="/studio?run=golden">Watch the recorded run</Link>
+                <Link prefetch={false} href="/studio?run=mac4-real">Watch the recorded run</Link>
               </Button>
               <Button asChild variant="outline" className="h-10 px-4">
-                <Link prefetch={false} href="/try">Try live</Link>
+                <Link prefetch={false} href="/bench">Try live</Link>
               </Button>
             </div>
           }
@@ -208,8 +211,8 @@ function ResultsBody({ runId }: { runId: string }) {
   );
 }
 
-/** Client root of /results. `?run=golden` (the default) shows the finished recording; any other id is a live run. */
+/** Client root of /results. `?run=mac4-real` (the default) or `?run=golden` shows the finished recording; any other id is a live run. */
 export function ResultsView() {
-  const runId = useSearchParams().get("run") ?? "golden";
-  return runId === "golden" ? <ResultsReplay /> : <ResultsLive key={runId} runId={runId} />;
+  const runId = useSearchParams().get("run") ?? "mac4-real";
+  return REPLAY_RUNS.includes(runId) ? <ResultsReplay key={runId} name={runId} /> : <ResultsLive key={runId} runId={runId} />;
 }

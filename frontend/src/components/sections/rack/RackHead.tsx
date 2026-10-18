@@ -17,10 +17,10 @@ export function RackHead() {
           bugs, then grows smaller versions and <b>proves the winner equal</b> to its first one.
         </p>
         <div className="ctas">
-          <Link prefetch={false} href="/studio?run=golden" className="btn p">
+          <Link prefetch={false} href="/studio?run=mac4-real" className="btn p">
             Watch the full run <ArrowIcon />
           </Link>
-          <Link prefetch={false} href="/try" className="btn s">
+          <Link prefetch={false} href="/bench" className="btn s">
             Try it live
           </Link>
         </div>

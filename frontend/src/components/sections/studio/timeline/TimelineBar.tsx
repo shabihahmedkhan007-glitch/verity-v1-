@@ -7,7 +7,7 @@ import { Download, RotateCcw, SkipForward } from "lucide-react";
 import type { Chapter, RunState } from "@/lib/contracts/types";
 import { formatClock, formatDelta, formatUsd } from "@/lib/format";
 import { priorityMetric } from "@/lib/run/fitness";
-import { useLive, usePlayback } from "@/lib/store";
+import { useLive, usePlayback, useVerityStore } from "@/lib/store";
 import { useRunZip } from "@/components/sections/shared/use-run-zip";
 import { Mod } from "../chrome/Mod";
 import { partNumber } from "../chrome/StudioBand";
@@ -136,12 +136,12 @@ export function NarrationFor({ run, mode, notice }: { run: RunState; mode: "repl
 
   const status: NarrationStatus | null = (() => {
     const recorded = (
-      <Link prefetch={false} href="/studio?run=golden" className="btn ghost xs">
+      <Link prefetch={false} href="/studio?run=mac4-real" className="btn ghost xs">
         Watch the recorded run
       </Link>
     );
     const another = (
-      <Link prefetch={false} href="/try" className="btn ghost xs">
+      <Link prefetch={false} href="/bench" className="btn ghost xs">
         Start another
       </Link>
     );
@@ -197,7 +197,16 @@ export function TimelineBar({ run, mode, meta }: { run: RunState; mode: "replay"
 
   const isLive = mode === "live";
   const finished = FINISHED.has(run.phase);
-  const resultsHref = `/results?run=${encodeURIComponent(isLive ? run.runId : "golden")}`;
+  const resultsHref = `/results?run=${encodeURIComponent(isLive ? run.runId : run.sample ? "golden" : "mac4-real")}`;
+  // zod strips unknown meta fields, so the compression is read from meta.note (written by scripts/compress-fixture.ts).
+  const note = useVerityStore((s) => s.logMeta?.note) ?? "";
+  const shortened = /idle waits shortened/i.test(note);
+  const originalClock = /Original duration (\d+:\d{2})/.exec(note)?.[1];
+  const recordedLabel = run.sample
+    ? `Recorded run · ${formatClock(playback.durationMs)}`
+    : shortened && originalClock
+      ? `Real run · ${originalClock} recorded, idle waits shortened`
+      : `Real run · ${formatClock(playback.durationMs)}`;
   const unavailable = playback.status === "loading" || playback.status === "error";
   const playing = playback.status === "playing";
   const ended = playback.status === "ended";
@@ -218,7 +227,7 @@ export function TimelineBar({ run, mode, meta }: { run: RunState; mode: "replay"
         {part ? `${part} · ` : ""}
         {title}
       </h1>
-      <span className="lab">{isLive ? "Live run" : `Recorded run · ${formatClock(playback.durationMs)}`}</span>
+      <span className="lab">{isLive ? "Live run" : recordedLabel}</span>
     </div>
   );
 

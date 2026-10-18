@@ -4,7 +4,9 @@
 // Everything here treats the network as untrusted: events are validated with zod before they reach the reducer.
 
 import { AGENT_URL } from "@/lib/env";
+import { z } from "zod";
 import { RunEventSchema } from "@/lib/contracts/schemas";
+import type { KnobValue } from "@/lib/contracts/presets";
 import type { Priority, RunEvent } from "@/lib/contracts/types";
 import type { LiveHealth, SteerRequest } from "@/lib/contracts/view-types";
 
@@ -12,7 +14,7 @@ export function liveUrl(path: string): string | null {
   return AGENT_URL ? `${AGENT_URL}${path}` : null;
 }
 
-export type StartFailureReason = "busy" | "budget_exhausted" | "maintenance" | "unauthorized";
+export type StartFailureReason = "busy" | "budget_exhausted" | "maintenance" | "rate_limited" | "unauthorized";
 export type PostRunResult =
   | { runId: string; capUsd: number | null; streamToken: string | null }
   | { error: string; reason?: StartFailureReason };
@@ -117,13 +119,16 @@ export async function checkHealth(signal?: AbortSignal): Promise<LiveHealth> {
   try {
     const res = await fetch(url, { signal: timeout.signal, headers: { Accept: "application/json" } });
     if (!res.ok) return { status: "error", capUsd: null };
-    const body = (await res.json()) as { liveEnabled?: boolean; reason?: string; capUsd?: number; authRequired?: boolean };
+    const body = (await res.json()) as {
+      liveEnabled?: boolean; reason?: string; capUsd?: number; authRequired?: boolean; features?: unknown;
+    };
     const capUsd = typeof body.capUsd === "number" ? body.capUsd : null;
     const authRequired = body.authRequired === true;
-    if (body.liveEnabled) return { status: "ready", capUsd, authRequired };
-    if (body.reason === "budget_exhausted") return { status: "budget_exhausted", capUsd, authRequired };
-    if (body.reason === "busy") return { status: "busy", capUsd, authRequired };
-    return { status: "error", capUsd, authRequired };
+    const features = Array.isArray(body.features) ? body.features.filter((f): f is string => typeof f === "string") : [];
+    if (body.liveEnabled) return { status: "ready", capUsd, authRequired, features };
+    if (body.reason === "budget_exhausted") return { status: "budget_exhausted", capUsd, authRequired, features };
+    if (body.reason === "busy") return { status: "busy", capUsd, authRequired, features };
+    return { status: "error", capUsd, authRequired, features };
   } catch {
     return { status: "error", capUsd: null };
   } finally {
@@ -131,15 +136,19 @@ export async function checkHealth(signal?: AbortSignal): Promise<LiveHealth> {
   }
 }
 
-/** POST /runs. 201 { runId, capUsd, streamToken }, 401 (no or expired session) or 429 { reason }. */
-export async function postRun(presetId: string, priority: Priority): Promise<PostRunResult> {
+/**
+ * POST /runs. 201 { runId, capUsd, streamToken }, 401 (no or expired session), 422 { error } or 429 { reason }.
+ * `params` (bench knobs) is sent only when given. Callers pass it only when /health reports the "params" feature,
+ * because an older agent ignores unknown fields and would quietly run the default chip.
+ */
+export async function postRun(presetId: string, priority: Priority, params?: Record<string, KnobValue>): Promise<PostRunResult> {
   const url = liveUrl("/runs");
   if (!url) return { error: "Live runs are offline right now." };
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", ...authHeaders() },
-      body: JSON.stringify({ presetId, priority }),
+      body: JSON.stringify(params ? { presetId, priority, params } : { presetId, priority }),
     });
     if (res.status === 201) {
       const body = (await res.json()) as { runId?: string; capUsd?: number; streamToken?: string };
@@ -156,13 +165,76 @@ export async function postRun(presetId: string, priority: Priority): Promise<Pos
     }
     if (res.status === 429) {
       const body = (await res.json().catch(() => ({}))) as { reason?: string };
-      const reason: StartFailureReason | undefined =
-        body.reason === "budget_exhausted" || body.reason === "maintenance" || body.reason === "busy" ? body.reason : "busy";
-      return { error: reason === "busy" ? "Another live run is in progress." : "Live runs are paused right now.", reason };
+      const reason: StartFailureReason =
+        body.reason === "budget_exhausted" || body.reason === "maintenance" || body.reason === "busy" || body.reason === "rate_limited"
+          ? body.reason
+          : "busy";
+      const message =
+        reason === "busy"
+          ? "Another live run is in progress."
+          : reason === "rate_limited"
+            ? "This session has used its live runs for now. Wait a while, or watch a recorded run."
+            : reason === "budget_exhausted"
+              ? "Today's live budget is used up."
+              : "Live runs are paused right now.";
+      return { error: message, reason };
+    }
+    if (res.status === 422) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return { error: typeof body.error === "string" && body.error ? body.error : "The agent did not accept this chip." };
     }
     return { error: "The agent did not respond." };
   } catch {
     return { error: "The agent did not respond." };
+  }
+}
+
+// ---------- plain-English parse (bench, spec 5.2) ----------
+
+const ParseReplySchema = z.discriminatedUnion("result", [
+  z.object({ result: z.literal("in_range"), family: z.string(), params: z.record(z.string(), z.unknown()), note: z.string().optional() }),
+  z.object({
+    result: z.literal("out_of_range"),
+    reason: z.string(),
+    closest: z.object({ family: z.string(), params: z.record(z.string(), z.unknown()) }).nullable(),
+  }),
+]);
+export type ParseReply = z.infer<typeof ParseReplySchema>;
+export type ParseResult =
+  | { ok: true; reply: ParseReply }
+  | { ok: false; reason: "unavailable" | "unauthorized" | "rate_limited" | "failed"; error: string };
+
+/**
+ * POST /parse { text }. The agent (Nemotron) maps one sentence onto a family and knobs, or refuses with the closest
+ * buildable chip. The reply is validated here and again against the knob table by the caller; it never bypasses either.
+ * 404 or 405 means this agent has no parse endpoint yet.
+ */
+export async function postParse(text: string): Promise<ParseResult> {
+  const url = liveUrl("/parse");
+  if (!url) return { ok: false, reason: "unavailable", error: "Live runs are offline right now." };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...authHeaders() },
+      body: JSON.stringify({ text }),
+    });
+    if (res.status === 404 || res.status === 405) {
+      return { ok: false, reason: "unavailable", error: "Plain-English parse lands with the backend. Use the knobs below for now." };
+    }
+    if (res.status === 401) {
+      clearSession();
+      return { ok: false, reason: "unauthorized", error: "Enter the access code first, then ask again." };
+    }
+    if (res.status === 429) return { ok: false, reason: "rate_limited", error: "Too many requests. Wait a minute and try again." };
+    if (!res.ok) return { ok: false, reason: "failed", error: "The agent could not read that request. Use the knobs below." };
+    const parsed = ParseReplySchema.safeParse(await res.json());
+    if (!parsed.success) {
+      if (process.env.NODE_ENV !== "production") console.warn("[verity] parse reply rejected by schema", parsed.error.issues);
+      return { ok: false, reason: "failed", error: "The agent sent an answer the bench could not check. Use the knobs below." };
+    }
+    return { ok: true, reply: parsed.data };
+  } catch {
+    return { ok: false, reason: "failed", error: "The agent did not respond." };
   }
 }
 

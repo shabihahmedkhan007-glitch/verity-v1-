@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import { PRESETS } from "@/lib/contracts/presets";
+import { PRESETS, type KnobValue } from "@/lib/contracts/presets";
 import type { Priority, RunEvent } from "@/lib/contracts/types";
 import type { LiveConnection, SteerRequest } from "@/lib/contracts/view-types";
 import type { Store } from "../types";
@@ -7,7 +7,7 @@ import type { Store } from "../types";
 /** Compatible with the contract type; `reason` lets the Try page pick the busy or budget message. */
 export type StartLiveResult =
   | { runId: string }
-  | { error: string; reason?: "busy" | "budget_exhausted" | "maintenance" | "unauthorized" };
+  | { error: string; reason?: "busy" | "budget_exhausted" | "maintenance" | "rate_limited" | "unauthorized" };
 
 const SESSION_EXPIRED = "Your session expired. Open the Try page and enter the access code again.";
 
@@ -16,7 +16,8 @@ export type LiveSlice = {
   runId: string | null;
   error: string | null;
   pendingSteers: SteerRequest[];
-  startLive(presetId: string, priority: Priority): Promise<StartLiveResult>;
+  /** `params` and `title` come from the bench; `params` is sent only when the agent supports knobs. */
+  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string): Promise<StartLiveResult>;
   steer(req: SteerRequest): Promise<void>;
   stopRun(): Promise<void>;
   /** Replay only: a local human + winner event pair through the reducer. */
@@ -53,17 +54,17 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
   error: null,
   pendingSteers: [],
 
-  async startLive(presetId, priority) {
+  async startLive(presetId, priority, params, title) {
     // Dynamic import: the replay path never loads the module that can reach the agent.
     const live = await import("@/lib/sources/live");
     set({ connection: "connecting", error: null });
-    const res = await live.postRun(presetId, priority);
+    const res = await live.postRun(presetId, priority, params);
     if ("error" in res) {
       set({ connection: "idle", error: res.error });
       return res;
     }
     const preset = PRESETS.find((p) => p.id === presetId);
-    get().resetRun({ runId: res.runId, mode: "live", sample: false, title: preset?.title ?? "Live run" });
+    get().resetRun({ runId: res.runId, mode: "live", sample: false, title: title ?? preset?.title ?? "Live run" });
     set({
       source: "live",
       status: "playing",
@@ -78,8 +79,9 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
       pendingSteers: [],
       error: null,
     });
-    // Never a blank canvas: place the preset's spec node before the first server event.
-    if (preset) {
+    // Never a blank canvas: place the preset's spec node before the first server event. Custom knobs change the spec,
+    // so the preset text is seeded only when no knobs were sent; the agent's own spec event follows either way.
+    if (preset && !params) {
       get().applyEvents([
         { seq: 0, tMs: 0, t: "spec", spec: { ...preset.spec, priority } },
         { seq: 0, tMs: 0, t: "op", by: "ai", op: { op: "add_node", id: "spec", kind: "spec", zone: "plan", label: "Spec", refId: "spec" } },

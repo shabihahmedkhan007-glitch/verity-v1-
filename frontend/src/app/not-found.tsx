@@ -20,7 +20,7 @@ export default function NotFound() {
           action={
             <div className="flex flex-wrap items-center justify-center gap-4">
               <Button asChild className="h-10 px-4">
-                <Link prefetch={false} href="/studio?run=golden">Watch the recorded run</Link>
+                <Link prefetch={false} href="/studio?run=mac4-real">Watch the recorded run</Link>
               </Button>
               <Button asChild variant="ghost">
                 <Link prefetch={false} href="/">Go to the home page</Link>

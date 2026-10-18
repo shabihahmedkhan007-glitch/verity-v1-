@@ -119,6 +119,8 @@ export type RunEvent = EventBase & (
   | { t: "caption"; text: string; chapter?: string }
   | { t: "credits"; usedUsd: number; capUsd: number | null }
   | { t: "artifact"; path: string; content: string }
+  // Bench (spec 5.3): the pack's human-written reference.v measured with the same tools, and EQY of the winner against it.
+  | { t: "human_ref"; ppa: PPA; eqy: Equivalence }
 );
 
 // ---------- recorded log (golden run fixture) ----------

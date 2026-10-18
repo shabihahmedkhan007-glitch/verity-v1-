@@ -1,3 +1,4 @@
+import { REAL } from "./real-run";
 import Link from "next/link";
 import { DEMO_VIDEO_URL, DEVPOST_URL, GITHUB_URL } from "../landing/links";
 
@@ -20,11 +21,11 @@ export function RackFooter() {
               <b>Verity will not design a GPU.</b> It is built for small blocks, up to about 300 lines of Verilog.
             </li>
             <li>
-              <b>Numbers are good estimates, not signoff.</b> They come from open-source tools (Yosys, OpenROAD on Nangate45) and are
+              <b>Numbers are good estimates, not signoff.</b> They come from open-source tools (Yosys, OpenSTA on Nangate45) and are
               always relative to Verity&apos;s own first draft, v1.
             </li>
             <li>
-              <b>All figures on this page are sample data</b> from one recorded run of the 4-lane MAC array.
+              <b>All figures on this page come from one real recorded run</b> of the 4-lane MAC array on Nebius, {REAL.date}. Power was not measured in it.
             </li>
             <li>
               <b>The proof says the winner matches v1.</b> It does not say v1 matches your intent. The locked tests check that, so read
@@ -33,10 +34,10 @@ export function RackFooter() {
           </ol>
         </div>
         <nav aria-label="Footer" className="foot-links">
-          <Link prefetch={false} href="/studio?run=golden">
+          <Link prefetch={false} href="/studio?run=mac4-real">
             Watch the full run
           </Link>
-          <Link prefetch={false} href="/try">
+          <Link prefetch={false} href="/bench">
             Try it live
           </Link>
           {project.map((l) => (
