@@ -72,7 +72,7 @@ Request:
 | `mac4` | `width` | int | 4 to 16 | 8 |
 | `mac4` | `cycles` | int | 4 to 32 | 16 |
 | `add8` | `width` | int | 4 to 32 | 8 |
-| `cnt8` | `width` | int | 4 to 32 | 8 |
+| `cnt8` | `width` | int | 4 to 16 | 8 |
 | `cnt8` | `enable` | bool | | true |
 | `fsm_seq` | `pattern` | string of `0`/`1` | length 3 to 8 | `"1011"` |
 | `fsm_seq` | `overlap` | bool | | true |

@@ -8,11 +8,11 @@ enable=false removes the en port and the enable wording: the counter is free-run
 import json
 
 KNOBS: list[dict] = [
-    {"id": "width", "kind": "int", "default": 8, "min": 4, "max": 32},
+    {"id": "width", "kind": "int", "default": 8, "min": 4, "max": 16},
     {"id": "enable", "kind": "bool", "default": True},
 ]
 
-WRAP_MAX_BITS = 10  # the testbench runs through a full wrap only up to this width (2**10 + 2 edges)
+WRAP_EDGES_EXTRA = 2  # the testbench runs 2**width + 2 edges to show a full wrap (same formula in test_dut.py)
 
 
 def _q(text: str) -> str:
@@ -47,7 +47,7 @@ def _task_toml(width: int, enable: bool) -> str:
             f"q is a register: it changes only on a rising clock edge, to q + 1 (modulo {1 << width}) when rst_n is 1. "
             "rst_n low at the edge sets q to 0."
         )
-    max_cycles = max(512, (1 << width) + 8) if width <= WRAP_MAX_BITS else 512
+    max_cycles = max(512, (1 << width) + WRAP_EDGES_EXTRA + 6)
     lines = [
         'schema = "verity.task/1"',
         'id = "cnt8"',

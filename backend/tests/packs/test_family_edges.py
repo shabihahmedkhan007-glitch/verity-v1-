@@ -21,8 +21,9 @@ EDGES = [
     ("add8", {"width": 32}),
     ("cnt8", {"width": 4, "enable": True}),
     ("cnt8", {"width": 8, "enable": True}),
-    ("cnt8", {"width": 32, "enable": False}),
-    ("cnt8", {"width": 32, "enable": True}),
+    ("cnt8", {"width": 4, "enable": False}),
+    ("cnt8", {"width": 16, "enable": True}),
+    ("cnt8", {"width": 16, "enable": False}),
 ]
 
 

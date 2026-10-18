@@ -22,8 +22,7 @@ WIDTH = golden.WIDTH
 ENABLE = golden.ENABLE  # False: no en port, the counter is free-running
 MAXV = golden.MASK
 RANDOM_STEPS = 80
-WRAP_MAX_BITS = 10  # a full wrap needs 2**WIDTH + 2 edges; wider counters get a long count instead (no preload is possible)
-LONG_COUNT = 300  # edges for the long count; passes bit 8 so a counter truncated to 8 bits is caught up to this width
+WRAP_EDGES = (1 << WIDTH) + 2  # a full wrap at every width (no preload is possible); max_cycles_per_case is derived from the same width
 
 
 @dataclass
@@ -34,10 +33,7 @@ class Case:
 
 
 def build_cases(rng):
-    if WIDTH <= WRAP_MAX_BITS:
-        wrap = Case(f"wrap_at_{MAXV}", f"en high for {(1 << WIDTH) + 2} edges", [(1, 1)] * ((1 << WIDTH) + 2))
-    else:
-        wrap = Case(f"count_long_{LONG_COUNT}", f"en high for {LONG_COUNT} edges", [(1, 1)] * LONG_COUNT)
+    wrap = Case(f"wrap_at_{MAXV}", f"en high for {WRAP_EDGES} edges", [(1, 1)] * WRAP_EDGES)
     if ENABLE:
         hold = Case("hold_when_disabled", "count 3, then en low for 4 edges", [(1, 1)] * 3 + [(1, 0)] * 4)
         alternate = Case("enable_every_other", "en alternates for 12 edges", [(1, i % 2) for i in range(12)])
