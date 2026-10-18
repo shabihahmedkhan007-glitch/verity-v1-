@@ -4,8 +4,11 @@ import pytest
 
 from verity.contracts import HumanRefEvent, RunPhaseEvent, WinnerEvent, event_to_wire
 from verity.core.pack import TaskPack
+from verity.core.rtl import normalize_rtl_text
 from verity.core.types import ToolInfraError
-from verity_test_support import FakeToolRunner, execute_fake_run
+from verity.orchestrator import human_ref
+from verity.runs.ledger import RunLedger
+from verity_test_support import FakeToolRunner, execute_fake_run, make_settings
 
 pytestmark = pytest.mark.asyncio
 
@@ -56,7 +59,6 @@ async def test_emitted_once_between_winner_and_terminal(settings, mac4: TaskPack
         winner = [e for e in run.events if isinstance(e, WinnerEvent)][-1]
         assert ev.eqy.against_id == winner.candidate_id
         wire = event_to_wire(ev)
-        print("HUMAN_REF_JSON", wire)
         assert set(wire["ppa"]) >= {"areaUm2", "cellCount", "clockPeriodNs", "powerMw", "tools", "pdk"}
         assert wire["t"] == "human_ref"
     finally:
@@ -65,9 +67,6 @@ async def test_emitted_once_between_winner_and_terminal(settings, mac4: TaskPack
 
 async def test_measure_failure_gives_null_metrics_and_run_still_done(settings, mac4: TaskPack) -> None:
     tools = RefProbeTools(fail_ref_measure=True)
-    tools.ref_text = mac4.reference_rtl().replace("\r\n", "\n")
-    from verity.core.rtl import normalize_rtl_text
-
     tools.ref_text = normalize_rtl_text(mac4.reference_rtl())
     run = await execute_fake_run(settings, mac4, mode="full", tools=tools)
     try:
@@ -92,8 +91,6 @@ async def test_eqy_infra_error_is_inconclusive(settings, mac4: TaskPack) -> None
 
 async def test_pack_without_reference_emits_nothing(settings, mac4: TaskPack, monkeypatch) -> None:
     """The fake LLM needs reference.v to answer, so hide it only while the human_ref stage runs."""
-    from verity.orchestrator import human_ref
-
     real_stage, real_ref = human_ref.measure_human_ref, TaskPack.reference_rtl
 
     async def hidden(st, winner_id):
@@ -108,5 +105,42 @@ async def test_pack_without_reference_emits_nothing(settings, mac4: TaskPack, mo
     try:
         assert run.outcome is not None and run.outcome.status == "done"
         assert refs(run.events) == []
+    finally:
+        await run.store.close()
+
+
+async def test_wall_budget_exhausted_skips_tools_and_keeps_status(settings, mac4: TaskPack, monkeypatch) -> None:
+    real = RunLedger.exhausted
+    armed = {"on": False}
+    real_stage = human_ref.measure_human_ref
+
+    async def arm(st, winner_id):
+        armed["on"] = True
+        before = (st.ctx.tools.measure_calls, st.ctx.tools.eqy_calls)
+        await real_stage(st, winner_id)
+        assert (st.ctx.tools.measure_calls, st.ctx.tools.eqy_calls) == before
+
+    monkeypatch.setattr(human_ref, "measure_human_ref", arm)
+    monkeypatch.setattr(RunLedger, "exhausted", lambda self: "max_wall_s" if armed["on"] else real(self))
+    run = await execute_fake_run(settings, mac4, mode="fast", tools=FakeToolRunner())
+    try:
+        (ev,) = refs(run.events)
+        assert ev.ppa.area_um2 is None and ev.eqy.status == "not_run"
+        assert ev.eqy.log == "Not run: the time limit was reached."
+        assert run.outcome is not None and run.outcome.status in ("done", "cap_reached")
+    finally:
+        await run.store.close()
+
+
+async def test_capped_run_with_a_winner_emits_human_ref(tmp_path, mac4: TaskPack) -> None:
+    base = make_settings(tmp_path / "data")
+    tight = base.budget.model_copy(update={"run": base.budget.run.model_copy(update={"max_llm_calls": 3})})
+    run = await execute_fake_run(base.model_copy(update={"budget": tight}), mac4, mode="full")
+    try:
+        assert run.outcome is not None and run.outcome.status == "cap_reached" and run.outcome.winner_id
+        assert len(refs(run.events)) == 1
+        ref = next(i for i, e in enumerate(run.events) if isinstance(e, HumanRefEvent))
+        term = next(i for i, e in enumerate(run.events) if isinstance(e, RunPhaseEvent) and e.phase == "cap_reached")
+        assert ref < term
     finally:
         await run.store.close()

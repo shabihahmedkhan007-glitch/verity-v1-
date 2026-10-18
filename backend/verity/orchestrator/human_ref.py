@@ -10,7 +10,7 @@ import logging
 
 from ..contracts import PPA, Equivalence
 from ..core.errors import RtlRejected
-from ..core.results import not_run_equivalence
+from ..core.results import DEFAULT_PDK, not_run_equivalence
 from ..core.rtl import Rtl
 from ..core.types import RunStopped
 from . import evolve
@@ -21,7 +21,6 @@ log = logging.getLogger("verity.orchestrator")
 # Human-written files may be longer than the LLM line limit; every other Rtl check still applies.
 REFERENCE_MAX_LINES = 2_000
 REFERENCE_MAX_BYTES = 200_000
-DEFAULT_PDK = "Nangate45"
 
 
 async def measure_human_ref(st: RunState, winner_id: str) -> None:
@@ -34,6 +33,11 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
             return
         ppa = PPA(pdk=DEFAULT_PDK)
         eqy = Equivalence(status="inconclusive", against_id=winner_id)
+        if ctx.ledger.exhausted() == "max_wall_s":
+            st.note_budget("max_wall_s")
+            eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
+            await em.human_ref(ppa, eqy)
+            return
         try:
             ref = Rtl.validate(text, top=pack.top, max_lines=REFERENCE_MAX_LINES, max_bytes=REFERENCE_MAX_BYTES)
         except RtlRejected as exc:

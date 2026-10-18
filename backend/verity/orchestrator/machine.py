@@ -240,6 +240,7 @@ async def _end_budget(st: RunState, limit: str) -> None:
     st.note_budget(limit)
     winner = judge.winner(st.models())
     if winner is not None:
+        await human_ref.measure_human_ref(st, winner)
         await _finish(st, winner)
         return
     em = st.em

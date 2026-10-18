@@ -224,6 +224,9 @@ class PowerResult(_Result):
     tool: str = "OpenSTA"
 
 
+DEFAULT_PDK = "Nangate45"
+
+
 class MeasureResult(_Result):
     schema_: Literal["verity.measure/1"] = Field(default="verity.measure/1", alias="schema")
     status: MeasureStatus
@@ -231,7 +234,7 @@ class MeasureResult(_Result):
     sta: TimingResult | None = None
     power: PowerResult | None = None  # absent in results from older images: power stays null
     circuit: CircuitGraph | None = None
-    pdk: str = "Nangate45"
+    pdk: str = DEFAULT_PDK
     duration_ms: int = 0
     message: str = ""
     tool_versions: dict[str, str] = Field(default_factory=dict)
