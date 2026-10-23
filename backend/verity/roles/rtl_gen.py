@@ -8,7 +8,7 @@ from .common import call_parsed, priority_text, render_plan
 from .parsing import RtlAnswer, parse_rtl_answer
 from .prompts import load_template
 
-TEMPLATE_FILE = "rtl_gen.v2.md"
+TEMPLATE_FILE = "rtl_gen.v3.md"
 FORMAT_HINT = "Give one REASON line, then exactly one ```verilog fenced block with the whole file."
 DEFAULT_REASON = "First version, written from the plan"
 

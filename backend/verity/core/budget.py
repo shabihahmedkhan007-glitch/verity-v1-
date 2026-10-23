@@ -91,9 +91,19 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / 3.5) + 16
 
 
+def spend_owner(session_id: str) -> str:
+    """Whose per-day spend limit a request counts against ([limits] session_usd), and who owns threads and the run list.
+    That is the session id. A signed-in user's session id is "u:" + the Supabase user id (api.auth), the same on every
+    device, so the owner already is the user; a judge access code or an anonymous visit has its own session id. If
+    owners ever need another key, change this one function: the store keys session_spend by it and the run manager
+    matches holds by it."""
+    return session_id
+
+
 @dataclass(slots=True)
 class DailySpend:
-    """Helper for admission: today's persisted spend vs the global daily limit."""
+    """Helper for admission: today's persisted spend vs a daily limit (the global [limits] daily_usd, or one owner's
+    session_usd; the same arithmetic for both)."""
 
     day: str  # UTC "YYYY-MM-DD"
     usd: float

@@ -15,7 +15,8 @@ from datetime import UTC, datetime
 from ..contracts import Attempt, AttemptBy, Verification, to_json
 from ..core import captions as cap
 from ..core.errors import RunStopped
-from ..core.rtl_fixer import failure_signature, fix_declarations, fixer_applies, lint_issues
+from ..core.results import WaveTrace
+from ..core.rtl_fixer import failure_signature, fix_declarations, fixer_applies, lint_issues, normalize_comment_chars
 from ..core.types import (
     AttemptMeta,
     BudgetExhausted,
@@ -26,7 +27,7 @@ from ..core.types import (
     Rtl,
     VerifyResult,
 )
-from . import judge
+from . import judge, waves
 from .candidates import FIRST_VERSION_REASON, Cand
 from .state import RunState, meta_dict
 
@@ -143,7 +144,7 @@ async def sample_baseline(st: RunState, c: Cand) -> RtlOut:
 async def _score_sample(st: RunState, out: RtlOut) -> _Sample:
     """Fixer plus one verify per round on a single sample. Never touches the candidate or emits events."""
     ctx, pack = st.ctx, st.ctx.pack
-    text, fixes = out.text, []
+    text, fixes = normalize_comment_chars(out.text), []
     while True:
         try:
             rtl = pack.validate_rtl(text, max_bytes=ctx.settings.rtl.max_bytes)
@@ -270,7 +271,8 @@ async def evaluate(st: RunState, c: Cand, out: RtlOut, *, baseline: bool) -> boo
                 if restart:
                     repaired = await _restart(st, c, signature)
                 else:
-                    repaired = await _repair(st, c, attempt.rtl, verification, n + 1, baseline=baseline)
+                    trace = await _failing_wave(st, c, checked, n)
+                    repaired = await _repair(st, c, attempt.rtl, verification, n + 1, baseline=baseline, waves=trace)
             except BudgetExhausted as exc:
                 st.note_budget(exc.limit)
                 c.status = "fail"
@@ -309,7 +311,7 @@ async def _check_attempt(st: RunState, c: Cand, text: str, *, baseline: bool) ->
     ctx, em, pack = st.ctx, st.em, st.ctx.pack
 
     try:
-        rtl = pack.validate_rtl(text, max_bytes=ctx.settings.rtl.max_bytes)
+        rtl = pack.validate_rtl(normalize_comment_chars(text), max_bytes=ctx.settings.rtl.max_bytes)
     except RtlRejected as exc:
         problems = exc.problems
         verification = Verification(
@@ -440,18 +442,45 @@ async def _restart(st: RunState, c: Cand, signature: str) -> RtlOut:
 
 
 async def _repair(
-    st: RunState, c: Cand, rtl_text: str, verification: Verification, attempt_n: int, *, baseline: bool
+    st: RunState,
+    c: Cand,
+    rtl_text: str,
+    verification: Verification,
+    attempt_n: int,
+    *,
+    baseline: bool,
+    waves: WaveTrace | None = None,
 ) -> RtlOut | None:
     ctx, em = st.ctx, st.em
     if baseline:
         await em.stage("fix", "active")
     c.status = "fixing"
     await em.candidate(c)
+    extra: dict[str, object] = {"waves": waves} if waves is not None else {}
+    parent = st.cands.get(c.parent_id) if not baseline and c.parent_id else None
+    if parent is not None and parent.rtl_obj is not None:
+        extra["parent_rtl"] = parent.rtl_obj.text  # a failing child sees the parent that passes every test
     with ctx.busy():
-        repaired = await ctx.roles.repair(ctx.llm, ctx.pack, rtl_text, verification, attempt_n=attempt_n)
+        repaired = await ctx.roles.repair(ctx.llm, ctx.pack, rtl_text, verification, attempt_n=attempt_n, **extra)
     ctx.ledger.count("repair")
     await st.credits()
     return repaired
+
+
+async def _failing_wave(st: RunState, c: Cand, checked: _Checked, attempt_n: int) -> WaveTrace | None:
+    """The waveform of the first failing test case of a version that failed its tests, for its repair prompt and the
+    waves/<id>.json artifact. None for lint, rule or interface failures, or when the waveform cannot be made."""
+    ctx = st.ctx
+    result = checked.result
+    if not ctx.settings.signoff.waves_on_repair or checked.rtl is None or result is None or result.sim is None:
+        return None
+    if result.status != "sim_fail" or not result.sim.failures:
+        return None
+    ctx.check_stop()
+    trace = await waves.capture(st, checked.rtl, result.sim.failures[0].name)
+    if trace is not None:
+        await waves.publish(st, c, trace, file_name=f"attempt-{attempt_n}.waves.json")
+    return trace
 
 
 async def _attach_diagnosis(

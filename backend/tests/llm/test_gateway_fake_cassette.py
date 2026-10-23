@@ -73,6 +73,15 @@ async def test_the_optimizer_uses_the_cheaper_model(settings: Settings) -> None:
     assert provider.requests[0].temperature == settings.temperature_for("optimizer")
 
 
+async def test_a_call_is_priced_and_recorded_on_the_model_that_served_it(settings: Settings) -> None:
+    provider = ScriptedProvider([response(model=settings.llm.model_super)])  # asked Ultra, answered by Super (a fallback)
+    gateway, ledger = make_gateway(settings, provider)
+    _, usd = await gateway.call("planner", system="s", user="u")
+    assert provider.requests[0].model == settings.llm.model_ultra
+    assert usd == pytest.approx((1000 * 0.30 + 500 * 0.90) / 1_000_000)
+    assert gateway.calls[0]["model"] == settings.llm.model_ultra and gateway.calls[0]["servedModel"] == settings.llm.model_super
+
+
 async def test_a_retryable_error_is_retried_and_billed_once(settings: Settings) -> None:
     provider = ScriptedProvider([LLMError("429", retryable=True, status=429), response()])
     gateway, ledger = make_gateway(settings, provider)

@@ -1,5 +1,7 @@
 # Backend checklist for /bench
 
+> **History, superseded by `docs/PRD.md`.** The 2026-10-18 checklist of what `/bench` needed from the backend; every item below was implemented that day. Current interfaces: `backend/CONTRACTS.md`.
+
 What the live bench (`frontend/src/components/sections/bench/`) consumes, with exact wire shapes (camelCase JSON), each
 marked **IMPLEMENTED** or **MISSING** from what is in `backend/` on 2026-10-18 (`verity/api/routes.py`,
 `verity/contracts/api.py`, `backend/CONTRACTS.md` section 9). Design source: `docs/superpowers/specs/2026-10-17-bench-envelope-design.md`

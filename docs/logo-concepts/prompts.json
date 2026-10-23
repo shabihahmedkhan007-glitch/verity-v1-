@@ -1,0 +1,46 @@
+{
+  "generator": "OpenAI built-in image generation tool",
+  "background": "Opaque warm black",
+  "concepts": [
+    {
+      "id": "01-proof-v",
+      "file": "exec-ff343434-a64d-41fb-b60b-acec500209c3.png",
+      "name": "Proof V",
+      "tag": "Verification / minimal monogram",
+      "description": "A split V turns the familiar check into an ownable silhouette. The simplest bridge from Verity's current verification mark.",
+      "tradeoff": "Clear and compact, but a check-derived V is a crowded visual territory.",
+      "alt": "Ivory split V symbol beside a tall condensed VERITY wordmark on warm black.",
+      "prompt": "Use case: logo-brand. Asset type: original logo exploration for Verity, an AI hardware engineering app that turns plain English into Verilog, simulates designs against a locked reference, optimizes chips, and proves equivalence. Brand: precise, engineering-led, confident, understated, laboratory instrument aesthetic. Create ONE refined original horizontal logo lockup, a bold memorable symbol at left and the word VERITY at right. Use warm ivory #F3EEE6 for all artwork, perfectly flat solid warm near-black #0A0806 background. Typography custom condensed sans serif uppercase, inspired by Sofia Sans Extra Condensed, heavy but sophisticated, optically kerned. Flat two-dimensional crisp vector-like silhouette, no mockup, no material texture, no shading, no glow, no gradients, no perspective. Spacious canvas, logo centered, artwork occupies roughly 75% width and 28% height. High-quality identity design, strong at small scale. Exact text: \"VERITY\". No other words, captions, labels, badges, watermarks, decorative linework or panels. No amber because brand reserves amber for verified results. Design a striking single compact V monogram with a subtle asymmetric checkmark reading inside its negative space. Two solid chamfered strokes with a shared angle language, the right stroke slightly taller. Abstract proof and precision without a generic checkbox or shield. The silhouette must be original, balanced and extremely simple. All edges pristine and flat, absolutely no distressing, dust, paper texture, stray pixels or grunge."
+    },
+    {
+      "id": "02-silicon-seal",
+      "file": "exec-9b099456-f4b4-4f33-94a1-b342f568a867.png",
+      "name": "Silicon seal",
+      "tag": "Hardware / strongest product connection",
+      "description": "A V cut into a silicon die makes the product's purpose immediate. Solid geometry gives it the character of a stamped instrument label.",
+      "tradeoff": "The contacts will need a simpler version for a very small favicon.",
+      "alt": "Ivory silicon die with side contacts and a V cutout, followed by the VERITY wordmark.",
+      "prompt": "Use case: logo-brand. Asset type: original logo exploration for Verity, an AI hardware engineering app that turns plain English into Verilog, simulates designs against a locked reference, optimizes chips, and proves equivalence. Brand: precise, engineering-led, confident, understated, laboratory instrument aesthetic. Create ONE refined original horizontal logo lockup, a bold memorable symbol at left and the word VERITY at right. Use warm ivory #F3EEE6 for all artwork, perfectly flat solid warm near-black #0A0806 background. Typography custom condensed sans serif uppercase, inspired by Sofia Sans Extra Condensed, heavy but sophisticated, optically kerned. Flat two-dimensional crisp vector-like silhouette, no mockup, no material texture, no shading, no glow, no gradients, no perspective. Spacious canvas, logo centered, artwork occupies roughly 75% width and 28% height. High-quality identity design, strong at small scale. Exact text: \"VERITY\". No other words, captions, labels, badges, watermarks, decorative linework or panels. No amber because brand reserves amber for verified results. Design a compact square silicon die symbol: a bold square frame with four short substantial chip contacts on each of the left and right edges, a unique V carved out of the central solid die as background-colored negative space. Keep only essential geometry, no tiny circuit traces, no detailed motherboard. A precision cut engineering emblem with confident mass and strong favicon silhouette."
+    },
+    {
+      "id": "03-logic-pair",
+      "file": "exec-c21e71ce-851b-4f42-b598-46269374391d.png",
+      "name": "Logic pair",
+      "tag": "Equivalence / two paths, one answer",
+      "description": "Two matching paths converge into a single V. The paired geometry points to comparing designs and checking that their behavior agrees.",
+      "tradeoff": "The broad symbol and fine internal seams need refinement at small sizes.",
+      "alt": "Two folded ivory logic paths forming a wide V next to the condensed VERITY wordmark.",
+      "prompt": "Use case: logo-brand. Asset type: original logo exploration for Verity, an AI hardware engineering app that turns plain English into Verilog, simulates designs against a locked reference, optimizes chips, and proves equivalence. Brand: precise, engineering-led, confident, understated, laboratory instrument aesthetic. Create ONE refined original horizontal logo lockup, a bold memorable symbol at left and the word VERITY at right. Use warm ivory #F3EEE6 for all artwork, perfectly flat solid warm near-black #0A0806 background. Typography custom condensed sans serif uppercase, inspired by Sofia Sans Extra Condensed, heavy but sophisticated, optically kerned. Flat two-dimensional crisp vector-like silhouette, no mockup, no material texture, no shading, no glow, no gradients, no perspective. Spacious canvas, logo centered, artwork occupies roughly 75% width and 28% height. High-quality identity design, strong at small scale. Exact text: \"VERITY\". No other words, captions, labels, badges, watermarks, decorative linework or panels. No amber because brand reserves amber for verified results. Design an abstract distinctive formal equivalence emblem: two facing angular logic paths converge into one compact geometric V. Use two thick folded ribbons, exactly matching line weights, with a small rectangular negative-space gap suggesting an equals sign. Simple two or three solid shapes only, no tiny details. Read as hardware logic and two designs arriving at the same proven answer, not as a chain link, infinity sign, or generic checkmark."
+    },
+    {
+      "id": "04-cut-wordmark",
+      "file": "exec-389aa605-ce7b-415e-b82c-9b09c96c438d.png",
+      "name": "Cut wordmark",
+      "tag": "Typography / name first",
+      "description": "The name carries the identity. A precise incision in the V introduces a technical detail without adding a separate emblem.",
+      "tradeoff": "A standalone icon still needs to be developed for tabs and compact navigation.",
+      "alt": "Custom heavy ivory VERITY lettering with an angular incision in the V on warm black.",
+      "prompt": "Use case: logo-brand. Asset type: original logo exploration for Verity, an AI hardware engineering app that turns plain English into Verilog, simulates designs against a locked reference, optimizes chips, and proves equivalence. Brand: precise, engineering-led, confident, understated, laboratory instrument aesthetic. Create ONE refined original horizontal logo lockup, a bold memorable symbol at left and the word VERITY at right. Use warm ivory #F3EEE6 for all artwork, perfectly flat solid warm near-black #0A0806 background. Typography custom condensed sans serif uppercase, inspired by Sofia Sans Extra Condensed, heavy but sophisticated, optically kerned. Flat two-dimensional crisp vector-like silhouette, no mockup, no material texture, no shading, no glow, no gradients, no perspective. Spacious canvas, logo centered, artwork occupies roughly 75% width and 28% height. High-quality identity design, strong at small scale. Exact text: \"VERITY\". No other words, captions, labels, badges, watermarks, decorative linework or panels. No amber because brand reserves amber for verified results. The typographic direction: make VERITY itself the hero, no separate icon. A custom extra-condensed heavyweight uppercase sans serif wordmark with a distinctive V built from two angular solid strokes and a precise rectangular incision repeated subtly in the E and R. A highly legible bespoke industrial wordmark with tight optical kerning. Keep the typography humane and sophisticated, avoid stencil lettering and illegible science-fiction fonts. Slightly larger lettering than other directions, still plenty of background breathing room."
+    }
+  ]
+}

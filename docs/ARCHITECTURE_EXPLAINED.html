@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verity architecture, explained</title>
+<style>
+  :root {
+    --ground: #0A0806;
+    --panel: #13100C;
+    --panel-2: #1B1712;
+    --line: #342C22;
+    --text: #EDE6DA;
+    --muted: #BDB2A2;
+    --amber: #FFB000;
+    --path: #F2D7A6;
+    --must: #FF6B5B;
+    --nice: #8DBAD8;
+    --ui: #CDBE96;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+  a { color: var(--amber); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+  code, .mono {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    color: var(--path);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+    overflow-wrap: break-word;
+  }
+  pre {
+    font-family: var(--mono);
+    font-size: 14.5px;
+    line-height: 1.55;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    color: var(--path);
+    max-width: 100%;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  .layout {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  @media (min-width: 1100px) {
+    .layout { grid-template-columns: 250px minmax(0, 1fr); gap: 56px; padding-top: 48px; }
+  }
+
+  /* table of contents */
+  nav.toc { font-size: 15.5px; }
+  nav.toc .toc-inner {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  nav.toc summary { cursor: pointer; font-weight: 700; color: var(--text); }
+  nav.toc ol { margin: 10px 0 0; padding-left: 22px; }
+  nav.toc li { margin: 5px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--amber); text-decoration: underline; }
+  @media (min-width: 1100px) {
+    nav.toc { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; }
+  }
+
+  main { min-width: 0; }
+  header.top { margin-bottom: 8px; }
+  .eyebrow { color: var(--muted); font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 6px; }
+  h1 { font-size: 40px; line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 28px;
+    line-height: 1.25;
+    margin: 64px 0 12px;
+    padding-left: 14px;
+    border-left: 4px solid var(--amber);
+    scroll-margin-top: 20px;
+  }
+  h3 { font-size: 20px; margin: 32px 0 8px; }
+  h4 { font-size: 17px; margin: 22px 0 6px; }
+  p, ul, ol, dl { max-width: 72ch; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 6px 0; }
+  .muted { color: var(--muted); }
+  .lede { font-size: 19px; max-width: 68ch; }
+  .inshort {
+    max-width: 72ch;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 0 0 18px;
+  }
+  .inshort b { color: var(--amber); }
+  .note {
+    max-width: 72ch;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 16px 0;
+  }
+
+  /* diagrams */
+  figure.diagram {
+    margin: 20px 0 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  figure.diagram svg { display: block; width: 100%; height: auto; }
+  figure.diagram figcaption { color: var(--muted); font-size: 15px; margin-top: 10px; max-width: 72ch; }
+  .svg-wide { display: none; }
+  .svg-tall { display: block; max-width: 420px; margin: 0 auto; }
+  @media (min-width: 760px) {
+    .svg-wide { display: block; }
+    .svg-tall { display: none !important; }
+  }
+  svg text { font-family: var(--font); fill: var(--text); }
+  svg .t-title { font-size: 19px; font-weight: 700; }
+  svg .t-title-s { font-size: 16px; font-weight: 700; }
+  svg .t-sub { font-size: 15.5px; fill: var(--muted); }
+  svg .t-mono { font-family: var(--mono); font-size: 14.5px; fill: var(--path); }
+  svg .t-label { font-size: 16px; fill: var(--text); }
+  svg .t-label-m { font-size: 16px; fill: var(--muted); }
+  svg .box { fill: var(--panel-2); stroke: #5A4D3C; stroke-width: 1.5; }
+  svg .box-key { fill: var(--panel-2); stroke: var(--amber); stroke-width: 2.5; }
+  svg .box-dash { fill: var(--panel-2); stroke: #8A7C68; stroke-width: 1.5; stroke-dasharray: 7 6; }
+  svg .ln-key { stroke: var(--amber); stroke-width: 2.5; fill: none; }
+  svg .ln { stroke: #9C8E79; stroke-width: 2; fill: none; }
+  svg .ln-dash { stroke: #9C8E79; stroke-width: 2; fill: none; stroke-dasharray: 7 6; }
+
+  /* comparison cards */
+  .two {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin: 16px 0;
+  }
+  @media (min-width: 760px) { .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    min-width: 0;
+  }
+  .card h3 { margin-top: 0; }
+  .card.key { border-color: var(--amber); }
+  .card dl { margin: 0; }
+  .card dt { color: var(--muted); font-size: 14.5px; margin-top: 10px; }
+  .card dd { margin: 2px 0 0; }
+
+  /* tables */
+  .tbl {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    margin: 16px 0;
+    max-width: 100%;
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 16px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 14.5px; background: var(--panel-2); }
+  tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+
+  /* step flow */
+  ol.flow { list-style: none; padding: 0; margin: 20px 0; max-width: 820px; counter-reset: step; }
+  ol.flow > li {
+    position: relative;
+    padding: 0 0 22px 58px;
+    margin: 0;
+  }
+  ol.flow > li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 0;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--panel-2);
+    border: 2px solid #6B5C47;
+    color: var(--text);
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  ol.flow > li::after {
+    content: "";
+    position: absolute;
+    left: 18px; top: 40px; bottom: 2px;
+    width: 2px;
+    background: var(--line);
+  }
+  ol.flow > li:last-child::after { display: none; }
+  ol.flow > li.key::before { border-color: var(--amber); }
+  .step {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .step .name { font-weight: 700; font-size: 18px; }
+  .step .stage { font-family: var(--mono); font-size: 13.5px; color: var(--muted); margin-left: 8px; }
+  .step p { margin: 6px 0; }
+  .step .meta { font-size: 15.5px; color: var(--muted); margin: 4px 0 0; }
+  .step .meta b { color: var(--text); font-weight: 600; }
+
+  /* pipeline */
+  .pipe {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 18px 0;
+    max-width: 720px;
+  }
+  .pipe .node {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .pipe .node.key { border-color: var(--amber); }
+  .pipe .node b { display: block; }
+  .pipe .node span { color: var(--muted); font-size: 15px; }
+  .pipe .arrow { text-align: center; color: var(--amber); font-size: 20px; line-height: 1.6; }
+  .pipe .arrow small { color: var(--muted); font-size: 14px; margin-left: 6px; }
+  .pipe .arrow .right { display: none; }
+
+  /* findings */
+  .tag {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    padding: 1px 8px;
+    vertical-align: 2px;
+    margin-right: 6px;
+    border: 1.5px solid;
+  }
+  .tag.must { color: var(--must); border-color: var(--must); }
+  .tag.nice { color: var(--nice); border-color: var(--nice); }
+  .tag.ui { color: var(--ui); border-color: var(--ui); }
+  .where {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    margin: 16px 0 8px;
+  }
+  .where div {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .where b { display: block; margin-bottom: 4px; }
+  .finding {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    max-width: 860px;
+  }
+  .finding.must { border-left-color: var(--must); }
+  .finding.nice { border-left-color: var(--nice); }
+  .finding.ui { border-left-color: var(--ui); }
+  .finding h4 { margin: 0 0 6px; }
+  .finding p { margin: 6px 0; }
+  .finding .meta { font-size: 15.5px; color: var(--muted); }
+
+  details.deep {
+    max-width: 860px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin: 14px 0;
+  }
+  details.deep summary { cursor: pointer; font-weight: 600; }
+  details.deep[open] summary { margin-bottom: 8px; }
+
+  dl.gloss { max-width: 80ch; }
+  dl.gloss dt { font-weight: 700; margin-top: 12px; }
+  dl.gloss dd { margin: 2px 0 0 0; color: var(--text); }
+  dl.gloss dd .muted { font-size: 15px; }
+
+  .dvc {
+    border: 1px solid #6B5C47;
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 6px 20px 14px;
+    max-width: 860px;
+  }
+  footer { margin-top: 64px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Contents">
+  <div class="toc-inner">
+    <details open>
+      <summary>Contents</summary>
+      <ol>
+        <li><a href="#big-picture">The big picture</a></li>
+        <li><a href="#two-ways">Two ways the app runs</a></li>
+        <li><a href="#life-of-a-run">Life of one run</a></li>
+        <li><a href="#backend">The backend, folder by folder</a></li>
+        <li><a href="#frontend">The frontend, piece by piece</a></li>
+        <li><a href="#contract">The contract between them</a></li>
+        <li><a href="#safety">Safety and money</a></li>
+        <li><a href="#problems">Known problems (2026-10-22)</a></li>
+        <li><a href="#glossary">Glossary</a></li>
+        <li><a href="#docs-vs-code">Docs vs code</a></li>
+      </ol>
+    </details>
+  </div>
+</nav>
+
+<main>
+<header class="top">
+  <p class="eyebrow">Verity, for the owner. State of the code on 2026-10-22</p>
+  <h1>How Verity fits together</h1>
+  <p class="lede">A plain-language map of the whole system: what each part does, how one run moves through it, what the two halves must agree on, and where today's known problems live. Every file path below was checked against the code in <code>backend/</code> and <code>frontend/</code>.</p>
+</header>
+
+<!-- ============================================================ 1 -->
+<section id="big-picture">
+<h2>1. The big picture</h2>
+<p class="inshort"><b>In short:</b> you describe a chip, a Python program (the orchestrator) asks Nemotron for Verilog, tests it in a locked-down Docker container against answers the AI cannot touch, fixes it, breeds better versions, proves the winner equal to the first working one, and streams every step to the website.</p>
+
+<p><b>In one sentence:</b> Verity is a website plus one Python server, where the server runs a fixed script that uses the AI only to write text (plans and Verilog) and uses real chip tools to judge that text.</p>
+
+<figure class="diagram">
+  <svg class="svg-wide" viewBox="0 0 1060 590" role="img" aria-labelledby="bpw-t">
+    <title id="bpw-t">Big picture: browser, backend API, orchestrator, Nebius models, Docker sandbox, storage, and the recorded run file</title>
+    <defs>
+      <marker id="ah-amber-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FFB000"/></marker>
+      <marker id="ah-mut-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9C8E79"/></marker>
+    </defs>
+
+    <!-- legend -->
+    <line x1="24" y1="44" x2="74" y2="44" class="ln-key"/>
+    <text x="86" y="49" class="t-label">a live run</text>
+    <line x1="24" y1="78" x2="74" y2="78" class="ln-dash"/>
+    <text x="86" y="83" class="t-label">recorded replay, no backend needed</text>
+    <line x1="24" y1="112" x2="74" y2="112" class="ln"/>
+    <text x="86" y="117" class="t-label">saving and re-reading events</text>
+
+    <!-- boxes -->
+    <rect x="20" y="230" width="220" height="110" rx="10" class="box"/>
+    <text x="130" y="272" text-anchor="middle" class="t-title">Browser</text>
+    <text x="130" y="297" text-anchor="middle" class="t-mono">frontend/</text>
+    <text x="130" y="320" text-anchor="middle" class="t-sub">Next.js static site</text>
+
+    <rect x="20" y="460" width="220" height="110" rx="10" class="box-dash"/>
+    <text x="130" y="502" text-anchor="middle" class="t-title">Recorded run</text>
+    <text x="130" y="527" text-anchor="middle" class="t-mono">public/runs/*.json</text>
+    <text x="130" y="550" text-anchor="middle" class="t-sub">golden, mac4-real</text>
+
+    <rect x="410" y="230" width="220" height="110" rx="10" class="box"/>
+    <text x="520" y="272" text-anchor="middle" class="t-title">Backend API</text>
+    <text x="520" y="297" text-anchor="middle" class="t-mono">verity/api</text>
+    <text x="520" y="320" text-anchor="middle" class="t-sub">FastAPI: auth, limits, SSE</text>
+
+    <rect x="410" y="460" width="220" height="110" rx="10" class="box"/>
+    <text x="520" y="502" text-anchor="middle" class="t-title">Storage</text>
+    <text x="520" y="527" text-anchor="middle" class="t-mono">backend/data/</text>
+    <text x="520" y="550" text-anchor="middle" class="t-sub">SQLite + write-once files</text>
+
+    <rect x="800" y="230" width="220" height="110" rx="10" class="box-key"/>
+    <text x="910" y="272" text-anchor="middle" class="t-title">Orchestrator</text>
+    <text x="910" y="297" text-anchor="middle" class="t-mono">verity/orchestrator</text>
+    <text x="910" y="320" text-anchor="middle" class="t-sub">plain Python decides</text>
+
+    <rect x="800" y="30" width="220" height="110" rx="10" class="box"/>
+    <text x="910" y="72" text-anchor="middle" class="t-title">Nebius models</text>
+    <text x="910" y="97" text-anchor="middle" class="t-sub">Nemotron Ultra + Super</text>
+    <text x="910" y="120" text-anchor="middle" class="t-sub">write plans and Verilog</text>
+
+    <rect x="800" y="460" width="220" height="110" rx="10" class="box"/>
+    <text x="910" y="502" text-anchor="middle" class="t-title">Docker sandbox</text>
+    <text x="910" y="527" text-anchor="middle" class="t-mono">verity-tools:0.1</text>
+    <text x="910" y="550" text-anchor="middle" class="t-sub">lint, simulate, synth, EQY</text>
+
+    <!-- arrows -->
+    <line x1="240" y1="262" x2="404" y2="262" class="ln-key" marker-end="url(#ah-amber-w)"/>
+    <text x="322" y="250" text-anchor="middle" class="t-label">starts a run</text>
+
+    <line x1="410" y1="310" x2="246" y2="310" class="ln-key" marker-end="url(#ah-amber-w)"/>
+    <text x="325" y="336" text-anchor="middle" class="t-label">streams events</text>
+
+    <line x1="630" y1="262" x2="794" y2="262" class="ln-key" marker-end="url(#ah-amber-w)"/>
+    <text x="712" y="250" text-anchor="middle" class="t-label">starts the run</text>
+
+    <line x1="940" y1="230" x2="940" y2="146" class="ln-key" marker-end="url(#ah-amber-w)"/>
+    <text x="928" y="180" text-anchor="end" class="t-label">asks for a plan,</text>
+    <text x="928" y="200" text-anchor="end" class="t-label">code and fixes</text>
+
+    <line x1="940" y1="340" x2="940" y2="454" class="ln-key" marker-end="url(#ah-amber-w)"/>
+    <text x="952" y="392" class="t-label">runs tests</text>
+    <text x="952" y="412" class="t-label">and tools</text>
+
+    <path d="M800,318 H700 V515 H636" class="ln" marker-end="url(#ah-mut-w)"/>
+    <text x="712" y="400" class="t-label-m">saves every</text>
+    <text x="712" y="420" class="t-label-m">event first</text>
+
+    <line x1="520" y1="460" x2="520" y2="346" class="ln" marker-end="url(#ah-mut-w)"/>
+    <text x="532" y="408" class="t-label-m">feeds the stream</text>
+
+    <line x1="130" y1="460" x2="130" y2="346" class="ln-dash" marker-end="url(#ah-mut-w)"/>
+    <text x="142" y="398" class="t-label-m">loaded once,</text>
+    <text x="142" y="418" class="t-label-m">then plays offline</text>
+  </svg>
+
+  <svg class="svg-tall" viewBox="0 0 380 870" role="img" aria-labelledby="bpt-t">
+    <title id="bpt-t">Big picture, stacked for small screens</title>
+    <defs>
+      <marker id="ah-amber-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FFB000"/></marker>
+      <marker id="ah-mut-t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9C8E79"/></marker>
+    </defs>
+
+    <rect x="20" y="10" width="320" height="76" rx="10" class="box-dash"/>
+    <text x="180" y="42" text-anchor="middle" class="t-title">Recorded run</text>
+    <text x="180" y="66" text-anchor="middle" class="t-mono">public/runs/*.json</text>
+    <line x1="180" y1="86" x2="180" y2="140" class="ln-dash" marker-end="url(#ah-mut-t)"/>
+    <text x="192" y="110" class="t-label-m">loaded once,</text>
+    <text x="192" y="130" class="t-label-m">plays offline</text>
+
+    <rect x="20" y="146" width="320" height="80" rx="10" class="box"/>
+    <text x="180" y="180" text-anchor="middle" class="t-title">Browser</text>
+    <text x="180" y="206" text-anchor="middle" class="t-mono">frontend/ (Next.js)</text>
+
+    <line x1="110" y1="226" x2="110" y2="300" class="ln-key" marker-end="url(#ah-amber-t)"/>
+    <text x="100" y="270" text-anchor="end" class="t-label">starts a run</text>
+    <line x1="250" y1="306" x2="250" y2="232" class="ln-key" marker-end="url(#ah-amber-t)"/>
+    <text x="262" y="262" class="t-label">streams</text>
+    <text x="262" y="282" class="t-label">events</text>
+
+    <rect x="20" y="306" width="320" height="80" rx="10" class="box"/>
+    <text x="180" y="340" text-anchor="middle" class="t-title">Backend API</text>
+    <text x="180" y="366" text-anchor="middle" class="t-mono">verity/api (FastAPI)</text>
+
+    <line x1="110" y1="386" x2="110" y2="460" class="ln-key" marker-end="url(#ah-amber-t)"/>
+    <text x="122" y="430" class="t-label">starts the run</text>
+
+    <path d="M340,816 H362 V346 H346" class="ln" marker-end="url(#ah-mut-t)"/>
+    <text x="352" y="420" text-anchor="end" class="t-label-m">feeds the</text>
+    <text x="352" y="440" text-anchor="end" class="t-label-m">stream</text>
+
+    <rect x="20" y="466" width="320" height="80" rx="10" class="box-key"/>
+    <text x="180" y="500" text-anchor="middle" class="t-title">Orchestrator</text>
+    <text x="180" y="526" text-anchor="middle" class="t-mono">verity/orchestrator</text>
+
+    <line x1="95" y1="546" x2="95" y2="620" class="ln-key" marker-end="url(#ah-amber-t)"/>
+    <text x="85" y="580" text-anchor="end" class="t-label">asks</text>
+    <text x="85" y="600" text-anchor="end" class="t-label">for code</text>
+    <line x1="265" y1="546" x2="265" y2="620" class="ln-key" marker-end="url(#ah-amber-t)"/>
+    <text x="277" y="580" class="t-label">runs</text>
+    <text x="277" y="600" class="t-label">tests</text>
+
+    <line x1="180" y1="546" x2="180" y2="770" class="ln" marker-end="url(#ah-mut-t)"/>
+    <text x="192" y="744" class="t-label-m">saves every event</text>
+
+    <rect x="20" y="626" width="150" height="80" rx="10" class="box"/>
+    <text x="95" y="660" text-anchor="middle" class="t-title-s">Nebius models</text>
+    <text x="95" y="686" text-anchor="middle" class="t-sub">Nemotron</text>
+    <rect x="190" y="626" width="150" height="80" rx="10" class="box"/>
+    <text x="265" y="660" text-anchor="middle" class="t-title-s">Docker sandbox</text>
+    <text x="265" y="686" text-anchor="middle" class="t-mono">verity-tools:0.1</text>
+
+    <rect x="20" y="776" width="320" height="80" rx="10" class="box"/>
+    <text x="180" y="810" text-anchor="middle" class="t-title">Storage</text>
+    <text x="180" y="836" text-anchor="middle" class="t-sub">SQLite + files, backend/data/</text>
+  </svg>
+  <figcaption>The amber path is a live run. The dashed path needs no backend at all: the browser loads a recorded run file once and plays it. Events are written to storage before they are streamed, so a browser that reconnects never misses one.</figcaption>
+</figure>
+
+<ul>
+  <li><b>Browser</b> (<code>frontend/</code>): a Next.js app exported as plain static files. It holds no secrets. It only draws what the event stream says.</li>
+  <li><b>Backend API</b> (<code>backend/verity/api/</code>): the front door. Checks tokens and rate limits, starts runs, streams events over SSE.</li>
+  <li><b>Orchestrator</b> (<code>backend/verity/orchestrator/</code>): the run's script. Every decision (repair, keep, drop, stop) is an <code>if</code> in Python. The model is never asked what to do next (<code>machine.py</code> says so in its header).</li>
+  <li><b>Nebius models</b>: Nemotron 3 Ultra writes plans, the first Verilog and repairs; Nemotron 3 Super writes the optimized variants (<code>config.toml</code> <code>[routes.*]</code>). Only <code>backend/verity/llm/</code> talks to Nebius.</li>
+  <li><b>Docker sandbox</b>: one image with the chip tools. Each check is a fresh container with no network. Only <code>backend/verity/tools/</code> starts it.</li>
+  <li><b>Storage</b> (<code>backend/data/</code>): <code>verity.db</code> (runs, candidates, events, daily spend) and a folder per run under <code>data/runs/&lt;id&gt;/</code> with every attempt, log and the final <code>runlog.json</code>.</li>
+  <li><b>Recorded run</b> (<code>frontend/public/runs/</code>): a saved event list in the same format as the live stream. <code>golden.json</code> is hand-made sample data; <code>mac4-real.json</code> is a real Nebius run from 2026-10-16.</li>
+</ul>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="two-ways">
+<h2>2. Two ways the app runs</h2>
+<p class="inshort"><b>In short:</b> replay plays a saved file and costs nothing; live talks to the backend and spends real model credits. Both feed the exact same events into the exact same reducer, so the screens look identical.</p>
+
+<div class="two">
+  <div class="card">
+    <h3>Replay (recorded)</h3>
+    <dl>
+      <dt>Where events come from</dt><dd>A JSON file in <code>frontend/public/runs/</code>, fetched once.</dd>
+      <dt>Backend needed?</dt><dd>No. No network call after the file loads.</dd>
+      <dt>Cost</dt><dd>$0.</dd>
+      <dt>Timing</dt><dd>A clock in the browser applies every event whose <code>tMs</code> has passed. You can pause, seek, play at 2x.</dd>
+      <dt>Check</dt><dd>The whole file passes the zod <code>RunLogSchema</code> first.</dd>
+      <dt>Key files</dt><dd><code>lib/sources/replay.ts</code>, <code>lib/hooks/use-replay-driver.ts</code>, <code>lib/store/slices/playback.ts</code></dd>
+      <dt>Used by</dt><dd>Landing figures, <code>/studio?run=mac4-real</code> (default) and <code>?run=golden</code>, <code>/results</code></dd>
+    </dl>
+  </div>
+  <div class="card key">
+    <h3>Live (backend)</h3>
+    <dl>
+      <dt>Where events come from</dt><dd>An SSE stream: <code>GET /runs/{id}/events</code>.</dd>
+      <dt>Backend needed?</dt><dd>Yes. The site must be built with <code>NEXT_PUBLIC_AGENT_URL</code> (<code>lib/env.ts</code>). Without it, live pages show "offline".</dd>
+      <dt>Cost</dt><dd>Real Nebius spend, capped per run ($0.50) and per day ($5.00).</dd>
+      <dt>Timing</dt><dd>Events arrive as they happen. Duplicates after a reconnect are skipped by <code>seq</code>.</dd>
+      <dt>Check</dt><dd>Each event passes the zod <code>RunEventSchema</code>.</dd>
+      <dt>Key files</dt><dd><code>lib/sources/live.ts</code>, <code>lib/hooks/use-live-run.ts</code>, <code>lib/hooks/use-live-health.ts</code>, <code>lib/store/slices/live.ts</code></dd>
+      <dt>Used by</dt><dd><code>/bench</code>, and <code>/studio?run=&lt;any other id&gt;</code></dd>
+    </dl>
+  </div>
+</div>
+
+<p>The switch is one line: <code>components/sections/studio/StudioView.tsx</code> keeps a list <code>REPLAY_RUNS = ["golden", "mac4-real"]</code>. A <code>?run=</code> value in that list replays a file; anything else is treated as a live run id. <code>/results</code> uses the same rule.</p>
+<p>A finished live run can become a recording with no conversion: the backend writes <code>data/runs/&lt;id&gt;/runlog.json</code> and serves it at <code>GET /runs/{id}/log</code>. That is how <code>mac4-real.json</code> was made (then <code>npm run compress:fixture</code> shortened long pauses).</p>
+<p class="note">Live runs from the website always run in <b>full</b> mode. <code>postRun</code> in <code>lib/sources/live.ts</code> never sends <code>mode</code>, so the backend uses <code>[limits] default_mode = "full"</code>. Fast mode is only reachable by calling the API directly.</p>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="life-of-a-run">
+<h2>3. Life of one run, step by step</h2>
+<p class="inshort"><b>In short:</b> read the request, plan, give you 10 seconds to steer, rule-check the plan, lock the answer key, write and test v1 until it passes, measure it, breed and test better versions, pick the best by numbers, prove it equal to v1, compare with a human design, finish.</p>
+<p>The real order is in <code>backend/verity/orchestrator/machine.py</code>, function <code>_run</code>. The grey word next to each title is the stage id the UI sees.</p>
+
+<ol class="flow">
+  <li><div class="step">
+    <span class="name">Read the request</span><span class="stage">spec</span>
+    <p>Loads the task pack, rendered at your knob values, and announces the run.</p>
+    <p class="meta"><b>Who:</b> code only. <b>UI gets:</b> <code>run running</code>, <code>human</code> (your request), <code>spec</code>, a caption. <b>File:</b> <code>orchestrator/plan_stage.py</code> <code>spec_stage</code></p>
+  </div></li>
+  <li class="key"><div class="step">
+    <span class="name">Draft a plan</span><span class="stage">plan</span>
+    <p>The model writes a short plan as JSON: blocks, widths, risks.</p>
+    <p class="meta"><b>Who:</b> Planner role, Nemotron Ultra. <b>UI gets:</b> <code>plan</code> (revision 1), one <code>op add_node</code> per block, <code>credits</code>, artifact <code>plan/plan.r1.json</code>. <b>File:</b> <code>plan_stage.py</code> <code>plan_stage</code>, <code>roles/planner.py</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Plan gate: 10 seconds to steer</span><span class="stage">plan (gate)</span>
+    <p>A countdown where you can pin a goal on a block, toggle a variant, hold, or build now. The first change triggers one replan by the model; later ones are applied in code.</p>
+    <p class="meta"><b>Who:</b> you, then the Planner once more. <b>UI gets:</b> <code>gate</code> open / held / closed, <code>human</code>, <code>plan</code> revision 2 with a diff. <b>File:</b> <code>plan_stage.py</code> <code>_gate_loop</code>, <code>_steer_block</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Feasibility check</span><span class="stage">plan</span>
+    <p>Rules, not AI: at most 8 blocks (fewer if the pack says so), a line estimate under the pack's limit, the exact latency the pack needs, nothing like PLL, SRAM or multiple clocks. If it fails, the run ends before any Verilog is written.</p>
+    <p class="meta"><b>Who:</b> code only. <b>UI gets:</b> <code>stage plan done</code>, or <code>failed</code> plus <code>run error</code>. <b>File:</b> <code>orchestrator/feasibility.py</code> <code>check_plan</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Lock the answer key</span><span class="stage">lock</span>
+    <p>Re-checks the pack's hashes and publishes the golden model and testbench so you can read them. The agent can never change them.</p>
+    <p class="meta"><b>Who:</b> code only. <b>UI gets:</b> golden node pending then locked, artifacts <code>tests/golden_model.py</code> and <code>tests/test_dut.py</code>. <b>File:</b> <code>machine.py</code> <code>_lock_stage</code></p>
+  </div></li>
+  <li class="key"><div class="step">
+    <span class="name">Write v1</span><span class="stage">rtl</span>
+    <p>Three drafts are written in parallel; each gets one quiet sandbox check and the one passing the most tests becomes v1's first attempt.</p>
+    <p class="meta"><b>Who:</b> RTL generator role, Nemotron Ultra (<code>[baseline] samples = 3</code>). <b>UI gets:</b> <code>candidate c1 drafting</code>, <code>credits</code>. <b>File:</b> <code>machine.py</code> <code>_baseline_stage</code>, <code>build.py</code> <code>sample_baseline</code>, <code>roles/rtl_gen.py</code></p>
+  </div></li>
+  <li class="key"><div class="step">
+    <span class="name">Test v1</span><span class="stage">lint, sim</span>
+    <p>One sandbox call: port check (Yosys), lint (Verilator), then simulation (Icarus Verilog + cocotb) against the golden model.</p>
+    <p class="meta"><b>Who:</b> Docker sandbox, <code>sandbox/bin/verify</code>. <b>UI gets:</b> <code>stage lint</code> / <code>sim</code>, <code>candidate</code> linting, simulating, then pass or fail with expected vs got. <b>File:</b> <code>build.py</code> <code>evaluate</code>, <code>_check_attempt</code>; <code>tools/local_docker.py</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Repair v1 if it fails</span><span class="stage">fix</span>
+    <p>First a free code fixer for simple declaration errors, then up to 2 model repairs. The same failure twice means "start again from the plan". Still failing: the run ends with "no passing baseline".</p>
+    <p class="meta"><b>Who:</b> <code>core/rtl_fixer.py</code>, then Repair role, Nemotron Ultra. <b>UI gets:</b> <code>stage fix</code>, <code>candidate fixing</code>, a "Diagnosis" caption. <b>File:</b> <code>build.py</code> <code>_auto_fix</code>, <code>_repair</code>, <code>_restart</code>; <code>roles/repair.py</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Measure v1</span><span class="stage">synth</span>
+    <p>Turns v1 into gates (Yosys, Nangate45 library) for area, and times it (OpenSTA) for clock period. v1 becomes the yardstick: score 0.</p>
+    <p class="meta"><b>Who:</b> <code>sandbox/bin/measure</code>. <b>UI gets:</b> <code>candidate measured</code>, artifacts <code>reports/synth_v1.txt</code>, <code>reports/sta_v1.txt</code>, <code>circuit/c1.json</code>. <b>File:</b> <code>build.py</code> <code>measure</code>, <code>publish_reports</code></p>
+  </div></li>
+  <li class="key"><div class="step">
+    <span class="name">Evolve better versions</span><span class="stage">evolve</span>
+    <p>Full mode only. Round 1: three children of v1 (SIMPLIFY, OPTIMIZE, EXPLORE), built in parallel, each tested, allowed 1 repair, measured and scored. The best 2 are kept as elites. Round 2 (two more children) runs only if round 1 beat v1.</p>
+    <p class="meta"><b>Who:</b> Optimizer role, Nemotron Super, then the sandbox. <b>UI gets:</b> <code>stage evolve</code>, <code>round</code>, <code>candidate</code> updates and captions (no per-step stage events). <b>File:</b> <code>orchestrator/evolve.py</code> <code>evolve_stage</code>, <code>_round</code>, <code>_child</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Pick the winner</span><span class="stage">evolve</span>
+    <p>Highest fitness wins (tie: smaller area). Numbers decide, never the model.</p>
+    <p class="meta"><b>Who:</b> code. <b>UI gets:</b> <code>winner</code> (by <code>ai</code>), <code>stage evolve done</code>. <b>File:</b> <code>evolve.py</code> <code>choose_and_prove</code>, <code>judge.py</code>, <code>core/fitness.py</code></p>
+  </div></li>
+  <li class="key"><div class="step">
+    <span class="name">Prove it equals v1</span><span class="stage">prove</span>
+    <p>If the winner is not v1, Yosys EQY tries to prove both behave the same for every input. Not equal: dropped, next best tried (2 tries max, then v1). Undecided: shown as "Tested, not proven". Your winner override, if any, is applied right after.</p>
+    <p class="meta"><b>Who:</b> <code>sandbox/bin/eqy</code>. <b>UI gets:</b> <code>stage prove</code>, <code>candidate</code> with <code>eqy</code>, a proof edge, <code>reports/eqy_&lt;label&gt;_vs_v1.log</code>. <b>File:</b> <code>evolve.py</code> <code>_prove</code>, <code>apply_winner_override</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Compare with a human design</span><span class="stage">(no stage)</span>
+    <p>If the pack has a hand-written <code>reference.v</code>, it is measured with the same tools and checked with EQY against the winner. This never changes the run's result.</p>
+    <p class="meta"><b>Who:</b> sandbox. <b>UI gets:</b> one <code>human_ref</code> event. <b>File:</b> <code>orchestrator/human_ref.py</code></p>
+  </div></li>
+  <li><div class="step">
+    <span class="name">Finish and save</span><span class="stage">done</span>
+    <p>Final spend, a summary file, the end event, then the "Done" caption. The run manager writes <code>runlog.json</code>.</p>
+    <p class="meta"><b>Who:</b> code. <b>UI gets:</b> <code>credits</code>, artifact <code>reports/summary.json</code>, <code>run done</code> (or <code>cap_reached</code>), caption "Done...". <b>File:</b> <code>machine.py</code> <code>_finish</code>, <code>runs/manager.py</code></p>
+  </div></li>
+</ol>
+
+<details class="deep">
+  <summary>How a run can end early</summary>
+  <ul>
+    <li><b>error</b>: a stage failed (plan rejected, no passing baseline, pack integrity), or a model or sandbox call broke. <code>machine.py</code> <code>run_orchestrator</code> catches it and calls <code>_end_error</code>.</li>
+    <li><b>cap_reached</b>: a budget limit was hit. No new model calls; the best measured version still wins (<code>_end_budget</code>).</li>
+    <li><b>stopped</b>: you pressed Stop. The run manager cancels the task and emits it (<code>runs/manager.py</code>).</li>
+    <li><b>error "timed out: no progress for 90 s"</b>: the watchdog (<code>runs/watchdog.py</code>, <code>[watchdog] stall_s = 90</code>).</li>
+    <li><b>error "server restarted"</b>: found still running at startup.</li>
+  </ul>
+</details>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="backend">
+<h2>4. The backend, folder by folder</h2>
+<p class="inshort"><b>In short:</b> one Python process (FastAPI, Python 3.11+, SQLite). The API admits runs, the run manager runs each one as a background task, the orchestrator follows its script, and only two folders are allowed to touch the outside world: <code>llm/</code> (Nebius) and <code>tools/</code> (Docker).</p>
+
+<div class="tbl"><table>
+  <thead><tr><th>Folder (under <code>backend/</code>)</th><th>Its job in one line</th><th>Key file</th></tr></thead>
+  <tbody>
+    <tr><td><code>verity/api/</code></td><td>Front door: HTTP routes, tokens, rate limits, SSE writing, error messages.</td><td class="wrap"><code>routes.py</code>, <code>sse.py</code>, <code>auth.py</code>, <code>errors.py</code></td></tr>
+    <tr><td><code>verity/runs/</code></td><td>Admits a run, starts it as an asyncio task, numbers and stores its events, watches for stalls.</td><td class="wrap"><code>manager.py</code>, <code>hub.py</code>, <code>ledger.py</code>, <code>watchdog.py</code></td></tr>
+    <tr><td><code>verity/orchestrator/</code></td><td>The run's script: every step and every decision.</td><td class="wrap"><code>machine.py</code> (also <code>plan_stage.py</code>, <code>build.py</code>, <code>evolve.py</code>)</td></tr>
+    <tr><td><code>verity/roles/</code></td><td>The four model jobs and their prompt files: planner, rtl_gen, repair, optimizer.</td><td class="wrap"><code>planner.py</code>, <code>parsing.py</code>, <code>prompts/*.md</code></td></tr>
+    <tr><td><code>verity/llm/</code></td><td>The only code that talks to Nebius. Also the $0 fake provider and response cassettes.</td><td class="wrap"><code>gateway.py</code>, <code>openai_compat.py</code>, <code>fake.py</code></td></tr>
+    <tr><td><code>verity/tools/</code></td><td>The only code that runs anything: Docker (or Nebius Sandboxes) plus result parsers.</td><td class="wrap"><code>local_docker.py</code>, <code>parsers.py</code></td></tr>
+    <tr><td><code>verity/core/</code></td><td>Shared pieces: task pack, RTL rules, fitness, captions, budget math, knob rendering, sentence parsing.</td><td class="wrap"><code>pack.py</code>, <code>fitness.py</code>, <code>captions.py</code>, <code>family.py</code></td></tr>
+    <tr><td><code>verity/contracts/</code></td><td>The wire format: Python mirror of the frontend's event types.</td><td class="wrap"><code>events.py</code>, <code>api.py</code></td></tr>
+    <tr><td><code>verity/store/</code></td><td>SQLite tables and write-once run files under <code>data/</code>.</td><td class="wrap"><code>sqlite.py</code>, <code>files.py</code></td></tr>
+    <tr><td><code>verity/evals/</code></td><td>Eval suites (packs, functional, repair, isolation...) and reports.</td><td class="wrap"><code>harness.py</code></td></tr>
+    <tr><td><code>sandbox/</code></td><td>The tool image: a Dockerfile and four scripts copied into it.</td><td class="wrap"><code>bin/verify</code>, <code>bin/measure</code>, <code>bin/eqy</code>, <code>bin/bundle</code></td></tr>
+    <tr><td><code>tasks/</code></td><td>One folder per chip: the locked answer key and limits.</td><td class="wrap"><code>task.toml</code>, <code>golden.py</code>, <code>test_dut.py</code>, <code>reference.v</code>, <code>family.py</code></td></tr>
+    <tr><td><code>config.toml</code></td><td>Every limit, price, model route and timeout. Env vars <code>VERITY_&lt;TABLE&gt;__&lt;KEY&gt;</code> override it.</td><td class="wrap"><code>verity/config.py</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>How <code>POST /runs</code> flows</h3>
+<ol>
+  <li>The bench sends <code>{presetId, priority, params?}</code>, with a Bearer token when auth is on. With <code>[auth] required = false</code> (today) your IP address is your session.</li>
+  <li><code>api/routes.py</code> <code>create_run</code> checks the token, the chip id and priority, and the "3 new runs per hour" limit.</li>
+  <li><code>runs/manager.py</code> <code>create_run</code> renders the pack at your knobs (<code>core/family.py</code> <code>render_pack</code>; a bad knob is a 422 with a readable sentence), then refuses with 429 if live is offline, the daily budget has no room, or a slot is taken.</li>
+  <li>It writes the run row to SQLite (status <code>queued</code>, budget, pack hash, tool image digest, model ids), then starts the orchestrator and a heartbeat as background tasks.</li>
+  <li>The answer is <code>201 {runId, capUsd, streamToken}</code>. The bench puts the run id in <code>?run=</code> so a reload rejoins.</li>
+</ol>
+
+<h3>How the event stream works</h3>
+<ol>
+  <li>The browser opens <code>GET /runs/{id}/events?st=&lt;streamToken&gt;</code>. The token sits in the URL because the browser's EventSource cannot send headers; <code>api/redact.py</code> hides it in logs.</li>
+  <li>Every event the orchestrator emits goes through <code>runs/hub.py</code> (EventHub): stamp <code>seq</code> and <code>tMs</code>, save to SQLite <b>first</b>, then hand to each open stream.</li>
+  <li><code>manager.py</code> <code>stream</code> subscribes, sends saved events after <code>Last-Event-ID</code>, then follows live ones. No gap, no duplicate.</li>
+  <li><code>api/sse.py</code> writes <code>id: &lt;seq&gt;</code> plus <code>data: &lt;json&gt;</code>, sends <code>: ping</code> every 15 s, and keeps reading 5 s after the end event so the final "Done" caption arrives. A finished run with nothing new answers 204.</li>
+</ol>
+
+<details class="deep">
+  <summary>All HTTP endpoints</summary>
+  <div class="tbl"><table>
+    <thead><tr><th>Method and path</th><th>What it does</th><th>Who may call</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /health</code></td><td><code>liveEnabled</code>, <code>reason</code>, <code>capUsd</code>, models, <code>authRequired</code>, <code>features</code></td><td>anyone</td></tr>
+      <tr><td><code>POST /auth/session</code></td><td>access code in, session token out</td><td>anyone, 10 tries per IP per 10 min</td></tr>
+      <tr><td><code>POST /parse</code></td><td>one English sentence to a chip family and knob values</td><td>session, 6 per minute</td></tr>
+      <tr><td><code>POST /runs</code></td><td>start a run</td><td>session, 3 per hour</td></tr>
+      <tr><td><code>GET /runs</code></td><td>list of recent runs</td><td>anyone</td></tr>
+      <tr><td><code>GET /runs/{id}/events</code></td><td>the SSE stream</td><td>stream token</td></tr>
+      <tr><td><code>GET /runs/{id}/log</code></td><td>the RunLog file</td><td>anyone once finished; owner while running</td></tr>
+      <tr><td><code>POST /runs/{id}/steer</code></td><td>pin, toggle, gate, autopilot, winner override</td><td>session, owner</td></tr>
+      <tr><td><code>POST /runs/{id}/stop</code></td><td>stop the run</td><td>session, owner</td></tr>
+    </tbody>
+  </table></div>
+</details>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="frontend">
+<h2>5. The frontend, piece by piece</h2>
+<p class="inshort"><b>In short:</b> a static Next.js 16 site. Pages read a single store; the store changes only through one pure function (the reducer) that turns an event into new state. Replay and live just decide where the events come from.</p>
+
+<h3>Pages</h3>
+<div class="tbl"><table>
+  <thead><tr><th>Route</th><th>What it is for</th><th>Main file</th></tr></thead>
+  <tbody>
+    <tr><td><code>/</code></td><td>Landing. Every figure is read at build time from <code>public/runs/mac4-real.json</code>. Two ways in: the live bench or a recorded run.</td><td class="wrap"><code>sections/rack/RackPage.tsx</code>, <code>rack/real-run.ts</code></td></tr>
+    <tr><td><code>/bench</code></td><td>The live bench for judges: type English or set knobs, pick a goal, Run; watch live Verilog, the loop, versions, the winner, dropped versions with reasons, and "vs human".</td><td class="wrap"><code>sections/bench/BenchView.tsx</code></td></tr>
+    <tr><td><code>/studio?run=</code></td><td>The player: TRANSPORT, LOOP, MONITOR and VERSIONS modules. Replays a recording or follows a live run.</td><td class="wrap"><code>sections/studio/StudioView.tsx</code></td></tr>
+    <tr><td><code>/results?run=</code></td><td>Summary, ranking, winner override, zip export.</td><td class="wrap"><code>sections/results/ResultsView.tsx</code></td></tr>
+    <tr><td><code>/try</code></td><td>Old page; forwards to <code>/bench</code>.</td><td class="wrap"><code>app/try/TryRedirect.tsx</code></td></tr>
+  </tbody>
+</table></div>
+<p>Inside <code>/bench</code>: <code>ParseBox.tsx</code> sends your sentence to <code>POST /parse</code>; <code>RequestModule.tsx</code> renders the knobs from the <code>FAMILIES</code> table in <code>lib/contracts/presets.ts</code> (the same ranges as each <code>backend/tasks/&lt;id&gt;/family.py</code>); <code>AccessCode.tsx</code> appears when the backend asks for a code; <code>RtlModule.tsx</code> shows the Verilog being written; <code>ResultModule.tsx</code> shows the result.</p>
+
+<h3>The store</h3>
+<p>One Zustand store, <code>lib/store/index.ts</code>, built from four slices:</p>
+<div class="tbl"><table>
+  <thead><tr><th>Slice</th><th>Holds</th><th>Main actions</th></tr></thead>
+  <tbody>
+    <tr><td><code>run</code></td><td>the current snapshot (all run state)</td><td><code>applyEvent</code>, <code>applyEvents</code>, <code>resetRun</code></td></tr>
+    <tr><td><code>playback</code></td><td>replay clock, loaded log, speed, chapters</td><td><code>load</code>, <code>play</code>, <code>pause</code>, <code>seek</code></td></tr>
+    <tr><td><code>live</code></td><td>connection state, run id, steers waiting for an echo</td><td><code>startLive</code>, <code>ingestLive</code>, <code>steer</code>, <code>stopRun</code></td></tr>
+    <tr><td><code>ui</code></td><td>what you selected, open tab, autopilot</td><td><code>select</code>, <code>setTab</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>How an event becomes something on screen</h3>
+<div class="pipe">
+  <div class="node"><b>Arrives</b><span>Replay: <code>fetch</code> of the file. Live: <code>EventSource</code> message.</span></div>
+  <div class="arrow"><span class="right">→</span><span class="down">↓</span></div>
+  <div class="node"><b>Checked</b><span>zod schema in <code>lib/contracts/schemas.ts</code>. Bad events are dropped.</span></div>
+  <div class="arrow"><span class="right">→</span><span class="down">↓</span></div>
+  <div class="node"><b>Ordered</b><span>Replay: applied when its <code>tMs</code> is reached. Live: skipped if <code>seq</code> was already seen.</span></div>
+  <div class="arrow"><span class="right">→</span><span class="down">↓</span></div>
+  <div class="node key"><b>Reduced</b><span><code>reduce(snapshot, event)</code> in <code>lib/run/reducer.ts</code>. Pure: no timers, no network.</span></div>
+  <div class="arrow"><span class="right">→</span><span class="down">↓</span></div>
+  <div class="node"><b>Drawn</b><span>Hooks like <code>useRun</code> and <code>lib/hooks/use-run-views.ts</code> feed the components.</span></div>
+</div>
+<p>Example: a <code>candidate</code> event for v4 with status <code>measured</code> replaces <code>candidates.c4</code> in the snapshot. The VERSIONS table in the studio and the RESULT module on the bench both re-render from that one record. Nothing on screen is computed beyond reading and formatting run data.</p>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="contract">
+<h2>6. The contract between them</h2>
+<p class="inshort"><b>In short:</b> 14 event types, each with <code>seq</code>, <code>tMs</code> and a type <code>t</code>. The live stream and every recorded file use the same events. If you change one side, change the other in the same commit.</p>
+<p>Defined twice, kept in sync: <code>backend/verity/contracts/events.py</code> (Python, camelCase on the wire) and <code>frontend/src/lib/contracts/types.ts</code> plus <code>schemas.ts</code> (TypeScript and zod). Guards: <code>backend/tests/contracts/</code>, <code>backend/tests/core/test_knob_parity.py</code>, and <code>npm run validate:fixture</code> in <code>frontend/</code>.</p>
+
+<div class="tbl"><table>
+  <thead><tr><th><code>t</code></th><th>Plain meaning</th><th>Main fields</th></tr></thead>
+  <tbody>
+    <tr><td><code>run</code></td><td>The run's overall state changed.</td><td><code>phase</code>: running, done, error, cap_reached, stopped; <code>message</code></td></tr>
+    <tr><td><code>stage</code></td><td>One of the 10 stages changed state.</td><td><code>stage</code> (spec, plan, lock, rtl, lint, sim, fix, synth, evolve, prove), <code>status</code>, <code>detail</code>, <code>round</code></td></tr>
+    <tr><td><code>op</code></td><td>A change to the picture of the run: add a node, connect two, update a status, remove.</td><td><code>by</code> (ai, user, system), <code>op</code></td></tr>
+    <tr><td><code>spec</code></td><td>The chip being built.</td><td>ports, test count, line limit, priority</td></tr>
+    <tr><td><code>plan</code></td><td>The plan's blocks, and what changed after a replan.</td><td><code>revision</code>, <code>blocks</code>, <code>diff</code>, <code>reason</code></td></tr>
+    <tr><td><code>gate</code></td><td>The plan countdown.</td><td><code>state</code> (open, held, closed), <code>autoContinueMs</code></td></tr>
+    <tr><td><code>candidate</code></td><td>The full record of one version. Always the whole thing, never a patch.</td><td>status, RTL, attempts with test results, <code>ppa</code>, <code>fitness</code>, <code>eqy</code></td></tr>
+    <tr><td><code>round</code></td><td>An evolve round started, or finished with its elites.</td><td><code>round</code>, <code>parents</code>, <code>elites</code></td></tr>
+    <tr><td><code>winner</code></td><td>The chosen version.</td><td><code>candidateId</code>, <code>by</code> (ai or user), <code>aiPickId</code></td></tr>
+    <tr><td><code>human</code></td><td>Echo of something you did. The only thing that counts as a human input.</td><td><code>input</code>: spec, pin, toggle, winner_override, stop</td></tr>
+    <tr><td><code>caption</code></td><td>One line of narration from a fixed template in <code>core/captions.py</code>.</td><td><code>text</code>, <code>chapter</code></td></tr>
+    <tr><td><code>credits</code></td><td>Money spent so far.</td><td><code>usedUsd</code>, <code>capUsd</code></td></tr>
+    <tr><td><code>artifact</code></td><td>A small text file: plan, tests, reports, circuit JSON. Cut at about 64 KB.</td><td><code>path</code>, <code>content</code></td></tr>
+    <tr><td><code>human_ref</code></td><td>The hand-written design's numbers and its proof result against the winner.</td><td><code>ppa</code>, <code>eqy</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>The RunLog file (golden.json uses this exact shape)</h3>
+<pre><code>{
+  "format": "verity.runlog/1",
+  "meta": {
+    "runId": "...", "sample": false, "title": "4-lane MAC array, 8-bit",
+    "presetId": "mac4", "recordedAt": "...Z", "durationMs": 70465,
+    "chapters": [ { "id": "...", "label": "Plan", "tMs": 1234 } ],
+    "note": "Recorded live run. Models: ..."
+  },
+  "events": [ { "seq": 1, "tMs": 0, "t": "run", "phase": "running" }, ... ]
+}</code></pre>
+<ul>
+  <li><code>seq</code> counts 1, 2, 3 with no gaps inside one run. <code>tMs</code> is milliseconds since the run started and never goes down.</li>
+  <li><code>sample: true</code> means hand-made data (<code>golden.json</code>); the UI must label it "Sample data".</li>
+  <li>The "Done" caption comes <b>after</b> <code>run done</code>. Readers must keep reading past the end event.</li>
+  <li>Built by <code>backend/verity/runs/runlog.py</code> <code>build_run_log</code>; read by <code>frontend/src/lib/sources/replay.ts</code>.</li>
+</ul>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="safety">
+<h2>7. Safety and money</h2>
+<p class="inshort"><b>In short:</b> spending is checked before every model call, every run and every day; the AI only ever returns text, which runs in a sealed container; and production mode refuses to start unless auth and secrets are set. All keys below are in <code>backend/config.toml</code>.</p>
+
+<h3>Money: three layers</h3>
+<ul>
+  <li><b>Per call (a reservation).</b> Before each model call, <code>llm/gateway.py</code> asks <code>runs/ledger.py</code> <code>reserve</code> to hold the worst case: estimated prompt tokens plus that role's full output cap, priced from <code>[prices]</code>. If that could cross any run limit, the call never happens. Caps: <code>[budget.call] plan_max_output = 12_000</code>, <code>rtl_max_output = 24_000</code>, <code>max_prompt_tokens = 12_000</code>; <code>[budget.parse] max_output_tokens = 600</code>.</li>
+  <li><b>Per run.</b> <code>[budget.run]</code>: <code>max_usd = 0.50</code> (the one that usually binds), <code>max_llm_calls = 20</code>, <code>max_input_tokens = 150_000</code>, <code>max_output_tokens = 200_000</code>, <code>max_candidates = 6</code>, <code>max_repairs_baseline = 2</code>, <code>max_repairs_child = 1</code>, <code>max_rounds = 2</code>, <code>max_wall_s = 900</code>. Hitting one ends the run as <code>cap_reached</code> with the best measured version.</li>
+  <li><b>Per day.</b> <code>[limits] daily_usd = 5.00</code>, stored in SQLite by UTC day. A new run is let in only if today's spend, plus the caps still held by runs in flight, plus this run's cap, fit under it. The fake provider counts as $0.</li>
+</ul>
+
+<h3>Sandbox isolation</h3>
+<ul>
+  <li>Every tool call is a fresh container (<code>tools/local_docker.py</code>): <code>--network none</code>, read-only filesystem, <code>--memory 2g</code>, <code>--cpus 2</code>, <code>--pids-limit 256</code>, user <code>1000:1000</code>, all Linux capabilities dropped, <code>no-new-privileges</code>, task pack mounted read-only, <code>--pull never</code>. Keys: <code>[tools]</code>.</li>
+  <li>The model never gets a shell or tools. It returns text; code validates it (<code>core/rtl.py</code> rules, size cap <code>[rtl] max_bytes</code>) before any tool sees it.</li>
+  <li>The golden model, testbench and <code>reference.v</code> never go into a prompt. Pack files are hashed (<code>MANIFEST.sha256</code>) and re-checked before tool calls.</li>
+  <li>Time limits per tool: <code>[timeouts]</code> lint 20 s, sim 60 s, synth 120 s, sta 60 s, eqy 180 s.</li>
+</ul>
+
+<h3>Auth and access codes</h3>
+<ul>
+  <li><code>[auth] required = false</code> today: no login, your IP is your session. Production refuses this.</li>
+  <li>When on: <code>POST /auth/session {accessCode}</code> returns a session token valid 12 h (<code>session_ttl_s</code>). Codes are stored only as SHA-256 hashes (<code>VERITY_ACCESS_CODE_HASHES</code>). Each run gets its own stream token valid 30 min (<code>stream_ttl_s</code>). Tokens are signed with <code>VERITY_SIGNING_SECRET</code> (<code>api/auth.py</code>).</li>
+  <li>The Nebius key lives in <code>backend/.env</code> only. Nothing secret is in <code>frontend/</code>; <code>NEXT_PUBLIC_*</code> is for the public backend URL only.</li>
+</ul>
+
+<h3>Rate limits (<code>[limits]</code>)</h3>
+<ul>
+  <li><code>auth_per_ip = 10</code> per <code>auth_window_s = 600</code>; <code>api_per_session_per_min = 60</code>; <code>runs_per_session_per_hour = 3</code>; <code>parse_per_session_per_min = 6</code>.</li>
+  <li><code>concurrent_per_session = 1</code> and <code>concurrent_global = 2</code> running at once.</li>
+</ul>
+
+<h3>Production guard</h3>
+<p><code>VERITY_ENV=production</code> refuses to start unless: provider is <code>nebius</code>, the model host is <code>api.tokenfactory.nebius.com</code>, <code>LLM_API_KEY</code> is set, auth is required, the signing secret has 32+ characters, at least one access code hash exists, and CORS has no <code>*</code> (<code>verity/config.py</code> <code>production_problems</code>). The API docs pages are also turned off.</p>
+</section>
+
+<!-- ============================================================ 8 -->
+<section id="problems">
+<h2>8. Known problems found in today's review (2026-10-22)</h2>
+<p class="inshort"><b>In short:</b> three must-fix items, all on the live path: the Docker image is older than its scripts, <code>/health</code> says "ready" when Docker is down, and raw infrastructure errors reach users. The rest is polish.</p>
+
+<div class="where" aria-label="Where the problems live">
+  <div><b>Docker sandbox</b><span class="tag must">MUST FIX</span> 1</div>
+  <div><b>Run manager / API</b><span class="tag must">MUST FIX</span> 1<br><span class="tag nice">NICE</span> 3</div>
+  <div><b>Orchestrator</b><span class="tag must">MUST FIX</span> 1<br><span class="tag nice">NICE</span> 1</div>
+  <div><b>Frontend</b><span class="tag ui">UI</span> 4</div>
+</div>
+
+<h3>Docker sandbox</h3>
+<div class="finding must">
+  <h4><span class="tag must">MUST FIX</span>The tool image is older than its scripts</h4>
+  <p>The image <code>verity-tools:0.1</code> was built 2026-10-06 (I checked: <code>docker image inspect</code> shows created 2026-10-06). The scripts it copies in (<code>sandbox/bin/</code>) changed on 10-16 (Yosys now reads files as SystemVerilog, <code>read_verilog -sv</code>) and on 10-18 (OpenSTA power estimate). The tag never changed, so the old scripts still run.</p>
+  <p>Effect: SystemVerilog drafts fail the port check. Today's real mac4 run (<code>r_8a70...</code>, in <code>backend/data/</code>) ended "no passing baseline" after $0.117; its first attempt failed with "syntax error, unexpected TOK_ID". Power is never measured: <code>backend/tests/tools/test_measure_power.py</code> fails (I ran it: 1 failed, 7 passed; power came back empty).</p>
+  <p>Fix: rebuild the image, bump the tag, and check a script version at startup.</p>
+  <p class="meta">Where: <code>backend/config.toml</code> line 138, <code>[tools] image = "verity-tools:0.1"</code>; <code>backend/sandbox/Dockerfile</code> (<code>COPY bin/ /verity/bin/</code>)</p>
+</div>
+
+<h3>Run manager and API</h3>
+<div class="finding must">
+  <h4><span class="tag must">MUST FIX</span><code>/health</code> does not check Docker or the model</h4>
+  <p><code>_maintenance</code> only checks that an API key string exists (and Nebius Sandboxes config). <code>health</code> adds budget and busy checks. Neither touches Docker or the model. With Docker Desktop down, <code>/health</code> says <code>liveEnabled: true</code>, a run is admitted, and it pays for the planner and 3 v1 drafts before the first sandbox call fails.</p>
+  <p class="meta">Where: <code>backend/verity/runs/manager.py</code> <code>health</code> (lines 231 to 249) and <code>_maintenance</code> (lines 388 to 399)</p>
+</div>
+<div class="finding nice">
+  <h4><span class="tag nice">NICE</span>Rate limit message gives no wait time</h4>
+  <p>The text is "Too many requests. Try again shortly." The wait is computed but only sent as a <code>Retry-After</code> header.</p>
+  <p class="meta">Where: <code>backend/verity/api/errors.py</code> <code>_ADMISSION_TEXT</code> and <code>rate_limited</code>; limit <code>config.toml</code> <code>runs_per_session_per_hour = 3</code></p>
+</div>
+<div class="finding nice">
+  <h4><span class="tag nice">NICE</span>"The daily budget is used up" when it is not</h4>
+  <p>A run is refused when today's room is smaller than one run cap (<code>can_admit</code>: spent + reserved + run cap must fit). The message says "used up" even at $0 spent.</p>
+  <p class="meta">Where: <code>backend/verity/runs/manager.py</code> <code>create_run</code> and <code>health</code>; <code>backend/verity/core/budget.py</code> <code>can_admit</code></p>
+</div>
+<div class="finding nice">
+  <h4><span class="tag nice">NICE</span>Public run list includes errored runs</h4>
+  <p><code>GET /runs</code> is public and returns every run, including ones that ended in error (today's failed run among them).</p>
+  <p class="meta">Where: <code>backend/verity/api/routes.py</code> <code>list_runs</code>; <code>backend/verity/store/sqlite.py</code> <code>list_runs</code> (no status filter)</p>
+</div>
+
+<h3>Orchestrator</h3>
+<div class="finding must">
+  <h4><span class="tag must">MUST FIX</span>Raw infrastructure error text reaches users</h4>
+  <p>A sandbox failure becomes "the sandbox failed: " plus the raw exception text, shown as the run's error and caption, for example "failed to connect to the docker API at npipe:...". Model errors (the lines just above) do the same.</p>
+  <p class="meta">Where: <code>backend/verity/orchestrator/machine.py</code> lines 63 to 65, in <code>run_orchestrator</code></p>
+</div>
+<div class="finding nice">
+  <h4><span class="tag nice">NICE</span>Fast mode says "No version beat v1"</h4>
+  <p>In fast mode evolution is skipped, but the winner step still uses the caption "No version beat v1. v1 stands.", which suggests a contest that never happened.</p>
+  <p class="meta">Where: <code>backend/verity/orchestrator/machine.py</code> <code>_run</code> (fast branch); <code>backend/verity/core/captions.py</code> <code>baseline_wins</code></p>
+</div>
+
+<h3>Frontend (UI; you will handle these separately)</h3>
+<div class="finding ui">
+  <h4><span class="tag ui">UI</span>Words glued together: "cyclebycycle"</h4>
+  <p>The model wrote non-breaking hyphens; the backend's text cleaner keeps only ASCII and drops them, so reasons read "cyclebycycle" and "flipflop". The cause is backend sanitizing (<code>backend/verity/roles/parsing.py</code> <code>clean_line</code>, whose fold table has no entry for U+2011); the result is visible in <code>frontend/public/runs/mac4-real.json</code>.</p>
+</div>
+<div class="finding ui">
+  <h4><span class="tag ui">UI</span>Smaller v6 loses to v4 with no visible reason</h4>
+  <p>In <code>mac4-real.json</code>, v6 has the smallest area (-2.2% vs v1) but a slower clock (+3.5%); v4 is -1.6% area and 7.4% faster. With power not measured, the area goal weighs clock at about 29%, so v4 scores 3.33 and v6 0.53. The screen does not show that breakdown.</p>
+</div>
+<div class="finding ui">
+  <h4><span class="tag ui">UI</span>Jargon on screen, and the Run button sits below the fold on <code>/bench</code></h4>
+</div>
+</section>
+
+<!-- ============================================================ 9 -->
+<section id="glossary">
+<h2>9. Glossary</h2>
+<p class="inshort"><b>In short:</b> every term the code or the UI uses, one plain line each.</p>
+<dl class="gloss">
+  <dt>RTL, Verilog, SystemVerilog</dt><dd>Code that describes a chip. RTL is the level of detail (data moving between registers each clock tick); Verilog and SystemVerilog are the languages.</dd>
+  <dt>Task pack</dt><dd>One folder in <code>backend/tasks/</code> per chip: the request text, port list, limits, golden model, testbench, optional human design, all hashed so nobody can edit them quietly.</dd>
+  <dt>Golden model</dt><dd>A simple trusted Python program (<code>golden.py</code>) that computes the right answers. The answer key.</dd>
+  <dt>Testbench</dt><dd>Test code (<code>test_dut.py</code>, cocotb) that feeds inputs to the design and compares outputs with the golden model.</dd>
+  <dt>Lock</dt><dd>The stage that re-checks the pack's hashes and shows the answer key, so you can see the agent cannot change it.</dd>
+  <dt>Preset, family, knobs, params</dt><dd>A preset is a chip the bench offers. A family is a preset with adjustable settings (knobs), like MAC lanes or bit width. <code>params</code> is the knob values sent with <code>POST /runs</code>; the server checks every range.</dd>
+  <dt>Parse</dt><dd><code>POST /parse</code>: one English sentence goes to the model, which maps it to a family and knob values, or says it is out of range and suggests the closest. The server re-checks the answer.</dd>
+  <dt>Spec</dt><dd>The chip being built, as the UI sees it: ports, number of tests, line limit, goal.</dd>
+  <dt>Plan, plan gate</dt><dd>The model's block outline, then a 10 s countdown where you can steer before code is written.</dd>
+  <dt>Pin, toggle, steer</dt><dd>Pin a goal on a plan block, or switch a block's variant. Any such input is a "steer" (<code>POST /runs/{id}/steer</code>).</dd>
+  <dt>Feasibility gate</dt><dd>Code rules that reject an impossible or out-of-scope plan before any Verilog tokens are spent.</dd>
+  <dt>Candidate, version</dt><dd>One design idea. Code says candidate (<code>c4</code>); the UI says version (<code>v4</code>).</dd>
+  <dt>Attempt</dt><dd>One piece of Verilog inside a candidate. Attempt 1 is the original; later attempts are fixes.</dd>
+  <dt>Baseline, v1</dt><dd>The first version that passes all tests. Every number is shown relative to it.</dd>
+  <dt>Lint</dt><dd>An automatic check for code mistakes before running anything (Verilator).</dd>
+  <dt>Simulation</dt><dd>Running the design on a computer against the tests (Icarus Verilog + cocotb).</dd>
+  <dt>Synthesis</dt><dd>Turning Verilog into a list of real logic gates to measure its size (Yosys).</dd>
+  <dt>Nangate45</dt><dd>A free, open library of gates for a 45 nm process. Area numbers come from it.</dd>
+  <dt>OpenSTA, clock period</dt><dd>OpenSTA is the timing tool. Clock period is the shortest time per tick the design can handle; lower is faster.</dd>
+  <dt>PPA</dt><dd>Power, performance, area: the three things every chip trades off. Here: <code>powerMw</code>, <code>clockPeriodNs</code>, <code>areaUm2</code>, <code>cellCount</code>.</dd>
+  <dt>Fitness</dt><dd>One score per version: weighted percent gains vs v1. Area goal weighs area 0.60, timing 0.25, power 0.15; missing metrics are dropped and the rest re-weighted (<code>core/fitness.py</code>).</dd>
+  <dt>Operators: FIX, SIMPLIFY, OPTIMIZE, EXPLORE</dt><dd>How a version is made. FIX repairs a failing attempt in place. SIMPLIFY, OPTIMIZE and EXPLORE are the three strategies the Optimizer uses to create a new child. INIT marks v1.</dd>
+  <dt>Round</dt><dd>One batch of children: round 1 makes 3 from v1, round 2 makes 2 from the elites.</dd>
+  <dt>Elite</dt><dd>One of the best 2 measured versions so far. Round 2 builds on them.</dd>
+  <dt>REvolution-lite</dt><dd>Verity's small version of the REvolution paper's idea: a tiny population, keep the best, breed from them. Principles only, never its numbers.</dd>
+  <dt>EQY</dt><dd>Yosys's equivalence checker: a math proof that two designs give the same outputs for every input. Results: <code>proven</code>, <code>not_equivalent</code>, <code>inconclusive</code> ("Tested, not proven"), <code>not_run</code>.</dd>
+  <dt>human_ref, reference.v</dt><dd>A hand-written design in the pack. The <code>human_ref</code> event reports its PPA and EQY against the winner ("Verity vs human").</dd>
+  <dt>Fast and full mode</dt><dd>Fast stops after v1 is measured. Full adds evolve and prove. The website always uses full.</dd>
+  <dt>Orchestrator</dt><dd>The Python script that runs one run and makes every decision.</dd>
+  <dt>Role</dt><dd>One kind of model job: planner, rtl_gen, repair, optimizer.</dd>
+  <dt>Nemotron Ultra, Super; Token Factory</dt><dd>NVIDIA's models: Ultra is the big one (plans, first code, repairs), Super the cheaper one (optimized children). Token Factory is Nebius's service that hosts them.</dd>
+  <dt>Fake provider</dt><dd><code>VERITY_PROVIDER=fake</code>: no model calls, $0. It returns canned plans and the pack's reference design so the whole pipeline can run for free.</dd>
+  <dt>Cassette</dt><dd>A saved model answer that is replayed instead of calling the model, for tests and evals (<code>llm/cassette.py</code>, <code>backend/evals/cassettes/</code>).</dd>
+  <dt>Sandbox, tool image</dt><dd>The Docker container with the chip tools (<code>verity-tools:0.1</code>), started fresh for every check with no network.</dd>
+  <dt>Declaration fixer</dt><dd>A free code-only fix for common declaration lint errors, tried before asking the model (<code>core/rtl_fixer.py</code>).</dd>
+  <dt>SSE</dt><dd>Server-sent events: one long HTTP response the server keeps writing events into.</dd>
+  <dt>Event, seq, tMs</dt><dd>One step of a run. <code>seq</code> is its number (1, 2, 3, no gaps); <code>tMs</code> is milliseconds since the run started.</dd>
+  <dt>RunLog</dt><dd>The full list of a run's events plus a header (<code>format: "verity.runlog/1"</code>). Recordings and <code>GET /runs/{id}/log</code> use it.</dd>
+  <dt>Golden run, recording, replay</dt><dd>A saved RunLog the site plays without the backend. <code>golden.json</code> is sample data; <code>mac4-real.json</code> is a real run.</dd>
+  <dt>Reducer</dt><dd>The single pure function (<code>lib/run/reducer.ts</code>) that turns the current state plus one event into the next state.</dd>
+  <dt>Caption, chapter</dt><dd>A one-line narration from a code template, grouped into chapters (Spec, Plan, Lock, Build and fix, Round 1, Round 2, Prove, Done).</dd>
+  <dt>Artifact</dt><dd>A small text file attached to the stream: plan, tests, synthesis and timing reports, EQY log, summary.</dd>
+  <dt>Credits, cap</dt><dd>Dollars spent so far, and the per-run limit.</dd>
+  <dt>Ledger, reservation</dt><dd>The per-run spending counter. A reservation is the worst-case hold it takes before each model call.</dd>
+  <dt>cap_reached</dt><dd>A run that stopped early because a budget limit was hit, keeping its best measured version.</dd>
+  <dt>Access code, session token, stream token</dt><dd>The code a judge types; the token it buys (12 h); and the per-run token used in the stream URL (30 min).</dd>
+  <dt>Watchdog, heartbeat</dt><dd>A timer that marks a run as failed if nothing happens for 90 s; the heartbeat is the "still alive" signal it watches.</dd>
+  <dt>Winner override</dt><dd>You choose a different measured version as the winner. Recorded as <code>winner</code> by <code>user</code>, with the AI's pick kept.</dd>
+  <dt>EventHub</dt><dd>The backend piece that numbers each event, saves it, then sends it to every open stream.</dd>
+</dl>
+</section>
+
+<!-- ============================================================ 10 -->
+<section id="docs-vs-code">
+<h2>10. Docs vs code</h2>
+<p class="inshort"><b>In short:</b> where a doc says one thing and the code does another. This page follows the code in every case.</p>
+<div class="dvc">
+  <ul>
+    <li><b>Old folders on disk:</b> the code lives in <code>frontend/</code> and <code>backend/</code>. The old <code>agent/</code> and <code>web/</code> folders still exist locally (untracked) with a <code>.venv</code>, <code>node_modules</code>, env files and old run data. Nothing reads them; they can go once <code>agent/data</code> is moved or no longer needed.</li>
+    <li><b><code>backend/README.md</code></b>: the endpoint table says <code>GET /runs/{id}/log</code> needs the owner's token, but <code>api/routes.py</code> <code>run_log</code> makes finished runs public; <code>GET /runs</code> exists but is not listed; setup says <code>cd agent</code>; "tests (written, not yet run)" is stale.</li>
+    <li><b><code>backend/ARCHITECTURE.md</code></b> section 8 says there is no run listing endpoint (there is: <code>GET /runs</code>). Section 9.1 says canvas ops are sent by <code>system</code>; <code>orchestrator/events.py</code> sends <code>add_node</code> and <code>connect</code> as <code>ai</code> and only <code>update_status</code> as <code>system</code>.</li>
+    <li><b><code>backend/CONTRACTS.md</code></b> section 9 says SSE closes after the terminal run event; <code>api/sse.py</code> keeps reading for up to 5 s (<code>TERMINAL_GRACE_S</code>) so the closing caption arrives, as <code>backend/README.md</code> notes.</li>
+    <li><b><code>frontend/ARCHITECTURE.md</code></b>: its routes table has no <code>/bench</code> and calls <code>/try</code> a preset picker (it now forwards to <code>/bench</code>); it describes a React Flow canvas and a <code>canvas</code> store slice, but the store has <code>run</code>, <code>playback</code>, <code>ui</code> and <code>live</code> slices and the studio is a rack of modules; <code>/studio</code> defaults to <code>mac4-real</code>, not <code>golden</code>; section 1 still calls the backend "future".</li>
+    <li><b><code>HANDOFF.md</code></b> says the backend tests all pass (386). The full suite on 2026-10-22: 409 passed, 1 failed (<code>tests/tools/test_measure_power.py</code>, because of the stale image, problem 1).</li>
+  </ul>
+</div>
+</section>
+
+<footer>
+  Sources read: <code>backend/ARCHITECTURE.md</code>, <code>backend/CONTRACTS.md</code>, <code>backend/README.md</code>, <code>backend/config.toml</code>, <code>frontend/ARCHITECTURE.md</code>, <code>HANDOFF.md</code>, <code>REPORT.md</code>, <code>docs/MEETING.md</code>, and the code under <code>backend/verity/</code>, <code>backend/sandbox/</code> and <code>frontend/src/</code>. Written 2026-10-22.
+</footer>
+</main>
+</div>
+</body>
+</html>

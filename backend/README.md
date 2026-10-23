@@ -1,48 +1,50 @@
 # Verity agent (backend)
 
-The backend of Verity: a plain-English chip spec goes in, an agent writes Verilog, tests it against a locked golden
-model in a sandbox, fixes its own bugs, evolves smaller and faster versions, proves the winner equal to v1 with
-Yosys EQY, and streams every step to the web app as events. Python 3.11+, FastAPI, pydantic v2, SQLite, one process.
+The backend of Verity: a plain-English chip request goes in; the backend fact-checks it, researches it, and runs an
+engineer's loop in which Nemotron writes the Verilog, a sandbox tests it against a locked golden model, the agent fixes
+its own bugs, evolves smaller and faster versions, proves the winner equal to v1 with Yosys EQY, and signs it off. Every
+step streams to the web app as events. After a run, the chat endpoint answers questions about it from the run's own
+data. Python 3.11+ (3.13 in use), FastAPI, pydantic v2, SQLite, one process.
 
-> **Status: first run done (2026-10-06).** `pytest -q` is green (247), the packs self-test passes on all seven packs
-> against the real image, the fake pipeline and four real Nebius runs on `mac4` completed through the API, restart
-> recovery and Stop were observed. What the first run fixed: CRLF in three sandbox files, `signed` wires that OpenSTA
-> rejects (matmul4 and mm4_int4 had no clock period), EQY matching on internal wire names, EQY counterexamples from
-> unreachable register states (now a reset-aware miter first), a half-even rounding mismatch with the web fitness, and
-> LLM caps that cut Nemotron reasoning answers off (`plan_max_output` 12000, `rtl_max_output` 24000, run
-> `max_output_tokens` 200000). Known limits: EQY cannot prove a shift-add multiplier equal to `*` in 180 s, so such a
-> winner is reported "Tested, not proven"; the heavy packs (`matmul4`, `mm4_int4`) take about 5 minutes in the packs
-> suite because both EQY sanity calls run to their limit. Some `UNVERIFIED` comments below still stand: trust the code
-> comments over any claim here.
+> **Status (2026-10-23).** `pytest -q` passed 681 tests in 6 min 19 s with Docker running (the Verilog-strength fixer
+> pass, per `../REPORT.md`). Built: knob families and the human reference (D13, D14), per-role model routes (D16), the
+> fact check and research with Tavily and Serper (D17, D19), the knowledge store (migrations 3 and 4, D29), the chat
+> after a run (`POST /runs/{id}/ask`, D18), and the sign-off, waveforms and spec rules after `run done` (D22 to D24).
+> Not seen live: research with a real search key (none is set; Tavily and Serper are tested against mocked HTTP), and the
+> Nebius Sandboxes runner (written, never tried, off). Requirements: `../docs/PRD.md`. Decisions: `../docs/DECISIONS.md`.
 
-Specs: `ARCHITECTURE.md` (intent), `CONTRACTS.md` (exact interfaces; wins on interfaces), `sandbox/README.md` (tool
-image), `tasks/self_test.md` (pack self-test). Frontend contract: `frontend/src/lib/contracts/` and `frontend/ARCHITECTURE.md`.
+Specs: `ARCHITECTURE.md` (design and intent; 17.1 to 17.3 for the chat, research and sign-off), `CONTRACTS.md` (exact
+interfaces; wins on interfaces), `sandbox/README.md` (tool image and licences), `tasks/self_test.md` (pack self-test).
+Frontend contract: `../frontend/src/lib/contracts/` and `../frontend/ARCHITECTURE.md`.
 
 ## Layout
 
 | Folder | What it holds |
 |---|---|
-| `verity/contracts/` | pydantic mirror of the web event types (camelCase on the wire) and the API bodies |
-| `verity/core/` | `Rtl`, `TaskPack`, sandbox result models, protocols, `RunContext`, fitness, captions, budget, errors |
+| `verity/contracts/` | pydantic mirror of the web event types (camelCase on the wire), API bodies, sign-off artifacts |
+| `verity/core/` | `Rtl`, `TaskPack`, knob families, the first-message parse, fitness, captions, budget, planted-bug rules (`mutants.py`), errors |
 | `verity/llm/` | providers (`nebius`, `openai_compat`, `fake`), cassette wrapper, per-run gateway `RunLLM` |
-| `verity/roles/` | planner, rtl_gen, repair, optimizer roles and `prompts/*.md` |
-| `verity/tools/` | `LocalDockerRunner`, `NebiusSandboxRunner`, result parsers, circuit graph builder |
-| `verity/orchestrator/` | the deterministic state machine (plan, gate, lock, build, evolve, prove) |
+| `verity/roles/` | planner, rtl_gen, repair, optimizer roles and `prompts/*.md` (planner v2, rtl_gen v2, repair v3, optimize v3 in use) |
+| `verity/research/` | search adapters (Tavily, Serper, routed, fake), code-built queries, source tiers, the GLM summary, the fixed technique list, run outcomes |
+| `verity/ask/` | `POST /runs/{id}/ask`: intent router, code templates, the walkthrough, proposals |
+| `verity/tools/` | `LocalDockerRunner`, `NebiusSandboxRunner` (unverified), result parsers, circuit graph builder |
+| `verity/orchestrator/` | the deterministic state machine (spec, plan, gate, lock, build, evolve, prove, human reference, sign-off, waveforms) |
 | `verity/runs/` | `RunManager`, event hub (stamps seq, store first, then fan-out), ledger, watchdog, run log |
-| `verity/store/` | SQLite store and write-once artifact files under `data/` |
+| `verity/store/` | SQLite store (migrations 1 to 7), write-once artifact files under `data/`, and the Supabase store for chats and run lists (`supabase_threads.py`; tables in `supabase/schema.sql`) |
 | `verity/api/` | FastAPI app, routes, hand-rolled SSE, auth tokens, rate limits, log redaction |
 | `verity/evals/` | evals CLI, harness, bug injectors, report generator |
-| `sandbox/` | the `verity-tools:0.1` image: Dockerfile and `/verity/bin/{verify,measure,eqy,bundle}` |
-| `tasks/` | task packs: `mac4`, `alu8`, `matmul4`, `add8`, `cnt8`, `fsm_seq` (live presets; `mac4`, `add8`, `cnt8`, `fsm_seq` are knob families rendered per run) and `mm4_int4` (eval only) |
-| `tests/` | pytest files (written, not yet run) |
-| `evals/` | generated: `results/*.jsonl`, `report.md`, throwaway `work/` (all gitignored) |
+| `sandbox/` | the `verity-tools:0.1` image: Dockerfile and `/verity/bin/{verify,measure,eqy,seeds,strength,wave,bundle}` |
+| `tasks/` | task packs: `mac4`, `add8`, `cnt8`, `fsm_seq` (live knob families), `alu8`, `matmul4` (accepted by `POST /runs`, not offered in the chat), `mm4_int4` (eval only) |
+| `scripts/` | `probe_models.py`, the capped probe that chose the model routes |
+| `tests/` | pytest, one folder per package plus `e2e`, `packs` and `fixtures` |
+| `evals/` | `gate-2026-10-16.md` and `probe-2026-10-18.md` (real-model evidence); generated `results/`, `report.md`, `work/` |
 
 ## Setup
 
-Needs Python 3.11 or newer, and Docker Desktop for the real sandbox.
+Needs Python 3.11 or newer, and Docker Desktop for the real sandbox. From the repo root:
 
 ```
-cd agent
+cd backend
 python -m venv .venv
 .venv\Scripts\activate                 # Windows;  source .venv/bin/activate on Linux or macOS
 pip install -e ".[dev]"
@@ -51,6 +53,7 @@ python tasks/make_manifest.py --check                               # every pack
 ```
 
 The build downloads tools and the Nangate45 liberty (never committed). See `sandbox/README.md` for pins and licences.
+After a change to `sandbox/`, rebuild the image and run the pack self-test again (`tasks/self_test.md`).
 
 ## Run
 
@@ -59,52 +62,80 @@ verity-api                              # same as: python -m verity.main
 ```
 
 Listens on `127.0.0.1:8000` (`[server]` in `config.toml`), one worker only (rate limits, run registry and the SSE fan-out
-live in process). With the default `VERITY_PROVIDER=fake` no LLM call is made, the tools still use the real Docker image.
+live in process). With the default `VERITY_PROVIDER=fake` no model call is made and research uses canned sources; the
+tools still use the real Docker image. Real models: `VERITY_PROVIDER=nebius` and `LLM_API_KEY` in `backend/.env`.
 
 Web side: set `NEXT_PUBLIC_AGENT_URL=http://127.0.0.1:8000` in `frontend/.env.local`. The default CORS origin is
 `http://localhost:3000`.
 
-Smoke test with curl (auth is off by default; anonymous sessions are keyed by client IP):
-
-```
-curl http://127.0.0.1:8000/health
-curl -X POST http://127.0.0.1:8000/runs -H "Content-Type: application/json" -d "{\"presetId\":\"mac4\",\"priority\":\"area\",\"mode\":\"fast\"}"
-curl -N "http://127.0.0.1:8000/runs/<runId>/events"
-```
-
 | Method and path | Auth when `auth.required` | Notes |
 |---|---|---|
-| `GET /health` | none | `liveEnabled`, `reason` (maintenance, budget_exhausted, busy), `capUsd`, `models`, `authRequired` |
+| `GET /health` | none | `liveEnabled`, `reason` (maintenance, sandbox_down, budget_exhausted, busy), `capUsd`, `provider`, `models` per role, `authRequired`, `features` |
 | `POST /auth/session` | none | `{accessCode}` gives `{token, expiresAt}` |
-| `POST /runs` | `Authorization: Bearer` | `{presetId, priority, mode?}` gives `{runId, capUsd, streamToken}`; 429 `{error, reason}` |
-| `GET /runs/{id}/events` | `?st=<streamToken>` | SSE, `Last-Event-ID` or `?after=` resumes; 204 when a finished run has nothing left |
-| `GET /runs/{id}/log` | Bearer, owner | `RunLog` (same format as `golden.json`) |
+| `GET /runs` | none | the public list of runs (`limit` up to 100, `offset`) |
+| `POST /runs` | `Authorization: Bearer` | `{presetId, priority, mode?, params?, researchId?}` gives `{runId, capUsd, streamToken}`; 429 `{error, reason}` |
+| `POST /parse` | Bearer | the fact check: verdict, class, family and knobs, `statedKnobs`, research (CONTRACTS section 9) |
+| `POST /runs/{id}/ask` | Bearer, owner | the chat after a run: answers, walkthrough steps, proposals; ended runs only |
+| `POST /runs/{id}/stream-token` | Bearer, owner | `{streamToken}`: a fresh stream token for a run this session started, for a second device or tab |
+| `GET /runs/{id}/events` | `?st=<streamToken>` | SSE, `Last-Event-ID` or `?after=` resumes; a finished run replays without a token; 204 when nothing is left |
+| `GET /runs/{id}/log` | owner while running, public when finished | `RunLog` (same format as `golden.json`) |
 | `POST /runs/{id}/steer` | Bearer, owner | pin, toggle, gate, autopilot, winner_override; 202 |
 | `POST /runs/{id}/stop` | Bearer, owner | 202, then a `run` event with phase `stopped` |
 
 ## Environment variables (names only)
 
-`backend/.env.example` could not be created: a permission rule in this environment denies writes to that path. This list
-is the replacement. Copy the names into `backend/.env` (gitignored) or set them in the shell. Precedence: process env,
-then `backend/.env`, then `config.toml`.
+`backend/.env.example` is in the repo (a deny rule blocks reading it in this environment, so it was not checked against
+the list below). Put values in `backend/.env` (gitignored) or the shell. Precedence: process env, then `backend/.env`,
+then `config.toml`. Exact mapping: `CONTRACTS.md` section 10.
 
 | Name | Meaning |
 |---|---|
 | `VERITY_ENV` | `development` (default), `production` (enforces the submission guard), `test` |
 | `VERITY_PROVIDER` | `fake` (default, $0), `nebius`, `openai_compat` |
-| `VERITY_TOOL_BACKEND` | `local_docker` (default) or `nebius_sandbox` |
+| `VERITY_TOOL_BACKEND` | `local_docker` (default) or `nebius_sandbox` (unverified) |
 | `VERITY_CONFIG` | path of another `config.toml` |
 | `VERITY_DATA_DIR`, `VERITY_TASKS_DIR` | paths, relative to `backend/` |
 | `VERITY_CORS_ORIGINS` | comma separated origins, never `*` in production |
 | `VERITY_ACCESS_CODE_HASHES` | `role:sha256hex,role:sha256hex` (sha256 of each access code) |
-| `VERITY_SIGNING_SECRET` | 32+ random characters, required in production |
+| `VERITY_SIGNING_SECRET` | 32+ random characters, required in production; outside production a stored secret in `data/signing-secret` is used when unset |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ULTRA`, `LLM_MODEL_SUPER` | Nebius Token Factory (OpenAI compatible) |
-| `SANDBOX_BASE_URL`, `SANDBOX_API_KEY` | Nebius Sandboxes (key falls back to `LLM_API_KEY`) |
-| `VERITY_<TABLE>__<KEY>` | any `config.toml` value, for example `VERITY_AUTH__REQUIRED=true`, `VERITY_BUDGET__RUN__MAX_USD=0.3`, `VERITY_TOOLS__DOCKER_USER=` |
+| `TAVILY_API_KEY`, `SERPER_API_KEY` | Research: Tavily for general web search, Serper for Google Scholar and Patents. With one key that service serves all three; with none, research is off on a real provider. Server side only |
+| `SANDBOX_BASE_URL`, `SANDBOX_API_KEY` | Nebius Sandboxes (key falls back to `LLM_API_KEY`; unverified) |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Accounts and saved chats (see below). The secret key is server side only. `SUPABASE_PUBLISHABLE_KEY` is optional: only for a project that still signs tokens with the shared secret |
+| `VERITY_<TABLE>__<KEY>` | any `config.toml` value, for example `VERITY_AUTH__REQUIRED=true`, `VERITY_SERVER__PORT=8021`, `VERITY_BUDGET__RUN__MAX_USD=0.3` |
 
 `VERITY_ENV=production` refuses to start unless: provider is `nebius`, the base URL host is the Token Factory host,
-`LLM_API_KEY` is set, `auth.required` is true, the signing secret is 32+ characters, at least one access code hash is
-set, and CORS has no `*`. Never put a key in `frontend/` or in any `NEXT_PUBLIC_*` variable.
+`LLM_API_KEY` is set, `auth.required` is true, the signing secret is 32+ characters, sign-in exists (`SUPABASE_URL` is
+set, or at least one access code hash is set; either is enough), and CORS has no `*`. When `SUPABASE_URL` is set its
+host must be https and end with `.supabase.co`. Never put a secret in `frontend/` or in any `NEXT_PUBLIC_*` variable
+(the one public Supabase value, the publishable key, belongs to `frontend/` only).
+
+## Accounts and saved chats (Supabase)
+
+Optional. Without it nothing changes: chats stay in SQLite, and the access code is the only sign-in. With it, judges
+sign in with an email and password (no sign-up form: the team makes the accounts), their chats and their list of runs
+follow them across devices, and run files, events and spend stay on this server. Never use the Supabase CLI or a linked
+project; the project is made in the dashboard.
+
+1. Make a new Supabase project. In its Authentication settings (sign-in providers), turn **off** "Allow new users to
+   sign up" and leave "Allow anonymous sign-ins" **off**. Leave "Confirm email" **on**: step 3 confirms each account
+   by hand, and if the sign-up switch is ever missed, a stranger who signs up with the public publishable key then gets
+   no session.
+2. Open the project's SQL Editor, paste all of `backend/supabase/schema.sql` and run it. It is safe to run again. It
+   makes `threads`, `thread_turns` and `user_runs` with row level security on, no policies, and no grants for the
+   browser roles.
+3. Add each judge in Authentication, Users: "Add user", email and password, "Auto Confirm User" on. Hand the pair over.
+4. Put the values in `backend/.env` (never the secret key anywhere else), then restart the backend:
+   `SUPABASE_URL` (the Project URL, `https://<ref>.supabase.co`) and `SUPABASE_SECRET_KEY` (the `sb_secret_...` key
+   from API Keys). `SUPABASE_PUBLISHABLE_KEY` is only needed when the project's JWKS is empty (a legacy project).
+   `GET /health` then lists `accounts` in `features`; the chats move to Supabase because `[threads] store = "auto"`
+   sees both values (`VERITY_THREADS__STORE=sqlite` keeps them local).
+5. In `frontend/`, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (public by design) and
+   rebuild; with neither set the web app has no sign-in gate.
+
+A user's session id is `u:<user id>`; a Supabase outage turns every chat and run-list call into
+`502 "Saved chats are unreachable right now."`. The one chat store serves every session, so this includes access-code
+sessions: their bench chat stops too. Starting a run, runs already going, replays and the fact check keep working.
 
 ## Tests
 
@@ -112,12 +143,11 @@ set, and CORS has no `*`. Never put a key in `frontend/` or in any `NEXT_PUBLIC_
 pytest -q                               # from backend/
 ```
 
-They use the fake provider, a fake tool runner and a stub service, so they need no Docker and no network. Folders:
-`contracts` (wire format, golden.json round trip, presets match, node validator), `core` (RTL rules, fitness),
-`orchestrator` (plan helpers, feasibility gate), `runs` (ledger, RunManager), `e2e` (full fake orchestrator runs),
-`llm`, `roles`, `tools`, `store`, `api` (auth, SSE, routes, main wiring), `packs`, `evals`.
-`tests/contracts/test_web_validate_fixture.py` shells out to `node frontend/scripts/validate-fixture.ts <path>` and skips
-itself when node, `frontend/node_modules` or the script's path argument is missing.
+Most tests use the fake provider, a fake tool runner and stub services. The tool, pack and edge tests run the real
+`verity-tools:0.1` image and need Docker Desktop running. Folders: `contracts`, `core`, `orchestrator`, `runs`, `e2e`,
+`llm`, `roles`, `research`, `ask`, `tools`, `store`, `api`, `packs`, `evals`; `fixtures` holds a recorded real run used
+by the ask tests. `tests/contracts/test_web_validate_fixture.py` shells out to
+`node frontend/scripts/validate-fixture.ts <path>` and skips itself when node or `frontend/node_modules` is missing.
 
 ## Evals
 
@@ -154,116 +184,12 @@ Ultra's `reasoning_effort: low` changed nothing against its default (49 both), a
 
 Gains are relative to our own v1, never to published numbers.
 
-## Tomorrow: first run checklist
+## Known limits
 
-Do these in order. Stop at the first red step and fix it before moving on. Each step says what green looks like.
-
-1. **Install and unit tests.** `pip install -e ".[dev]"`, then `pytest -q`. Green: all pass or skip (the node test skips
-   until `validate-fixture.ts` takes a path). Likely first reds: an import or typo in a module that was only
-   statically checked, pydantic or pydantic-settings behaviour (`Settings` sources in `verity/config.py`), an async
-   fixture setting in `pyproject.toml`. Fix and rerun before touching Docker.
-2. **Build the image.** `docker build -t verity-tools:0.1 -f sandbox/Dockerfile sandbox`. Expect small fixes (OpenSTA and
-   CUDD compile, trimming the OSS CAD Suite). Copy the printed liberty SHA-256 into `NANGATE_SHA256`.
-3. **Pack self-test.** `python -m verity.evals --suite packs --tasks all --provider fake`. This is the first time any
-   testbench or `reference.v` is simulated. Green: every pack `ok`, every mutant killed. Read `evals/report.md`.
-4. **Isolation.** `python -m verity.evals --suite isolation --tasks all --provider fake`. Green: all rows ok, including
-   the `mm4_int4` width lock (needs the image).
-5. **Fake pipeline on real tools.** Start `verity-api` (provider `fake`), POST a `mac4` run in `fast` mode, follow the SSE.
-   Green: `run running` ... `run done`, then the `Done` caption, v1 measured with an area and a clock period.
-   Then `full` mode: three children, repairs, elites, a winner, EQY.
-6. **Frontend against the fake run.** Set `NEXT_PUBLIC_AGENT_URL`, open the Try page, press Run. Watch the browser
-   console for `live event rejected by schema` (a contract mismatch). Auth is off, so the web works unchanged.
-7. **Real model.** Set `LLM_BASE_URL`, `LLM_API_KEY`, `VERITY_PROVIDER=nebius`. First `python -m verity.evals --suite
-   functional --tasks add8 --provider nebius`, then one `mac4` run with a low cap (`VERITY_BUDGET__RUN__MAX_USD=0.3`).
-8. **Submission mode.** Frontend hookup below, then `VERITY_ENV=production` with auth on, and re-run steps 5 to 7.
-9. **Record the real run.** `GET /runs/{id}/log` (or `data/runs/<id>/runlog.json`) can be dropped in as the replay fixture
-   in `frontend/public/runs/` once `validate-fixture.ts` accepts a path.
-
-### Most likely failures (in order)
-
-1. Docker Desktop on Windows: bind mounts with `--read-only` and `--user 1000:1000`; `/work` may not be writable.
-   Try `VERITY_TOOLS__DOCKER_USER=` (empty omits `--user`) and check the temp dir path has no comma.
-2. First image build: OpenSTA, CUDD, Yosys layout, iverilog version, cocotb direct `vvp` flow.
-3. The testbenches and `reference.v` files have never been simulated. A wrong cycle count in a testbench fails the pack
-   self-test; fix the pack, then `python tasks/make_manifest.py <id>`.
-4. Nemotron reasoning tokens eat the output cap (`max_tokens` 4,000 for RTL), leaving no code block. Symptom: parse
-   retries then `RoleOutputError`. Try `VERITY_BUDGET__CALL__RTL_MAX_OUTPUT=24000` and raise the run output budget.
-5. Yosys, OpenSTA and EQY output formats (all parsed from text or JSON never seen): a timing parse miss shows as
-   `sta_fail` (area kept, clock period null).
-6. pydantic-settings source ordering and the `LLM_*` named variables (check `GET /health` shows the right models).
-7. SSE through the browser: reconnect behaviour, 204 on a finished run, the stream token.
-
-### UNVERIFIED items (every one is also marked in the code)
-
-Sandbox and tasks (`sandbox/README.md` has the long list):
-- Image build: CUDD and OpenSTA compile on Ubuntu 24.04; trimming the OSS CAD Suite keeps `yosys`, `eqy`, `sby`,
-  `yosys-smtbmc` working; Ubuntu iverilog is 12.x; PATH order of Ubuntu tools versus OSS CAD Suite.
-- cocotb 1.9.2 direct `vvp -M ... -m libcocotbvpi_icarus` flow (`LIBPYTHON_LOC`, `PYTHONHOME`, `MODULE` names) and the
-  version shims in `sandbox/lib/verity_tb.py` (Clock and Timer units, `BinaryValue` versus `LogicArray`).
-- Yosys `write_json` key for port signedness; `stat -liberty -json` layout and the text fallback parser; `dfflibmap`
-  legalizing synchronous resets onto Nangate45 flops; the written netlist loading in OpenSTA.
-- OpenSTA: `all_inputs -no_clocks`, `report_worst_slack` and `report_checks` formats, time unit assumed ns, a design with no
-  timing path (combinational against a virtual clock).
-- EQY: marker files `PASS`, `FAIL`, `UNKNOWN`, `TIMEOUT`, `ERROR` and exit codes; whether `[strategy sby]` proves by
-  induction at the configured depth or only bounds; engines `abc pdr` then `smtbmc yices` (`VERITY_EQY_ENGINE` inside the image).
-- Never simulated: all seven `test_dut.py` and `reference.v` files. Verilator `-Wall` warnings on the references unknown.
-- Licence rows marked "verify" in `sandbox/README.md` before the repo is published.
-
-LLM layer (`verity/llm/openai_compat.py`):
-- Nebius accepts `max_tokens` for Nemotron and whether the cap includes reasoning tokens.
-- JSON mode (`response_format: json_object`) on Nebius; on a 400 it retries without it and the planner parser tolerates text.
-- `x-request-id` header (else the completion id), reasoning token reporting inside `usage`.
-- A long non-streaming reasoning call may be cut by an idle proxy timeout (then switch that call to `stream=True`).
-- `with_raw_response.create(...).parse()` is sync in openai 1.x; the code also tolerates an awaitable.
-
-Tools (`verity/tools/`):
-- Docker Desktop on Windows bind mounts with `--read-only` and `--user` (see failure 1).
-- Nebius Sandboxes API: file upload versus the `bundle` stdin tar, image import (private registries need credentials),
-  running as uid 0, memory and CPU limits not settable, how a non-zero exit is reported, cancel support, timeouts above 120 s.
-- Yosys `write_json` keys used by `verity/tools/circuit.py` (`ports[].signed`, `cells[].port_directions`, `netnames[].hide_name`).
-
-Runs and orchestrator (`verity/runs/`, `verity/orchestrator/`):
-- No gap and no duplicate when a reader joins mid-run (subscribe before the store read).
-- `asyncio.shield` plus cancel in `EventHub.emit` against the real store never leaves a seq gap or duplicate.
-- A Stop cancels the in-flight sandbox call promptly and no container outlives it (`docker kill`).
-
-API and store (`verity/api/`, `verity/store/`, `verity/main.py`):
-- Starlette cancels the response generator on client disconnect and the subscriber is released.
-- Browser `EventSource` stops reconnecting on HTTP 204.
-- uvicorn applies the handler-level redaction filter (`?st=` must show as `[redacted]` in the access log).
-- `executescript` with an explicit `BEGIN`/`COMMIT` plus `PRAGMA user_version` on the installed Python and aiosqlite.
-- On Windows uvicorn keeps the default Proactor loop, which `asyncio.create_subprocess_exec` needs (`process.py` falls
-  back to a thread if not).
-
-### Frontend hookup still needed (do not do this in `backend/`)
-
-None of this blocks the first fake run (auth is off by default). All of it is needed for the submission build.
-
-1. `frontend/src/lib/sources/live.ts`: `postRun` must return `streamToken` from the 201 body, and `openEventStream` must open
-   `/runs/{id}/events?st=<streamToken>` (EventSource cannot send headers). Today it opens the URL with no token.
-2. Try page: an access code prompt. `POST /auth/session {accessCode}` gives `{token, expiresAt}`; send
-   `Authorization: Bearer <token>` on `POST /runs`, `/steer`, `/stop` and `GET /log`. Show the prompt when
-   `GET /health` reports `authRequired: true` or any call answers 401. A 429 with `reason: rate_limited` is shown as busy.
-3. `frontend/scripts/validate-fixture.ts`: accept a file path (`process.argv[2]`, default `public/runs/golden.json`) so a
-   recorded live run can be checked. Two of its checks do not fit live runs and need relaxing: the stored fitness weights
-   must equal the BASE weights, but the backend records the EFFECTIVE (renormalized) weights because power is not measured
-   (CONTRACTS S8, so the breakdown rows add up to the score); and the "RTL has 20 to 40 lines" rule is for the sample log.
-4. Gate steers (`build_now`, `hold`, `resume`, `autopilot`) have no `human` echo (`HumanInput` has no gate kind), but
-   `live.ts` clears its pending state only on a `human` event. Clear pending gate steers on the next `gate` event instead.
-5. `postRun` does not send `mode`; the backend defaults to `full` (`limits.default_mode`). Add `mode` to the body if
-   the fast path should be reachable from the UI.
-6. The live stream stays open until after the final `Done` caption, then closes. A reconnect after that gets 204.
-   Confirm `onError(closed)` handles both without showing an error.
-
-## Integration notes (what the integrator changed)
-
-- `verity/api/sse.py`: the stream no longer stops at the terminal `run` event. golden.json and every live run end with a
-  `Done` caption after `run done`, and the old code dropped it. It now reads until the service ends the stream, with a
-  5 s grace period after the terminal event.
-- `verity/store/runlog.py` and `SqliteStore.run_log` were removed: a duplicate of `verity/runs/runlog.build_run_log`, the
-  one the manager and the API use.
-- `verity/llm/openai_compat.py`: tolerates an awaitable `parse()`.
-- `verity/config.py`, `config.toml`, `verity/tools/local_docker.py`: new `tools.docker_user` (default `1000:1000`; empty
-  omits `--user`) so Docker Desktop bind mount trouble can be worked around without a code change.
-- `verity/evals/`, `tests/`, `README.md` written. `.env.example` was not (permission rule; list above).
-- Not done: no entry in the repo `REPORT.md` or `LOG.md` (outside `backend/`), no git commit.
+- EQY cannot prove a shift-add multiplier equal to `*` within its 180 s limit, so such a winner is "Tested, not proven".
+  At 8 lanes, mac4 inputs wider than 8 bits come back inconclusive (`evals/probe-2026-10-18.md`).
+- The heavy packs (`matmul4`, `mm4_int4`) take about 5 minutes in the packs suite because both EQY sanity calls run to
+  their limit.
+- Some code comments are still marked `UNVERIFIED` (grep for it): chiefly the Nebius Sandboxes runner, Yosys and EQY
+  output details, and licence rows in `sandbox/README.md` to check before the repo is public. Trust the code comments
+  over any claim here.

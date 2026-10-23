@@ -18,8 +18,10 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from ..config import Settings
+from ..core import captions as cap
 from ..core.errors import ToolInfraError
 from .base import SCRIPT_PATHS, FatalToolError, RawOutput, SandboxCall, SandboxRunner
 from .process import ProcessResult, run_process
@@ -29,12 +31,56 @@ log = logging.getLogger("verity.tools")
 MAX_PARALLEL_CONTAINERS = 4  # each container may use 2 CPUs and 2 GB; evolve rounds run up to 3 children at once
 _TMPFS = "/tmp:rw,exec,size=512m"
 _KILL_TIMEOUT_S = 15
+PROBE_TTL_S = 15.0  # how long one Docker check answers /health and POST /runs
+PROBE_TIMEOUT_S = 2.0  # one `docker image inspect`; Docker Desktop answers in about 0.5 s
 
 
 class LocalDockerRunner(SandboxRunner):
     def __init__(self, settings: Settings) -> None:
         super().__init__(settings, max_parallel=MAX_PARALLEL_CONTAINERS)
         self._digest: str | None = None
+        self._probe: str | None = None
+        self._probe_at: float | None = None
+        self._probe_lock = asyncio.Lock()
+
+    # ---------- sandbox check (GET /health, POST /runs) ----------
+    async def sandbox_problem(self) -> str | None:
+        """DOCKER_DOWN or IMAGE_MISSING (plain sentences from core.captions), or None when Docker answers and the
+        configured image is present. One `docker image inspect`, cached for PROBE_TTL_S, limited to PROBE_TIMEOUT_S."""
+        async with self._probe_lock:  # concurrent /health calls share one docker call
+            now = time.monotonic()
+            if self._probe_at is None or now - self._probe_at >= PROBE_TTL_S:
+                self._probe = await self._check_sandbox()
+                self._probe_at = time.monotonic()
+            return self._probe
+
+    async def _check_sandbox(self) -> str | None:
+        tools = self._settings.tools
+        cmd = [tools.docker_bin, "image", "inspect", "--format", "{{.Id}}", tools.image]
+        try:
+            # The outer limit also covers a stuck pipe after the kill; cancelling run_process kills the process.
+            result = await asyncio.wait_for(
+                run_process(cmd, timeout_s=PROBE_TIMEOUT_S, cap=4_096), timeout=PROBE_TIMEOUT_S + 1.0
+            )
+        except (OSError, asyncio.TimeoutError) as exc:  # docker is not installed, not on PATH, or hung
+            log.warning("sandbox check: cannot run docker: %r", exc)
+            return cap.DOCKER_DOWN
+        if result.timed_out:
+            log.warning("sandbox check: docker did not answer within %.0f s", PROBE_TIMEOUT_S)
+            return cap.DOCKER_DOWN
+        if result.exit_code == 0:
+            return None
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        log.warning("sandbox check failed: %s", detail[-300:])
+        return cap.IMAGE_MISSING if cap.sandbox_failed(detail) == cap.IMAGE_MISSING else cap.DOCKER_DOWN
+
+    async def _run(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await super()._run(*args, **kwargs)
+        except ToolInfraError:
+            # A check from before this failure must not keep answering "ready": the next /health looks at Docker again.
+            self._probe_at = None
+            raise
 
     # ---------- image digest ----------
     async def image_digest(self) -> str:
@@ -81,7 +127,7 @@ class LocalDockerRunner(SandboxRunner):
                     f"cannot start docker ({tools.docker_bin!r}): {exc}", script=call.script
                 ) from exc
             except (OSError, asyncio.TimeoutError) as exc:
-                raise ToolInfraError(f"docker call failed: {exc}", script=call.script) from exc
+                raise ToolInfraError(f"docker call failed: {exc!r}", script=call.script) from exc  # repr: a bare TimeoutError has no text
             if result.timed_out:
                 await asyncio.shield(self._kill(name))  # before the temp dir is removed
         except asyncio.CancelledError:

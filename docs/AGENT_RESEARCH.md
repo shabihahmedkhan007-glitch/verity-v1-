@@ -1,5 +1,19 @@
 # Verity: from a 3-preset demo to an agent engineers work with
 
+> **History, superseded by `docs/PRD.md`.** This is the 2026-10-06 research and proposal. The reframe was decided by the design-partner plan (D28); the decisions are in `DECISIONS.md` and the requirements in `PRD.md`. Read this for the evidence, not for what is decided.
+>
+> The open decisions in section 8.1, closed 2026-10-23:
+> - U1 (reframe): superseded by the design partner (D28).
+> - U2 (which workflow leads the video): superseded; the debug and optimize workflows were not built as separate modes, and the video is an open item in `PRD.md` section 6.
+> - U3 (SystemVerilog subset): adopted on 2026-10-16 (backend R1, restricted SystemVerilog and one module).
+> - U4 (tool calls for the chat model): superseded by D18; the chat model calls no tools, code runs a closed set.
+> - U5 (reading the engineer's tests): superseded; there are no user-supplied packs, and the agent never sees the locked tests (D32).
+> - U6 (AI-drafted reference): superseded by D13; plain English never becomes a reference or a test.
+> - U7 (MCP server): not in the PRD; closed.
+> - U8 (external number): superseded; every number is against our own v1, and test strength comes from Verity's own planted bugs (D23).
+> - U10 (demo project source): superseded by the four live families and the recorded real mac4 run.
+> - **Still open:** U9 (Nebius Zero Data Retention for the hosting org) and U11 (talk to 3 to 5 RTL or DV engineers).
+
 **Date:** 2026-10-06. **Status:** proposal for the user to decide. Nothing here is built or decided yet.
 **Inputs:** four research tracks (industry, engineers, technical, architecture) and one skeptic pass that checked 66 claims against primary sources, our code and the `verity-tools:0.1` image: 0 refuted, 13 corrected (corrected values are used below).
 **Builds on:** `MEETING.md`, `REPORT.md` (D1 to D10), `backend/ARCHITECTURE.md`, `backend/README.md`.

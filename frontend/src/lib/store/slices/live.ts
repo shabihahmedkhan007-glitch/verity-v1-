@@ -7,7 +7,7 @@ import type { Store } from "../types";
 /** Compatible with the contract type; `reason` lets the Try page pick the busy or budget message. */
 export type StartLiveResult =
   | { runId: string }
-  | { error: string; reason?: "busy" | "budget_exhausted" | "maintenance" | "rate_limited" | "unauthorized" };
+  | { error: string; reason?: "busy" | "budget_exhausted" | "session_budget_exhausted" | "maintenance" | "rate_limited" | "unauthorized" | "sandbox_down" };
 
 const SESSION_EXPIRED = "Your session expired. Open the Try page and enter the access code again.";
 
@@ -16,8 +16,14 @@ export type LiveSlice = {
   runId: string | null;
   error: string | null;
   pendingSteers: SteerRequest[];
-  /** `params` and `title` come from the bench; `params` is sent only when the agent supports knobs. */
-  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string): Promise<StartLiveResult>;
+  /**
+   * The run has ended but its stream is still open: the server may send a few more events after the end (the sign-off
+   * checks run after the result shows). False once the stream closes.
+   */
+  tailOpen: boolean;
+  setTailOpen(open: boolean): void;
+  /** `params` and `title` come from the bench; `params` is sent only when the agent supports knobs. `researchId` is the check made before Run. `threadId` is the chat thread the run starts from. */
+  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string, researchId?: string, threadId?: string): Promise<StartLiveResult>;
   steer(req: SteerRequest): Promise<void>;
   stopRun(): Promise<void>;
   /** Replay only: a local human + winner event pair through the reducer. */
@@ -53,12 +59,17 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
   runId: null,
   error: null,
   pendingSteers: [],
+  tailOpen: false,
 
-  async startLive(presetId, priority, params, title) {
+  setTailOpen(open) {
+    if (get().tailOpen !== open) set({ tailOpen: open });
+  },
+
+  async startLive(presetId, priority, params, title, researchId, threadId) {
     // Dynamic import: the replay path never loads the module that can reach the agent.
     const live = await import("@/lib/sources/live");
     set({ connection: "connecting", error: null });
-    const res = await live.postRun(presetId, priority, params);
+    const res = await live.postRun(presetId, priority, params, researchId, threadId);
     if ("error" in res) {
       set({ connection: "idle", error: res.error });
       return res;
@@ -77,6 +88,7 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
       runId: res.runId,
       connection: "connecting",
       pendingSteers: [],
+      tailOpen: false,
       error: null,
     });
     // Never a blank canvas: place the preset's spec node before the first server event. Custom knobs change the spec,
@@ -175,6 +187,7 @@ export const createLiveSlice: StateCreator<Store, [], [], LiveSlice> = (set, get
       runId,
       connection: "connecting",
       pendingSteers: [],
+      tailOpen: false,
       error: null,
     });
   },

@@ -63,7 +63,7 @@ def create_app(
     `shutdown` hooks in reverse order (each runs even if an earlier one failed)."""
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         service_started = False
         try:
             for hook in startup:
@@ -82,6 +82,10 @@ def create_app(
                     await hook()
                 except Exception:
                     log.exception("shutdown hook failed")
+            try:
+                await application.state.api.auth.aclose()
+            except Exception:
+                log.exception("auth client close failed")
 
     production = settings.env == "production"
     app = FastAPI(
@@ -104,6 +108,8 @@ def create_app(
         auth_limiter=auth_limiter,
         run_limiter=run_limiter,
         parse_limiter=TokenBucketLimiter(settings.limits.parse_per_session_per_min, 60.0),
+        ask_limiter=TokenBucketLimiter(settings.limits.ask_per_session_per_min, 60.0),
+        message_limiter=TokenBucketLimiter(settings.limits.message_per_session_per_min, 60.0),
     )
 
     install_error_handlers(app)

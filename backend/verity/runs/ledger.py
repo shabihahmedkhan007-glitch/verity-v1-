@@ -49,7 +49,7 @@ class RunLedger:
         if self._elapsed() >= lim.max_wall_s:
             raise BudgetExhausted("max_wall_s", f"{self._elapsed():.0f} s elapsed")
 
-        price = self._settings.price_for(model)
+        price = self._settings.hold_price_for(model)  # dearest of the model and its fallback chain
         worst_usd = price_usd(price, max_input_tokens, max_output_tokens)
 
         open_calls = len(self._open)

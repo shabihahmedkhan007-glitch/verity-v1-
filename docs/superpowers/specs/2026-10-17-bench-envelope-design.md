@@ -1,5 +1,7 @@
 # Verity Bench: capability envelope design
 
+> **History, superseded by `docs/PRD.md`.** The 2026-10-17 bench envelope design (a draft). Its knob families, human reference and plain-English parse were built on 2026-10-18 (D13, D14); the bench has since become a chat workspace (D28). Hosting (section 8) is still open.
+
 Date: 2026-10-17. Status: draft for user review. Feature freeze 2026-10-25 (8 days), internal submit 2026-10-29.
 
 ## 1. Goal

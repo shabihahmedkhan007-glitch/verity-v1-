@@ -3,7 +3,8 @@
 Backends (LocalDockerRunner, NebiusSandboxRunner) implement `_execute`: run one fixed script with the given
 files and return what it printed. Everything else lives here:
 
-- the three ToolRunner methods and their timeouts, environment and parsing,
+- the ToolRunner methods and their timeouts, environment and parsing (verify, measure, eqy, and the sign-off and
+  waveform calls: seeds, strength, wave),
 - error classification (CONTRACTS 3.4): exit 0 parse the JSON; exit 2 input error (no retry); exit 3 or any
   other code or unparseable output is an infrastructure error (retried `tools.infra_retries` times, then
   ToolInfraError); outer timeout becomes a "timeout" result and is never an exception,
@@ -13,37 +14,45 @@ A failing design is never an exception: it is a result with a failing status.
 """
 
 import asyncio
+import json
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, TypeVar
 
 from ..config import Settings
 from ..core.errors import ToolInfraError
+from ..core.mutants import Mutant
 from ..core.pack import TaskPack
-from ..core.results import EquivalenceResult, MeasureResult, VerifyResult
+from ..core.results import EquivalenceResult, MeasureResult, SeedsResult, StrengthResult, VerifyResult, WaveResult
 from ..core.rtl import Rtl
 from .parse import SandboxOutputError, parse_stdout_json
-from .parsers import parse_eqy, parse_measure, parse_verify
+from .parsers import parse_eqy, parse_measure, parse_seeds, parse_strength, parse_verify, parse_wave
 
 log = logging.getLogger("verity.tools")
 
-Script = Literal["verify", "measure", "eqy"]
+Script = Literal["verify", "measure", "eqy", "seeds", "strength", "wave"]
 # Fixed command templates. Nothing derived from model output ever reaches a command line.
 SCRIPT_PATHS: dict[Script, str] = {
     "verify": "/verity/bin/verify",
     "measure": "/verity/bin/measure",
     "eqy": "/verity/bin/eqy",
+    "seeds": "/verity/bin/seeds",
+    "strength": "/verity/bin/strength",
+    "wave": "/verity/bin/wave",
 }
+SEED_WORKERS = 2  # /verity/bin/seeds runs two seeds at a time
+COMPILE_MARGIN_S = 10
 SANDBOX_PACK_DIR = "/pack"
 SANDBOX_WORK_DIR = "/work"
 RETRY_PAUSE_S = 1.0
 MEASURE_CACHE_SIZE = 128
 _CACHEABLE_MEASURE = frozenset({"ok", "synth_fail", "sta_fail"})
 
-T = TypeVar("T", VerifyResult, MeasureResult, EquivalenceResult)
+T = TypeVar("T", VerifyResult, MeasureResult, EquivalenceResult, SeedsResult, StrengthResult, WaveResult)
 
 
 class FatalToolError(ToolInfraError):
@@ -94,6 +103,11 @@ class SandboxRunner(ABC):
     def config_problems(self) -> list[str]:
         """Human-readable reasons this backend cannot run (empty when ready). Used by health checks."""
         return []
+
+    async def sandbox_problem(self) -> str | None:
+        """A plain sentence when the sandbox cannot run anything right now (Docker down, image missing), else None.
+        Must stay fast and cached: GET /health and POST /runs call it. Backends without a cheap check return None."""
+        return None
 
     # ---------- environment ----------
     @staticmethod
@@ -179,6 +193,64 @@ class SandboxRunner(ABC):
         # v1 (gold) is /work/dut.v, the candidate (gate) is /work/b.v (CONTRACTS 3.7).
         return await self._run("eqy", pack, {"dut.v": gold.data, "b.v": gate.data}, inner, parse_eqy, on_timeout)
 
+    # ---------- sign-off and waveform (CONTRACTS 3.9 to 3.11) ----------
+    async def verify_seeds(self, rtl: Rtl, pack: TaskPack, seeds: Sequence[int]) -> SeedsResult:
+        """The locked tests on more seeds in one call, plus lint warnings by tag. The pack files never change."""
+        t = self._settings.timeouts
+        inner = t.lint_s + t.sim_s * math.ceil(max(1, len(seeds)) / SEED_WORKERS) + COMPILE_MARGIN_S
+
+        def on_timeout(raw: RawOutput) -> SeedsResult:
+            return SeedsResult(status="timeout", message=f"the extra seeds did not finish within {inner} s", duration_ms=raw.duration_ms)
+
+        return await self._run(
+            "seeds",
+            pack,
+            {"dut.v": rtl.data},
+            inner,
+            lambda payload: parse_seeds(payload, expected_total=pack.test_count),
+            on_timeout,
+            extra_env={"VERITY_SEEDS": ",".join(str(int(s)) for s in seeds)},
+        )
+
+    async def test_strength(self, rtl: Rtl, pack: TaskPack, mutants: Sequence[Mutant]) -> StrengthResult:
+        """The locked tests on every planted mutant in one call. `rtl` is the design the mutants came from."""
+        cfg = self._settings.signoff
+        inner = cfg.strength_budget_s + cfg.mutant_timeout_s + COMPILE_MARGIN_S
+        body = json.dumps({"mutants": [{"id": m.id, "text": m.text} for m in mutants]}).encode("utf-8")
+
+        def on_timeout(raw: RawOutput) -> StrengthResult:
+            return StrengthResult(status="timeout", message=f"the planted bugs did not finish within {inner} s", duration_ms=raw.duration_ms)
+
+        return await self._run(
+            "strength",
+            pack,
+            {"dut.v": rtl.data, "mutants.json": body},
+            inner,
+            parse_strength,
+            on_timeout,
+            extra_env={
+                "VERITY_STRENGTH_BUDGET_S": str(cfg.strength_budget_s),
+                "VERITY_MUTANT_TIMEOUT_S": str(cfg.mutant_timeout_s),
+            },
+        )
+
+    async def waveform(self, rtl: Rtl, pack: TaskPack, case: str | None = None) -> WaveResult:
+        """One extra simulation with a waveform dump of one case (None: the first case), cut around its failure."""
+        inner = self._settings.timeouts.sim_s + COMPILE_MARGIN_S
+
+        def on_timeout(raw: RawOutput) -> WaveResult:
+            return WaveResult(status="timeout", message=f"the waveform did not finish within {inner} s", duration_ms=raw.duration_ms)
+
+        return await self._run(
+            "wave",
+            pack,
+            {"dut.v": rtl.data},
+            inner,
+            parse_wave,
+            on_timeout,
+            extra_env={"VERITY_WAVE_CASE": case or ""},
+        )
+
     # ---------- one sandbox call with retry ----------
     async def _run(
         self,
@@ -188,12 +260,14 @@ class SandboxRunner(ABC):
         inner_s: int,
         parse: Callable[[dict[str, Any]], T],
         on_timeout: Callable[[RawOutput], T],
+        *,
+        extra_env: Mapping[str, str] | None = None,
     ) -> T:
         call = SandboxCall(
             script=script,
             work_files=work_files,
             pack=pack,
-            env=self._env,
+            env={**self._env, **(extra_env or {})},
             timeout_s=inner_s + self._settings.timeouts.sandbox_overhead_s,
         )
         failure: ToolInfraError | None = None

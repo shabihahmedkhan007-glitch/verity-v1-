@@ -9,16 +9,21 @@ Owner of each implementation:
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..config import RoleName
 from ..contracts import (
     PPA,
+    AskReply,
     Attempt,
     Candidate,
     EventBase,
     HealthResponse,
+    MyRunsResponse,
     ParseReply,
+    ThreadMessageReply,
+    ThreadsResponse,
+    ThreadView,
     PinInput,
     Priority,
     RunLog,
@@ -28,10 +33,27 @@ from ..contracts import (
     Verification,
 )
 from .budget import BudgetLimits, CountKind, Reservation, SpendSnapshot, Usage
-from .llm_types import LLMRequest, LLMResponse, PlanOut, PlanResult, ResponseFormat, RtlOut
+from .llm_types import LLMRequest, LLMResponse, PlanOut, PlanResult, ResponseFormat, RtlOut, TriedVersion
 from .pack import TaskPack
-from .records import ArtifactRef, AttemptMeta, EvalResultRow, PathMode, RunPatch, RunRecord, RunStatus
-from .results import EquivalenceResult, MeasureResult, VerifyResult
+from .records import (
+    ArtifactRef,
+    AttemptMeta,
+    CandidateRow,
+    EvalResultRow,
+    PathMode,
+    ResearchRecord,
+    RunOutcomeRow,
+    RunPatch,
+    RunRecord,
+    RunStatus,
+    StrategyOutcomeRow,
+    ThreadData,
+    ThreadListItem,
+    ThreadTurnIn,
+    UserRunRow,
+)
+from .mutants import Mutant
+from .results import EquivalenceResult, MeasureResult, SeedsResult, StrengthResult, VerifyResult, WaveResult, WaveTrace
 from .rtl import Rtl
 
 # ======================================================================
@@ -87,8 +109,10 @@ class PlanFn(Protocol):
         *,
         previous: PlanOut | None = None,
         steering: Sequence[PinInput | ToggleInput] = (),
+        references: str = "",
     ) -> PlanResult:
         """Revision 1 when previous is None; otherwise a replan honoring the pins/toggles.
+        `references`: the code-built "Known approaches" section (only passed when there is one).
         Retries once on invalid JSON (plan.json_retries), then raises RoleOutputError."""
         ...
 
@@ -118,9 +142,13 @@ class RepairFn(Protocol):
         verification: Verification,
         *,
         attempt_n: int,
+        waves: WaveTrace | None = None,
+        parent_rtl: str | None = None,
     ) -> RtlOut:
         """FIX. Input: the failing RTL text (may be RTL that was rejected before sim) and its Verification
-        (lint log or up to 5 failing cases). Returns new RTL plus `diagnosis`."""
+        (lint log or up to 5 failing cases). `waves`: the first failing case cycle by cycle around the mismatch
+        (/verity/bin/wave), when there is one. `parent_rtl`: the passing parent of a failing child (never for v1),
+        shown in the prompt so the fix can restore the parent's logic. Returns new RTL plus `diagnosis`."""
         ...
 
 
@@ -134,8 +162,16 @@ class OptimizeFn(Protocol):
         baseline_ppa: PPA,
         priority: Priority,
         strategy: str,
+        *,
+        idea: str | None = None,
+        parent_measure: MeasureResult | None = None,
+        tried: Sequence[TriedVersion] = (),
     ) -> RtlOut:
-        """SIMPLIFY | OPTIMIZE | EXPLORE child. Must keep the interface and latency."""
+        """SIMPLIFY | OPTIMIZE | EXPLORE child. Must keep the interface and latency. `idea` (EXPLORE only, passed
+        only when set): one technique from the fixed list, our own text, replacing the generic EXPLORE idea.
+        `parent_measure`: the parent's synthesis and timing result, for the evidence block (cell types by area, flip-flop
+        count, critical path). `tried`: the other finished versions of this run (strategy, reason, result vs v1 or
+        rejected), listed in the prompt so the child does something different."""
         ...
 
 
@@ -165,8 +201,25 @@ class ToolRunner(Protocol):
         """/verity/bin/eqy: gold = v1 (mounted as /work/dut.v), gate = candidate (/work/b.v)."""
         ...
 
+    async def verify_seeds(self, rtl: Rtl, pack: TaskPack, seeds: Sequence[int]) -> SeedsResult:
+        """/verity/bin/seeds: Verilator lint (warnings by tag), then the locked tests once per seed. Sign-off."""
+        ...
+
+    async def test_strength(self, rtl: Rtl, pack: TaskPack, mutants: Sequence[Mutant]) -> StrengthResult:
+        """/verity/bin/strength: the locked tests on every planted mutant (sent as /work/mutants.json). Sign-off."""
+        ...
+
+    async def waveform(self, rtl: Rtl, pack: TaskPack, case: str | None = None) -> WaveResult:
+        """/verity/bin/wave: one case (None: the first) simulated with a VCD dump, cut around its first mismatch."""
+        ...
+
     async def image_digest(self) -> str:
         """Digest of the tool image, recorded on every run. "" if unknown."""
+        ...
+
+    async def sandbox_problem(self) -> str | None:
+        """A plain sentence when the sandbox cannot run anything now (Docker down, image missing), else None.
+        Fast and cached (about 15 s); GET /health reports `sandbox_down` and POST /runs answers 503 when it is set."""
         ...
 
 
@@ -292,11 +345,116 @@ class Store(Protocol):
     # ---- evals and spend ----
     async def add_eval_result(self, row: EvalResultRow) -> None: ...
 
-    async def add_daily_spend(self, day: str, usd: float) -> None:
-        """day = UTC 'YYYY-MM-DD'. Adds (not sets)."""
+    async def add_daily_spend(self, day: str, usd: float, session_id: str | None = None) -> None:
+        """day = UTC 'YYYY-MM-DD'. Adds (not sets). With a session id, the same amount is added to that session's
+        day in the same transaction (migration 5), so the two totals cannot drift."""
         ...
 
     async def daily_spend(self, day: str) -> float: ...
+
+    async def session_spend(self, session_id: str, day: str) -> float:
+        """What one session (later one user) has spent on this UTC day, from add_daily_spend(..., session_id)."""
+        ...
+
+    async def add_serper_credits(self, day: str, credits: int) -> None:
+        """Daily Serper credit counter (daily_spend.serper_credits). Adds (not sets)."""
+        ...
+
+    async def serper_credits(self, day: str) -> int: ...
+
+    async def add_tavily_credits(self, day: str, credits: int) -> None:
+        """Daily Tavily credit counter (daily_spend.tavily_credits, migration 4). Adds (not sets)."""
+        ...
+
+    async def tavily_credits(self, day: str) -> int: ...
+
+    # ---- candidates read back (outcome writer) ----
+    async def candidates_for_run(self, run_id: str) -> list[CandidateRow]: ...
+
+    # ---- research (migration 3) ----
+    async def put_research(self, record: ResearchRecord) -> None: ...
+
+    async def get_research(self, research_id: str) -> ResearchRecord | None: ...
+
+    async def research_by_key(self, key: str, now: datetime) -> ResearchRecord | None:
+        """Newest fresh research with status ok for this family-plus-knobs key."""
+        ...
+
+    async def research_by_query_key(self, query_key: str, now: datetime) -> ResearchRecord | None: ...
+
+    async def research_for_family(self, family: str, now: datetime, limit: int = 50) -> list[ResearchRecord]: ...
+
+    async def grant_research(self, research_id: str, session_hmac: str) -> None: ...
+
+    async def research_granted(self, research_id: str, session_hmac: str) -> bool: ...
+
+    # ---- run outcomes (migration 3) ----
+    async def put_run_outcome(self, row: RunOutcomeRow) -> None:
+        """Idempotent upsert keyed by run_id."""
+        ...
+
+    async def put_strategy_outcomes(self, run_id: str, rows: Sequence[StrategyOutcomeRow]) -> None: ...
+
+    async def get_run_outcome(self, run_id: str) -> RunOutcomeRow | None: ...
+
+    async def run_outcomes(
+        self, key: str, pack_sha256: str, tool_image_digest: str, limit: int = 20
+    ) -> list[RunOutcomeRow]: ...
+
+    async def strategy_outcomes(
+        self, key: str, pack_sha256: str, tool_image_digest: str, limit: int = 200
+    ) -> list[StrategyOutcomeRow]: ...
+
+
+# ======================================================================
+# Threads (the bench chat after the first chip request)
+# ======================================================================
+
+
+@runtime_checkable
+class ThreadStore(Protocol):
+    """Every read and write of a thread, and nothing else, so the chats can move to another database without touching
+    the agent or the routes. SqliteStore implements it (migrations 6 and 7) and so does SupabaseThreadStore (Postgres
+    through the Data API; a store that cannot be reached raises core.errors.StoreUnavailable, HTTP 502). `owner` is
+    core.budget.spend_owner(session id)."""
+
+    async def get_or_create(self, owner: str, thread_id: str, *, since_summary: bool = False) -> ThreadData:
+        """The thread, created empty (no facts, no summary, no turns) when this owner does not have it."""
+        ...
+
+    async def load(self, owner: str, thread_id: str, *, since_summary: bool = False) -> ThreadData | None:
+        """Facts, summary, summarized_through and the turns; None for a thread this owner does not have. With
+        `since_summary` only the rows after `summarized_through` come back (what the agent reads); otherwise all."""
+        ...
+
+    async def append_turns(self, owner: str, thread_id: str, turns: Sequence[ThreadTurnIn]) -> int:
+        """Add messages in order, in one transaction, cut to THREAD_USER_MAX and THREAD_VERITY_MAX characters. Returns
+        the seq of the last row. Raises NotFound for a thread this owner does not have."""
+        ...
+
+    async def update_facts(self, owner: str, thread_id: str, facts: dict[str, Any]) -> None:
+        """Replace the facts record (written by code only). Raises NotFound."""
+        ...
+
+    async def update_summary(self, owner: str, thread_id: str, summary: str, through_seq: int) -> None:
+        """Replace the summary; every row up to `through_seq` is folded into it. Raises NotFound."""
+        ...
+
+    async def list_threads(self, owner: str, limit: int = 50) -> list[ThreadListItem]:
+        """This owner's threads that have at least one message, newest first."""
+        ...
+
+    async def claim(self, from_owner: str, to_owner: str) -> int:
+        """Move every thread of one owner to another (a sign-in claiming what the session made). Returns how many."""
+        ...
+
+    async def add_user_run(self, owner: str, run_id: str, thread_id: str | None, title: str) -> None:
+        """Record that `owner` started `run_id` (in `thread_id` when it came from a thread). Idempotent per run."""
+        ...
+
+    async def list_user_runs(self, owner: str, limit: int = 50) -> list[UserRunRow]:
+        """The runs this owner started, newest first."""
+        ...
 
 
 # ======================================================================
@@ -328,9 +486,13 @@ class RunService(Protocol):
         priority: Priority,
         mode: PathMode,
         params: Mapping[str, object] | None = None,
+        research_id: str | None = None,
+        thread_id: str | None = None,
     ) -> RunRecord:
         """Admission (concurrency per session and global, daily spend), create the run row, start the asyncio
-        task. Raises UnknownPreset, AdmissionDenied(reason), ParamsError (bad knob values)."""
+        task. Raises UnknownPreset, AdmissionDenied(reason), ParamsError (bad knob values). A research_id that this
+        session was not handed, or that does not match the family and knobs, is ignored (never an error). A thread_id
+        that is this session's thread gets the run id in its facts; any other is ignored."""
         ...
 
     async def steer(self, run_id: str, session_id: str, request: object) -> None:
@@ -355,13 +517,42 @@ class RunService(Protocol):
 
     async def health(self) -> HealthResponse: ...
 
-    async def parse(self, text: str) -> ParseReply:
-        """POST /parse: one planner call, validated against the knob tables. Raises AdmissionDenied
-        (maintenance | budget_exhausted) and LLMError. The call's cost is added to the daily spend."""
+    async def parse(self, text: str, *, session_id: str = "") -> ParseReply:
+        """POST /parse (fact check): one parser-route call, validated against the knob tables, then research for
+        every class but not_chip. Raises AdmissionDenied (maintenance | budget_exhausted) and LLMError (the parser
+        call itself failed). Worst-case spend is reserved on the daily budget before the calls; the real cost is
+        added to the daily spend."""
         ...
 
     async def list_runs(self, limit: int = 50, offset: int = 0) -> RunsResponse:
         """GET /runs: list recent runs with their summary and winner PPA."""
+        ...
+
+    async def ask(self, run_id: str, *, session_id: str, text: str, focus_version: str | None = None) -> AskReply:
+        """POST /runs/{id}/ask: one chat turn about an ENDED run from its owner session. Raises NotFound, Forbidden,
+        Conflict (queued or running) and AdmissionDenied (maintenance | budget_exhausted, only for a turn that needs a
+        model call). A model failure never raises: the turn falls back to a code answer."""
+        ...
+
+    async def thread_message(
+        self, thread_id: str, *, session_id: str, text: str, run_id: str | None = None, focus_version: str | None = None
+    ) -> ThreadMessageReply:
+        """POST /threads/{id}/messages: one message of a thread. The first chip request runs the fact check (parse) in
+        the same call; every message then goes to the agent (verity.ask.agent). `run_id` was already checked to be this
+        session's by the route. Raises AdmissionDenied (maintenance | budget_exhausted | session_budget_exhausted) and
+        LLMError (the fact check's parser call failed). A failed agent call never raises: the reply falls back to code."""
+        ...
+
+    async def list_threads(self, session_id: str, limit: int = 50) -> ThreadsResponse:
+        """GET /threads: this session's threads, newest first."""
+        ...
+
+    async def read_thread(self, session_id: str, thread_id: str) -> ThreadView:
+        """GET /threads/{id}: the stored turns of one of this session's threads. Raises NotFound."""
+        ...
+
+    async def list_my_runs(self, session_id: str, limit: int = 50) -> MyRunsResponse:
+        """GET /runs/mine: the runs this session started (a signed-in user's, on any device), newest first."""
         ...
 
 
@@ -376,6 +567,7 @@ __all__ = [
     "Ledger",
     "EventSink",
     "Store",
+    "ThreadStore",
     "RunService",
     "EvalResultRow",
     "ArtifactRef",

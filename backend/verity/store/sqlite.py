@@ -20,19 +20,44 @@ from ..contracts import (
     Attempt,
     Candidate,
     EventBase,
+    RunOutcomeSummary,
+    RunSignoffSummary,
     RunSummaryItem,
     RunWinnerSummary,
     event_to_json,
     parse_event_json,
     to_json,
 )
-from ..core.budget import BudgetLimits, SpendSnapshot
+from ..contracts.signoff import Signoff
+from ..core.budget import BudgetLimits, SpendSnapshot, spend_owner
 from ..core.errors import NotFound
-from ..core.records import ArtifactRef, AttemptMeta, EvalResultRow, RunPatch, RunRecord, RunStatus
+from ..core.records import (
+    ArtifactRef,
+    AttemptMeta,
+    CandidateRow,
+    EvalResultRow,
+    ResearchRecord,
+    ResearchSourceRow,
+    RunOutcomeRow,
+    RunPatch,
+    RunRecord,
+    RunStatus,
+    StrategyOutcomeRow,
+    THREAD_USER_MAX,
+    THREAD_VERITY_MAX,
+    ThreadData,
+    ThreadListItem,
+    ThreadTurnIn,
+    ThreadTurnRow,
+    UserRunRow,
+    capped_reply,
+    thread_title,
+)
 from .files import ArtifactFiles, sha256_hex
 from .migrations import MIGRATIONS
 
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SIGNOFF_FILE = "final/signoff.json"  # the winner's sign-off sheet, written once per run (orchestrator/signoff.py)
 
 
 class DuplicateEvent(ValueError):
@@ -92,6 +117,7 @@ def _row_to_run(row: sqlite3.Row) -> RunRecord:
     keys = row.keys()
     params = json.loads(row["params_json"]) if "params_json" in keys and row["params_json"] else None
     title = row["title"] if "title" in keys else None
+    research_id = row["research_id"] if "research_id" in keys else None
     return RunRecord(
         id=row["id"],
         session_id=row["session_id"],
@@ -114,7 +140,54 @@ def _row_to_run(row: sqlite3.Row) -> RunRecord:
         git_sha=row["git_sha"],
         params=params,
         title=title,
+        research_id=research_id,
     )
+
+
+def _ppa_value(ppa: dict[str, Any], snake: str, camel_name: str) -> float | None:
+    value = ppa.get(snake) if ppa.get(snake) is not None else ppa.get(camel_name)
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _row_to_research(row: sqlite3.Row, sources: list[ResearchSourceRow]) -> ResearchRecord:
+    summary = json.loads(row["summary_json"]) if row["summary_json"] else {}
+    return ResearchRecord(
+        id=row["id"],
+        created_at=_dt(row["created_at"]),
+        expires_at=_dt(row["expires_at"]),
+        key=row["key"],
+        query_key=row["query_key"],
+        family=row["family"],
+        params=json.loads(row["params_json"]) if row["params_json"] else None,
+        intent_class=row["intent_class"],
+        intent_label=row["intent_label"],
+        text_sha256=row["text_sha256"],
+        verdict=row["verdict"],
+        status=row["status"],
+        queries=json.loads(row["queries_json"]),
+        sentences=summary.get("sentences", []) if isinstance(summary, dict) else [],
+        techniques=json.loads(row["techniques_json"]),
+        done_before=bool(row["done_before"]),
+        model=row["model"],
+        prompt_version=row["prompt_version"],
+        input_tokens=row["input_tokens"],
+        output_tokens=row["output_tokens"],
+        llm_usd=row["llm_usd"],
+        serper_credits=row["serper_credits"],
+        tavily_credits=row["tavily_credits"],
+        usd=row["usd"],
+        latency_ms=row["latency_ms"],
+        sources=sources,
+    )
+
+
+# run_outcome columns, in insert order. Column names come from this static tuple only.
+_OUTCOME_COLUMNS = (
+    "run_id", "research_id", "family", "params_json", "key", "priority", "mode", "status", "partial", "pack_sha256",
+    "tool_image_digest", "models_json", "v1_area_um2", "v1_clock_ns", "v1_power_mw", "winner_id", "winner_label",
+    "winner_strategy", "winner_technique", "winner_area_rel", "winner_clock_rel", "winner_power_rel", "winner_eqy",
+    "versions", "fixes", "rejected", "usd", "llm_calls", "wall_s", "created_at", "updated_at",
+)
 
 
 class SqliteStore:
@@ -191,8 +264,8 @@ class SqliteStore:
             INSERT INTO runs (
                 id, session_id, preset_id, priority, mode, status, created_at, started_at, ended_at, heartbeat_at,
                 budget_json, spent_json, task_pack_sha256, tool_image_digest, models_json, prompt_versions_json,
-                error_reason, winner_id, git_sha, params_json, title
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                error_reason, winner_id, git_sha, params_json, title, research_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run.id,
@@ -216,6 +289,7 @@ class SqliteStore:
                 run.git_sha,
                 _json(run.params) if run.params is not None else None,
                 run.title,
+                run.research_id,
             ),
         )
 
@@ -274,18 +348,37 @@ class SqliteStore:
         row = await self._fetchone(f"SELECT COUNT(*) FROM runs{where}", params)
         return int(row[0]) if row else 0
 
+    def _read_signoffs(self, wanted: Sequence[tuple[str, str]]) -> dict[str, RunSignoffSummary]:
+        """The seeds line of each winner's sign-off sheet (final/signoff.json), by run id. Blocking: call in a thread.
+        A missing or unreadable sheet, or one for another version than the winner, is left out."""
+        found: dict[str, RunSignoffSummary] = {}
+        for run_id, winner_id in wanted:
+            try:
+                raw = self._files.read_run_file(run_id, _SIGNOFF_FILE)
+                sheet = Signoff.model_validate_json(raw) if raw else None
+            except Exception:
+                continue
+            if sheet is not None and sheet.candidate_id == winner_id and sheet.tests.seeds_run > 0:
+                found[run_id] = RunSignoffSummary(seeds_passed=sheet.tests.seeds_passed, seeds_run=sheet.tests.seeds_run)
+        return found
+
     async def list_runs(self, limit: int = 50, offset: int = 0) -> list[RunSummaryItem]:
         rows = await self._fetchall(
             """
-            SELECT r.id, r.preset_id, r.params_json, r.title, r.status, r.ended_at,
-                   c.label AS winner_label, c.ppa_json AS winner_ppa_json
+            SELECT r.id, r.preset_id, r.params_json, r.title, r.status, r.ended_at, r.winner_id,
+                   c.label AS winner_label, c.ppa_json AS winner_ppa_json,
+                   o.run_id AS outcome_run_id, o.winner_area_rel, o.winner_clock_rel, o.winner_power_rel,
+                   o.versions AS outcome_versions, o.usd AS outcome_usd
             FROM runs r
             LEFT JOIN candidates c ON c.run_id = r.id AND c.id = r.winner_id
+            LEFT JOIN run_outcome o ON o.run_id = r.id
             ORDER BY r.created_at DESC
             LIMIT ? OFFSET ?
             """,
             (limit, offset),
         )
+        wanted = [(row["id"], row["winner_id"]) for row in rows if row["outcome_run_id"] and row["winner_id"]]
+        signoffs = await asyncio.to_thread(self._read_signoffs, wanted) if wanted else {}
         items: list[RunSummaryItem] = []
         for row in rows:
             params = json.loads(row["params_json"]) if row["params_json"] else None
@@ -297,6 +390,16 @@ class SqliteStore:
                 winner = RunWinnerSummary(label=row["winner_label"], area_um2=area, clock_period_ns=clock)
             finished_at = _iso_opt(_dt_opt(row["ended_at"]))
             title = row["title"] or row["preset_id"]
+            outcome = None
+            if row["outcome_run_id"]:
+                outcome = RunOutcomeSummary(
+                    area_vs_v1=row["winner_area_rel"],
+                    clock_vs_v1=row["winner_clock_rel"],
+                    power_vs_v1=row["winner_power_rel"],
+                    versions=row["outcome_versions"],
+                    usd=row["outcome_usd"],
+                    signoff=signoffs.get(row["id"]),
+                )
             items.append(
                 RunSummaryItem(
                     id=row["id"],
@@ -306,6 +409,7 @@ class SqliteStore:
                     status=row["status"],
                     finished_at=finished_at,
                     winner=winner,
+                    outcome=outcome,
                 )
             )
         return items
@@ -399,6 +503,37 @@ class SqliteStore:
             ),
         )
 
+    async def candidates_for_run(self, run_id: str) -> list[CandidateRow]:
+        rows = await self._fetchall(
+            """
+            SELECT id, label, round, parent_id, created_by, status, fitness, ppa_json, eqy_json, fix_count, is_baseline
+            FROM candidates WHERE run_id = ? ORDER BY round, id
+            """,
+            (run_id,),
+        )
+        out: list[CandidateRow] = []
+        for row in rows:
+            ppa = json.loads(row["ppa_json"]) if row["ppa_json"] else {}
+            eqy = json.loads(row["eqy_json"]) if row["eqy_json"] else {}
+            out.append(
+                CandidateRow(
+                    id=row["id"],
+                    label=row["label"],
+                    round=row["round"],
+                    parent_id=row["parent_id"],
+                    created_by=row["created_by"],
+                    status=row["status"],
+                    fitness=row["fitness"],
+                    area_um2=_ppa_value(ppa, "area_um2", "areaUm2"),
+                    clock_period_ns=_ppa_value(ppa, "clock_period_ns", "clockPeriodNs"),
+                    power_mw=_ppa_value(ppa, "power_mw", "powerMw"),
+                    eqy=eqy.get("status") if isinstance(eqy, dict) else None,
+                    fix_count=row["fix_count"],
+                    is_baseline=bool(row["is_baseline"]),
+                )
+            )
+        return out
+
     # ---------- events ----------
     async def append_event(self, run_id: str, event: EventBase) -> None:
         """event is already stamped. Raises DuplicateEvent if (run_id, seq) exists."""
@@ -450,18 +585,486 @@ class SqliteStore:
             (row.eval_run_id, row.task_id, row.suite, _json(row.metrics), row.git_sha, _iso(row.created_at)),
         )
 
-    async def add_daily_spend(self, day: str, usd: float) -> None:
-        """day = UTC 'YYYY-MM-DD'. Adds (not sets)."""
+    async def add_daily_spend(self, day: str, usd: float, session_id: str | None = None) -> None:
+        """day = UTC 'YYYY-MM-DD'. Adds (not sets). With a session id, the same amount is added to that owner's day
+        (session_spend, migration 5) in the same transaction, so the two totals cannot drift."""
         if not _DAY_RE.fullmatch(day):
             raise ValueError(f"invalid day {day!r}, expected YYYY-MM-DD")
-        await self._write(
-            """
-            INSERT INTO daily_spend (day, usd) VALUES (?, ?)
-            ON CONFLICT (day) DO UPDATE SET usd = daily_spend.usd + excluded.usd
-            """,
-            (day, usd),
-        )
+        db = self._conn()
+        async with self._lock:
+            try:
+                await db.execute(
+                    """
+                    INSERT INTO daily_spend (day, usd) VALUES (?, ?)
+                    ON CONFLICT (day) DO UPDATE SET usd = daily_spend.usd + excluded.usd
+                    """,
+                    (day, usd),
+                )
+                if session_id is not None:
+                    await db.execute(
+                        """
+                        INSERT INTO session_spend (session_id, day, usd) VALUES (?, ?, ?)
+                        ON CONFLICT (session_id, day) DO UPDATE SET usd = session_spend.usd + excluded.usd
+                        """,
+                        (spend_owner(session_id), day, usd),
+                    )
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
 
     async def daily_spend(self, day: str) -> float:
         row = await self._fetchone("SELECT usd FROM daily_spend WHERE day = ?", (day,))
         return float(row[0]) if row else 0.0
+
+    async def session_spend(self, session_id: str, day: str) -> float:
+        row = await self._fetchone(
+            "SELECT usd FROM session_spend WHERE session_id = ? AND day = ?", (spend_owner(session_id), day)
+        )
+        return float(row[0]) if row else 0.0
+
+    async def add_serper_credits(self, day: str, credits: int) -> None:
+        """Daily Serper credit counter, next to the daily dollars. Adds (not sets)."""
+        if not _DAY_RE.fullmatch(day):
+            raise ValueError(f"invalid day {day!r}, expected YYYY-MM-DD")
+        await self._write(
+            """
+            INSERT INTO daily_spend (day, usd, serper_credits) VALUES (?, 0, ?)
+            ON CONFLICT (day) DO UPDATE SET serper_credits = daily_spend.serper_credits + excluded.serper_credits
+            """,
+            (day, int(credits)),
+        )
+
+    async def serper_credits(self, day: str) -> int:
+        row = await self._fetchone("SELECT serper_credits FROM daily_spend WHERE day = ?", (day,))
+        return int(row[0]) if row and row[0] is not None else 0
+
+    async def add_tavily_credits(self, day: str, credits: int) -> None:
+        """Daily Tavily credit counter (migration 4), next to the daily dollars. Adds (not sets)."""
+        if not _DAY_RE.fullmatch(day):
+            raise ValueError(f"invalid day {day!r}, expected YYYY-MM-DD")
+        await self._write(
+            """
+            INSERT INTO daily_spend (day, usd, tavily_credits) VALUES (?, 0, ?)
+            ON CONFLICT (day) DO UPDATE SET tavily_credits = daily_spend.tavily_credits + excluded.tavily_credits
+            """,
+            (day, int(credits)),
+        )
+
+    async def tavily_credits(self, day: str) -> int:
+        row = await self._fetchone("SELECT tavily_credits FROM daily_spend WHERE day = ?", (day,))
+        return int(row[0]) if row and row[0] is not None else 0
+
+    # ---------- research (migration 3) ----------
+    async def put_research(self, record: ResearchRecord) -> None:
+        """Insert one research record with its sources in one transaction. Sources are shared by canonical URL."""
+        db = self._conn()
+        now = _now_iso()
+        async with self._lock:
+            try:
+                await db.execute(
+                    """
+                    INSERT INTO research (
+                        id, created_at, expires_at, key, query_key, family, params_json, intent_class, intent_label,
+                        text_sha256, verdict, status, queries_json, summary_json, techniques_json, done_before, model,
+                        prompt_version, input_tokens, output_tokens, llm_usd, serper_credits, tavily_credits, usd,
+                        latency_ms
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.id,
+                        _iso(record.created_at),
+                        _iso(record.expires_at),
+                        record.key,
+                        record.query_key,
+                        record.family,
+                        _json(record.params) if record.params is not None else None,
+                        record.intent_class,
+                        record.intent_label,
+                        record.text_sha256,
+                        record.verdict,
+                        record.status,
+                        _json(record.queries),
+                        _json({"sentences": record.sentences}),
+                        _json(record.techniques),
+                        int(record.done_before),
+                        record.model,
+                        record.prompt_version,
+                        record.input_tokens,
+                        record.output_tokens,
+                        record.llm_usd,
+                        record.serper_credits,
+                        record.tavily_credits,
+                        record.usd,
+                        record.latency_ms,
+                    ),
+                )
+                for src in record.sources:
+                    source_id = sha256_hex(src.url.encode("utf-8"))
+                    await db.execute(
+                        """
+                        INSERT INTO source (id, url, domain, tier, title, first_seen, last_seen)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (id) DO UPDATE SET last_seen = excluded.last_seen, title = excluded.title
+                        """,
+                        (source_id, src.url, src.domain, src.tier, src.title, now, now),
+                    )
+                    await db.execute(
+                        """
+                        INSERT OR REPLACE INTO research_source (
+                            research_id, source_id, n, endpoint, query_idx, rank, snippet, pub_date_raw, score,
+                            relevance, cited
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            record.id,
+                            source_id,
+                            src.n,
+                            src.endpoint,
+                            src.query_idx,
+                            src.rank,
+                            src.snippet,
+                            src.date,
+                            src.score,
+                            src.relevance,
+                            int(src.cited),
+                        ),
+                    )
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    async def _research_sources(self, research_id: str) -> list[ResearchSourceRow]:
+        rows = await self._fetchall(
+            """
+            SELECT rs.n, s.url, s.domain, s.tier, s.title, rs.endpoint, rs.query_idx, rs.rank, rs.snippet,
+                   rs.pub_date_raw, rs.score, rs.relevance, rs.cited
+            FROM research_source rs JOIN source s ON s.id = rs.source_id
+            WHERE rs.research_id = ? ORDER BY rs.n
+            """,
+            (research_id,),
+        )
+        return [
+            ResearchSourceRow(
+                n=row["n"],
+                url=row["url"],
+                domain=row["domain"],
+                tier=row["tier"],
+                title=row["title"],
+                endpoint=row["endpoint"],
+                query_idx=row["query_idx"],
+                rank=row["rank"],
+                snippet=row["snippet"],
+                date=row["pub_date_raw"],
+                score=row["score"],
+                relevance=row["relevance"],
+                cited=bool(row["cited"]),
+            )
+            for row in rows
+        ]
+
+    async def get_research(self, research_id: str) -> ResearchRecord | None:
+        row = await self._fetchone("SELECT * FROM research WHERE id = ?", (research_id,))
+        if row is None:
+            return None
+        return _row_to_research(row, await self._research_sources(research_id))
+
+    async def _fresh_research(self, column: str, value: str, now: datetime) -> ResearchRecord | None:
+        # `column` is one of the two literals passed by the methods below, never input.
+        row = await self._fetchone(
+            f"""
+            SELECT * FROM research WHERE {column} = ? AND status = 'ok' AND expires_at > ?
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (value, _iso(now)),
+        )
+        if row is None:
+            return None
+        return _row_to_research(row, await self._research_sources(row["id"]))
+
+    async def research_by_key(self, key: str, now: datetime) -> ResearchRecord | None:
+        """The newest fresh (not expired) research with status ok for this family-plus-knobs key."""
+        return await self._fresh_research("key", key, now)
+
+    async def research_by_query_key(self, query_key: str, now: datetime) -> ResearchRecord | None:
+        """The newest fresh research with status ok for these templated queries."""
+        return await self._fresh_research("query_key", query_key, now)
+
+    async def research_for_family(self, family: str, now: datetime, limit: int = 50) -> list[ResearchRecord]:
+        """Fresh ok in-family research of one family, newest first, without sources (nearest-knob lookup)."""
+        rows = await self._fetchall(
+            """
+            SELECT * FROM research
+            WHERE family = ? AND key IS NOT NULL AND status = 'ok' AND expires_at > ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (family, _iso(now), limit),
+        )
+        return [_row_to_research(row, []) for row in rows]
+
+    async def grant_research(self, research_id: str, session_hmac: str) -> None:
+        await self._write(
+            "INSERT OR IGNORE INTO research_grant (research_id, session_hmac, created_at) VALUES (?, ?, ?)",
+            (research_id, session_hmac, _now_iso()),
+        )
+
+    async def research_granted(self, research_id: str, session_hmac: str) -> bool:
+        row = await self._fetchone(
+            "SELECT 1 FROM research_grant WHERE research_id = ? AND session_hmac = ?", (research_id, session_hmac)
+        )
+        return row is not None
+
+    # ---------- run outcomes (migration 3) ----------
+    async def put_run_outcome(self, row: RunOutcomeRow) -> None:
+        """Idempotent upsert keyed by run_id: the orchestrator writes it at its ending, the run manager again at
+        finalize (stop, error and crash included). created_at keeps the first write."""
+        values: dict[str, Any] = row.model_dump()
+        values["params_json"] = _json(values.pop("params"))
+        values["models_json"] = _json(values.pop("models"))
+        values["partial"] = int(row.partial)
+        values["created_at"] = _iso(row.created_at)
+        values["updated_at"] = _now_iso()
+        marks = ", ".join("?" for _ in _OUTCOME_COLUMNS)
+        updates = ", ".join(f"{c} = excluded.{c}" for c in _OUTCOME_COLUMNS if c not in ("run_id", "created_at"))
+        await self._write(
+            f"INSERT INTO run_outcome ({', '.join(_OUTCOME_COLUMNS)}) VALUES ({marks}) "
+            f"ON CONFLICT (run_id) DO UPDATE SET {updates}",
+            tuple(values[c] for c in _OUTCOME_COLUMNS),
+        )
+
+    async def put_strategy_outcomes(self, run_id: str, rows: Sequence[StrategyOutcomeRow]) -> None:
+        """Replace this run's strategy rows (one per version tried after v1) in one transaction."""
+        db = self._conn()
+        async with self._lock:
+            try:
+                await db.execute("DELETE FROM strategy_outcome WHERE run_id = ?", (run_id,))
+                for r in rows:
+                    await db.execute(
+                        """
+                        INSERT INTO strategy_outcome (
+                            run_id, candidate_id, label, key, pack_sha256, tool_image_digest, strategy, technique,
+                            result, area_rel, clock_rel, power_rel
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            r.candidate_id,
+                            r.label,
+                            r.key,
+                            r.pack_sha256,
+                            r.tool_image_digest,
+                            r.strategy,
+                            r.technique,
+                            r.result,
+                            r.area_rel,
+                            r.clock_rel,
+                            r.power_rel,
+                        ),
+                    )
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    @staticmethod
+    def _row_to_outcome(row: sqlite3.Row) -> RunOutcomeRow:
+        data: dict[str, Any] = {c: row[c] for c in _OUTCOME_COLUMNS if c not in ("params_json", "models_json", "updated_at")}
+        data["params"] = json.loads(row["params_json"]) if row["params_json"] else {}
+        data["models"] = json.loads(row["models_json"]) if row["models_json"] else {}
+        data["partial"] = bool(row["partial"])
+        data["created_at"] = _dt(row["created_at"])
+        return RunOutcomeRow(**data)
+
+    async def get_run_outcome(self, run_id: str) -> RunOutcomeRow | None:
+        row = await self._fetchone("SELECT * FROM run_outcome WHERE run_id = ?", (run_id,))
+        return None if row is None else self._row_to_outcome(row)
+
+    async def run_outcomes(self, key: str, pack_sha256: str, tool_image_digest: str, limit: int = 20) -> list[RunOutcomeRow]:
+        """Comparable earlier runs only: same family-plus-knobs key, same task pack hash and same tool image."""
+        rows = await self._fetchall(
+            """
+            SELECT * FROM run_outcome WHERE key = ? AND pack_sha256 = ? AND tool_image_digest = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (key, pack_sha256, tool_image_digest, limit),
+        )
+        return [self._row_to_outcome(row) for row in rows]
+
+    async def strategy_outcomes(
+        self, key: str, pack_sha256: str, tool_image_digest: str, limit: int = 200
+    ) -> list[StrategyOutcomeRow]:
+        rows = await self._fetchall(
+            """
+            SELECT * FROM strategy_outcome WHERE key = ? AND pack_sha256 = ? AND tool_image_digest = ?
+            ORDER BY run_id, candidate_id LIMIT ?
+            """,
+            (key, pack_sha256, tool_image_digest, limit),
+        )
+        return [StrategyOutcomeRow.model_validate({k: row[k] for k in row.keys()}) for row in rows]
+
+    # ---------- threads (migration 6; core.protocols.ThreadStore) ----------
+    @staticmethod
+    def _facts(raw: str) -> dict[str, Any]:
+        try:
+            facts = json.loads(raw)
+        except ValueError:
+            return {}
+        return facts if isinstance(facts, dict) else {}
+
+    @staticmethod
+    def _row_to_turn(row: sqlite3.Row) -> ThreadTurnRow:
+        try:
+            steps = json.loads(row["steps_json"]) if row["steps_json"] else []
+        except ValueError:
+            steps = []
+        try:
+            reply = json.loads(row["reply_json"]) if row["reply_json"] else None
+        except ValueError:
+            reply = None
+        return ThreadTurnRow(
+            seq=int(row["seq"]),
+            role=row["role"],
+            text=row["text"],
+            steps=[s for s in steps if isinstance(s, dict)] if isinstance(steps, list) else [],
+            reply=reply if isinstance(reply, dict) else None,
+            created_at=_dt(row["created_at"]),
+        )
+
+    async def load(self, owner: str, thread_id: str, *, since_summary: bool = False) -> ThreadData | None:
+        row = await self._fetchone("SELECT * FROM threads WHERE owner = ? AND id = ?", (owner, thread_id))
+        if row is None:
+            return None
+        through = int(row["summarized_through"])
+        rows = await self._fetchall(
+            "SELECT * FROM thread_turns WHERE owner = ? AND thread_id = ? AND seq > ? ORDER BY seq",
+            (owner, thread_id, through if since_summary else 0),
+        )
+        return ThreadData(
+            owner=row["owner"],
+            id=row["id"],
+            created_at=_dt(row["created_at"]),
+            updated_at=_dt(row["updated_at"]),
+            facts=self._facts(row["facts_json"]),
+            summary=row["summary"],
+            summarized_through=through,
+            turns=[self._row_to_turn(r) for r in rows],
+        )
+
+    async def get_or_create(self, owner: str, thread_id: str, *, since_summary: bool = False) -> ThreadData:
+        now = _now_iso()
+        await self._write(
+            "INSERT OR IGNORE INTO threads (owner, id, created_at, updated_at, facts_json) VALUES (?, ?, ?, ?, '{}')",
+            (owner, thread_id, now, now),
+        )
+        data = await self.load(owner, thread_id, since_summary=since_summary)
+        assert data is not None  # the row was just inserted, or was there
+        return data
+
+    async def update_facts(self, owner: str, thread_id: str, facts: dict[str, Any]) -> None:
+        changed = await self._write(
+            "UPDATE threads SET facts_json = ?, updated_at = ? WHERE owner = ? AND id = ?",
+            (_json(facts), _now_iso(), owner, thread_id),
+        )
+        if not changed:
+            raise NotFound(thread_id)
+
+    async def update_summary(self, owner: str, thread_id: str, summary: str, through_seq: int) -> None:
+        changed = await self._write(
+            "UPDATE threads SET summary = ?, summarized_through = ?, updated_at = ? WHERE owner = ? AND id = ?",
+            (summary, through_seq, _now_iso(), owner, thread_id),
+        )
+        if not changed:
+            raise NotFound(thread_id)
+
+    async def append_turns(self, owner: str, thread_id: str, turns: Sequence[ThreadTurnIn]) -> int:
+        """Add the rows in one transaction, cut to THREAD_USER_MAX and THREAD_VERITY_MAX characters. Returns the seq of
+        the last row (the current one when `turns` is empty). Raises NotFound for a thread that does not exist."""
+        db = self._conn()
+        now = _now_iso()
+        async with self._lock:
+            try:
+                async with db.execute("SELECT 1 FROM threads WHERE owner = ? AND id = ?", (owner, thread_id)) as cur:
+                    if await cur.fetchone() is None:
+                        raise NotFound(thread_id)
+                async with db.execute(
+                    "SELECT COALESCE(MAX(seq), 0) FROM thread_turns WHERE owner = ? AND thread_id = ?", (owner, thread_id)
+                ) as cur:
+                    seq = int((await cur.fetchone())[0])  # type: ignore[index]
+                for turn in turns:
+                    seq += 1
+                    cap = THREAD_USER_MAX if turn.role == "user" else THREAD_VERITY_MAX
+                    reply = capped_reply(turn.reply) if turn.role == "verity" else None
+                    await db.execute(
+                        "INSERT INTO thread_turns (owner, thread_id, seq, role, text, steps_json, reply_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            owner, thread_id, seq, turn.role, turn.text[:cap],
+                            _json(turn.steps) if turn.steps else None, _json(reply) if reply else None, now,
+                        ),
+                    )
+                await db.execute("UPDATE threads SET updated_at = ? WHERE owner = ? AND id = ?", (now, owner, thread_id))
+                await db.commit()
+                return seq
+            except BaseException:
+                await db.rollback()
+                raise
+
+    async def list_threads(self, owner: str, limit: int = 50) -> list[ThreadListItem]:
+        """This owner's threads that have at least one message, newest first."""
+        rows = await self._fetchall(
+            """
+            SELECT t.id, t.updated_at, t.facts_json,
+                   (SELECT text FROM thread_turns n WHERE n.owner = t.owner AND n.thread_id = t.id AND n.role = 'user'
+                    ORDER BY n.seq LIMIT 1) AS first_text
+            FROM threads t WHERE t.owner = ? AND first_text IS NOT NULL
+            ORDER BY t.updated_at DESC, t.id LIMIT ?
+            """,
+            (owner, max(0, limit)),
+        )
+        out = []
+        for row in rows:
+            run_ids = self._facts(row["facts_json"]).get("run_ids", [])
+            out.append(
+                ThreadListItem(
+                    id=row["id"],
+                    title=thread_title(row["first_text"]),
+                    updated_at=_dt(row["updated_at"]),
+                    run_ids=[r for r in run_ids if isinstance(r, str)] if isinstance(run_ids, list) else [],
+                )
+            )
+        return out
+
+    async def claim(self, from_owner: str, to_owner: str) -> int:
+        """Move every thread (and its turns) of one owner to another, for the day a signed-in user claims the threads
+        of the session that came before. Returns how many threads moved. A thread id the target already has stays where
+        it is."""
+        if from_owner == to_owner:
+            return 0
+        db = self._conn()
+        async with self._lock:
+            try:
+                async with db.execute("UPDATE OR IGNORE threads SET owner = ? WHERE owner = ?", (to_owner, from_owner)) as cur:
+                    moved = cur.rowcount
+                await db.execute("UPDATE OR IGNORE thread_turns SET owner = ? WHERE owner = ?", (to_owner, from_owner))
+                await db.commit()
+                return moved
+            except BaseException:
+                await db.rollback()
+                raise
+
+    # ---------- run index (migration 7; core.protocols.ThreadStore) ----------
+    async def add_user_run(self, owner: str, run_id: str, thread_id: str | None, title: str) -> None:
+        await self._write(
+            "INSERT OR IGNORE INTO user_runs (owner, run_id, thread_id, title, created_at) VALUES (?, ?, ?, ?, ?)",
+            (owner, run_id, thread_id, title, _now_iso()),
+        )
+
+    async def list_user_runs(self, owner: str, limit: int = 50) -> list[UserRunRow]:
+        rows = await self._fetchall(
+            "SELECT * FROM user_runs WHERE owner = ? ORDER BY created_at DESC, run_id LIMIT ?", (owner, max(0, limit))
+        )
+        return [
+            UserRunRow(run_id=r["run_id"], title=r["title"], thread_id=r["thread_id"], created_at=_dt(r["created_at"]))
+            for r in rows
+        ]

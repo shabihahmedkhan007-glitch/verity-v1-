@@ -165,6 +165,6 @@ class EventHub:
             # The fake provider spends nothing: its estimated tokens must not eat the daily budget.
             if delta > 0 and self._settings.provider != "fake":
                 day = datetime.now(UTC).strftime("%Y-%m-%d")
-                await self._store.add_daily_spend(day, delta)
+                await self._store.add_daily_spend(day, delta, stream.ctx.session_id if stream.ctx else None)
         except Exception:
             log.exception("run %s: could not persist spend", stream.run_id)

@@ -52,7 +52,7 @@ export interface Attempt {
 export interface PPA {
   areaUm2: number | null; cellCount: number | null;
   clockPeriodNs: number | null; powerMw: number | null;   // null = not measured
-  tools: string[];               // e.g. ["Yosys 0.x", "OpenROAD"]
+  tools: string[];               // e.g. ["Yosys 0.x", "OpenSTA 3.x"]
   pdk: string;                   // e.g. "Nangate45"
 }
 export interface FitnessWeights { area: number; timing: number; power: number }

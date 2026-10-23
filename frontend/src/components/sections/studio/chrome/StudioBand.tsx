@@ -39,9 +39,7 @@ export function RunMeta({ run, mode }: { run: RunState; mode: "replay" | "live" 
     : { tone: "plain", word: "Replay" };
 
   const cost = isLive
-    ? run.credits.capUsd !== null
-      ? `${formatUsd(run.credits.usedUsd)} of ${formatUsd(run.credits.capUsd)}`
-      : `${formatUsd(run.credits.usedUsd)} spent`
+    ? `${formatUsd(run.credits.usedUsd)} spent`
     : `${formatUsd(0)} replay`;
   const items = summary.humanInputItems;
 

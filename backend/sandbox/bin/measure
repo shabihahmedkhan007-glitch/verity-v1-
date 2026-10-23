@@ -106,6 +106,14 @@ def parse_stat_text(text: str) -> tuple[float, int, dict[str, int]] | None:
     return float(areas[-1]), count, cells
 
 
+_AREA_ROW = re.compile(r"^\s+(\d+)\s+([0-9][0-9.]*(?:[eE][-+]?\d+)?)\s+([A-Za-z_][\w$.]*)\s*$", re.MULTILINE)
+
+
+def parse_cell_areas(text: str) -> dict[str, float]:
+    """Area per cell type from the `stat -liberty` table rows `<count> <area> <cell>` (the optimizer's evidence)."""
+    return {name: round(float(area), 4) for _count, area, name in _AREA_ROW.findall(text) if name != "cells"}
+
+
 def stage_synth(task: dict[str, Any], dut: Path, scratch: Path, result: dict[str, Any], versions: dict[str, str]) -> str | None:
     top = task["top"]
     lib = vc.liberty_path()
@@ -147,6 +155,7 @@ def stage_synth(task: dict[str, Any], dut: Path, scratch: Path, result: dict[str
         "area_um2": round(area, 4),
         "cell_count": count,
         "cells": cells,
+        "cell_area": parse_cell_areas(report),
         "log": vc.tail(report, LOG_CAP),
         "tool": tool,
     }
@@ -211,6 +220,57 @@ def parse_worst_slack(text: str) -> float | None:
     return float(slacks[0]) if slacks else None
 
 
+_POINT = re.compile(r"^(Startpoint|Endpoint):\s+(\S+)\s+\((.*?)\)\s*$", re.MULTILINE)
+_PATH_ROW = re.compile(r"^\s*-?[\d.]+\s+-?[\d.]+\s+[\^v]\s+(\S+?)/(\w+)\s+\((\w+)\)\s*$", re.MULTILINE)
+_ARRIVAL = re.compile(r"^\s*(-?[\d.]+)\s+data arrival time", re.MULTILINE)
+_SEQUENTIAL = re.compile(r"^(S?DFF|DL[HL]|TLAT)", re.IGNORECASE)
+_INSTANCE = re.compile(r"^\s*([A-Za-z_][\w$]*)\s+(\\\S+|[A-Za-z_][\w$]*)\s*\((.*?)\);", re.MULTILINE | re.DOTALL)
+_Q_PIN = re.compile(r"\.Q\(\s*([^()]*?)\s*\)")
+
+
+def flop_nets(netlist: str) -> dict[str, str]:
+    """Flip-flop instance name -> the net on its Q pin (the register bit name, e.g. acc[3])."""
+    nets: dict[str, str] = {}
+    for cell, inst, body in _INSTANCE.findall(netlist):
+        if not _SEQUENTIAL.match(cell):
+            continue
+        match = _Q_PIN.search(body)
+        if match and match.group(1):
+            nets[inst.lstrip("\\").strip()] = match.group(1).lstrip("\\").strip()
+    return nets
+
+
+def _point_kind(text: str) -> str:
+    if "flip-flop" in text or "latch" in text:
+        return "register"
+    if "input port" in text:
+        return "input"
+    if "output port" in text:
+        return "output"
+    return "other"
+
+
+def parse_critical_path(report: str, netlist: str) -> dict[str, Any] | None:
+    """Start, end, logic depth and arrival time of the worst path in `report_checks -format full`. Register ends are
+    named by the net on the flip-flop's Q pin; logic depth counts the combinational cells on the path."""
+    points = {kind: (name, desc) for kind, name, desc in _POINT.findall(report)}
+    if "Startpoint" not in points or "Endpoint" not in points:
+        return None
+    body = report[report.find("Startpoint:") :]
+    arrival = _ARRIVAL.search(body)
+    if arrival:
+        body = body[: arrival.start()]
+    depth = sum(1 for _inst, _pin, cell in _PATH_ROW.findall(body) if not _SEQUENTIAL.match(cell))
+    nets = flop_nets(netlist)
+    out: dict[str, Any] = {"depth": depth, "delay_ns": float(arrival.group(1)) if arrival else None}
+    for key, label in (("Startpoint", "start"), ("Endpoint", "end")):
+        name, desc = points[key]
+        kind = _point_kind(desc)
+        out[f"{label}point"] = nets.get(name, name) if kind == "register" else name
+        out[f"{label}_kind"] = kind
+    return out
+
+
 def stage_sta(task: dict[str, Any], scratch: Path, result: dict[str, Any], versions: dict[str, str]) -> str | None:
     top = task["top"]
     clock = str(task.get("clock", {}).get("name", "clk"))
@@ -241,6 +301,11 @@ def stage_sta(task: dict[str, Any], scratch: Path, result: dict[str, Any], versi
         result["message"] = "no timing path found"
         return "sta_fail"
     result["sta"] = {"ok": True, "clock_period_ns": period, "wns_ns": wns, "log": vc.tail(text, LOG_CAP), **base}
+    try:
+        netlist = (vc.out_dir() / "netlist.v").read_text(encoding="utf-8", errors="replace")
+        result["sta"]["path"] = parse_critical_path(text, netlist)
+    except Exception:  # noqa: BLE001  (the path is evidence for the optimizer only; it never fails timing)
+        traceback.print_exc(file=sys.stderr)
     return None
 
 

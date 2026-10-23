@@ -1,6 +1,7 @@
 """`packs` suite: self-test of every task pack (backend/tasks/self_test.md). $0, no LLM, needs the sandbox image.
 
-Per pack: integrity, rules, reference passes, determinism, measurable, every mutant fails, equivalence sanity, pack
+Per pack: integrity, rules, reference passes, determinism, measurable, every mutant fails, equivalence sanity, the
+sign-off and waveform tools (one more seed, waveforms of the reference and of a failing mutant), pack
 unchanged. One result row per pack; the report line of self_test.md goes into `extra`.
 """
 
@@ -129,6 +130,7 @@ async def _check_pack(env: EvalEnv, pack: TaskPack, all_mutants: list[Mutant], r
     mutants = [m for m in all_mutants if m.pack_id == pack.id]
     killed = 0
     first_sim_fail: Rtl | None = None
+    first_fail_case: str | None = None
     mutant_rows: list[dict[str, object]] = []
     for mutant in mutants:
         text = apply_mutant(reference_text or "", mutant)
@@ -151,6 +153,7 @@ async def _check_pack(env: EvalEnv, pack: TaskPack, all_mutants: list[Mutant], r
             problems.append(f"mutant {mutant.name} PASSES: the testbench is too weak")
         if first_sim_fail is None and result.status == "sim_fail":
             first_sim_fail = rtl
+            first_fail_case = result.sim.failures[0].name if result.sim and result.sim.failures else None
     extra["mutants_killed"] = killed
     extra["mutants_total"] = len(mutants)
     extra["mutants"] = mutant_rows
@@ -172,6 +175,11 @@ async def _check_pack(env: EvalEnv, pack: TaskPack, all_mutants: list[Mutant], r
             if diff.status == "proven":
                 problems.append("EQY proved a failing mutant equivalent: the proof path has a false positive")
 
+    # 9. sign-off and waveform tools (CONTRACTS 3.9 to 3.11): one more seed passes, a waveform of the reference's first
+    #    case, and a waveform of the first failing mutant that names a failing cycle.
+    with record.stage("signoff"):
+        problems += await _check_signoff_tools(env, pack, reference, first_sim_fail, first_fail_case, extra)
+
     # 8. pack unchanged
     if not pack_unchanged(pack):
         problems.append("the pack changed on disk during the self-test")
@@ -180,3 +188,32 @@ async def _check_pack(env: EvalEnv, pack: TaskPack, all_mutants: list[Mutant], r
     extra["problems"] = problems
     record.ok = not problems
     record.error = "; ".join(problems) or None
+
+
+async def _check_signoff_tools(
+    env: EvalEnv, pack: TaskPack, reference: Rtl, failing: Rtl | None, fail_case: str | None, extra: dict[str, object]
+) -> list[str]:
+    """The reference passes one more seed; a waveform of its first case shows no failure; a waveform of the first
+    failing mutant's first failing case names the failing cycle. `extra` records whether the golden replay was used."""
+    problems: list[str] = []
+    extra_seed = 2 if pack.sim.seed != 2 else 3
+    seeds = await env.tools.verify_seeds(reference, pack, [extra_seed])
+    extra["signoff_seed"] = seeds.status
+    if seeds.status != "pass":
+        problems.append(f"the reference fails the locked tests on seed {extra_seed}: {seeds.status} {seeds.message}")
+    if seeds.lint is not None:
+        extra["lint_by_tag"] = seeds.lint.by_tag
+
+    passing = await env.tools.waveform(reference, pack, None)
+    extra["wave_reference"] = passing.status
+    if passing.status != "ok" or passing.wave is None or passing.wave.fail_cycle is not None:
+        problems.append(f"no waveform of the reference's first case: {passing.status} {passing.message}")
+    if failing is not None and fail_case is not None:
+        failed = await env.tools.waveform(failing, pack, fail_case)
+        wave = failed.wave
+        extra["wave_mutant"] = failed.status
+        extra["wave_mutant_expected"] = bool(wave and any(s.expected is not None for s in wave.signals))
+        extra["wave_mutant_note"] = wave.note if wave else ""
+        if failed.status != "ok" or wave is None or wave.fail_cycle is None:
+            problems.append(f"no waveform of the failing mutant's first failing case: {failed.status} {failed.message}")
+    return problems

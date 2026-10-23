@@ -1,5 +1,7 @@
 # Bench backend (judge-ready) Implementation Plan
 
+> **History, superseded by `docs/PRD.md`.** The 2026-10-18 implementation plan for the bench backend. It was built that day (`REPORT.md` change log, 2026-10-18). Since then the first sentence is read by GLM 5.3, not Nemotron (D31), and the fact check, research, chat and sign-off were added (D16 onward).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every MISSING item in `BACKEND_CHECKLIST.md` real: knob params on runs for four families, the `human_ref` event, `POST /parse`, and `features` on `/health`, so the live bench works end to end on Nemotron.

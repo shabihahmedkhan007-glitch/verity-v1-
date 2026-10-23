@@ -99,7 +99,7 @@ export function useLive(): {
   runId: string | null;
   error: string | null;
   pendingSteers: SteerRequest[];
-  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string): Promise<StartLiveResult>;
+  startLive(presetId: string, priority: Priority, params?: Record<string, KnobValue>, title?: string, researchId?: string, threadId?: string): Promise<StartLiveResult>;
   steer(req: SteerRequest): Promise<void>;
   stopRun(): Promise<void>;
   overrideWinnerLocal(candidateId: string): void;

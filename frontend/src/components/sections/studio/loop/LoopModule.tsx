@@ -6,7 +6,7 @@ import { Mod } from "../chrome/Mod";
 import { deriveLoop, SEGMENTS, type LedState } from "./derive-leds";
 
 /** The status square: filled amber = pass, hollow white = fail or open, pale = running, grey = waiting. */
-export function Sq({ kind }: { kind: "pass" | "fail" | "run" | "wait" | "drop" }) {
+export function Sq({ kind }: { kind: "pass" | "fail" | "run" | "wait" | "drop" | "done" }) {
   return <span className={`rkq ${kind}`} aria-hidden />;
 }
 

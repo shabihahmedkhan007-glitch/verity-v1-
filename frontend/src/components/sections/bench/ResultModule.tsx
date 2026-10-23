@@ -1,113 +1,42 @@
 "use client";
 
-import { useMemo } from "react";
-import Link from "next/link";
-import type { Equivalence, PPA, RunState } from "@/lib/contracts/types";
-import type { LiveConnection } from "@/lib/contracts/view-types";
-import { formatArea, formatMw, formatNs, formatUsd } from "@/lib/format";
+import { useMemo, type ReactNode } from "react";
+import type { Equivalence, PPA, Priority, RunState } from "@/lib/contracts/types";
+import { formatArea, formatDelta, formatMw, formatNs } from "@/lib/format";
 import { useVerityStore } from "@/lib/store";
-import { Mod } from "../studio/chrome/Mod";
-import { Seg7 } from "../studio/chrome/Seg7";
+import { formatFitness } from "../shared/fitness-text";
 import { Sq } from "../studio/loop/LoopModule";
+import { GOAL_WORD, lostOnScore } from "./chat";
 import { TERMINAL, discardWhy, dropNotesOf, scoreRows, type ScoreRow } from "./derive";
-
-const PHASE_WORD: Record<RunState["phase"], string> = {
-  idle: "No run",
-  starting: "Starting",
-  running: "Running",
-  done: "Done",
-  error: "Error",
-  cap_reached: "Cap reached",
-  stopped: "Stopped",
-};
 
 function fmt(key: ScoreRow["key"], v: number | null): string {
   if (v === null) return "not measured";
   return key === "area" ? formatArea(v) : key === "clock" ? formatNs(v) : formatMw(v);
 }
 
-/** Elapsed time on the seven-segment readout. Its own component so the clock tick re-renders only this. */
-function Elapsed() {
-  const tMs = useVerityStore((s) => s.tMs);
-  const total = Math.max(0, Math.floor(tMs / 1000));
-  const text = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-  return <Seg7 text={text} label={`Elapsed ${text}`} />;
+/** "−1.6% vs v1" from two measured values; null when either is missing. Lower is better for all three. */
+function vsBase(value: number | null, base: number | null | undefined, baseLabel: string): string | null {
+  if (value === null || !base) return null;
+  return `${formatDelta(value, base, { lowerIsBetter: true }).text} vs ${baseLabel}`;
 }
 
-/** The status strip: phase, connection, elapsed, credits, and Stop while running. */
-export function StatusModule({
-  run,
-  hasRun,
-  connection,
-  stopping,
-  onStop,
-  onReconnect,
-}: {
-  run: RunState;
-  hasRun: boolean;
-  connection: LiveConnection;
-  stopping: boolean;
-  onStop(): void;
-  onReconnect(): void;
-}) {
-  const active = hasRun && !TERMINAL.has(run.phase);
-  const conn =
-    connection === "retrying" ? "Reconnecting" : connection === "error" ? "Connection lost" : connection === "connecting" ? "Connecting" : null;
-  const kind = !hasRun ? "wait" : run.phase === "done" ? "pass" : TERMINAL.has(run.phase) ? "fail" : "run";
-  return (
-    <Mod label="Status" className="b-status" right={<span className="word">{hasRun ? run.runId : "Idle"}</span>}>
-      <div className="b-status-body">
-        <div className="b-phase">
-          <Sq kind={kind} />
-          <span className="b-phase-w">{PHASE_WORD[hasRun ? run.phase : "idle"]}</span>
-          {conn && active ? <span className="word">{conn}</span> : null}
-        </div>
-        <div className="disp">
-          <div className="grp">
-            <span className="lab">Elapsed</span>
-            {hasRun ? <Elapsed /> : <Seg7 text="0:00" label="Elapsed 0:00" />}
-          </div>
-          <div className="grp">
-            <span className="lab">Round</span>
-            <span className="dn">{hasRun ? run.round : 0}</span>
-          </div>
-          <div className="grp">
-            <span className="lab">Credits</span>
-            <span className="dn">{hasRun ? formatUsd(run.credits.usedUsd) : formatUsd(0)}</span>
-          </div>
-        </div>
-        <div className="b-acts">
-          {active ? (
-            <button type="button" className="btn ghost xs" disabled={stopping} onClick={onStop}>
-              {stopping ? "Stopping..." : "Stop"}
-            </button>
-          ) : null}
-          {active && connection === "error" ? (
-            <button type="button" className="btn ghost xs" onClick={onReconnect}>
-              Reconnect
-            </button>
-          ) : null}
-          {hasRun && TERMINAL.has(run.phase) ? (
-            <Link prefetch={false} href={`/studio?run=${encodeURIComponent(run.runId)}`} className="btn ghost xs">
-              Open in studio
-            </Link>
-          ) : null}
-        </div>
-      </div>
-    </Mod>
-  );
+function proofWords(status: Equivalence["status"], against: string): string {
+  if (status === "proven") return `Proven to work the same as ${against}`;
+  if (status === "not_equivalent") return `The proof found a difference from ${against}`;
+  if (status === "inconclusive") return `Passes every test, but not proven equal to ${against}`;
+  return `Passes every test. Not checked against ${against}`;
 }
 
 function Scoreboard({ winner, human, winnerLabel }: { winner: PPA; human: { ppa: PPA; eqy: Equivalence }; winnerLabel: string }) {
   const rows = scoreRows(winner, human.ppa);
   const eqy = human.eqy.status;
   return (
-    <section className="b-sec" aria-label="Verity against the human reference">
-      <h3 className="dp-h">Verity vs human reference</h3>
-      <table className="t1-tbl b-score">
+    <section className="b-sec" aria-label="Compared with a human-written design">
+      <h3 className="b-sec-h">Compared with a human-written design</h3>
+      <table className="b-score">
         <thead>
           <tr>
-            <th scope="col">Metric</th>
+            <th scope="col">Measure</th>
             <th scope="col">Verity {winnerLabel}</th>
             <th scope="col">Human</th>
             <th scope="col">Verity vs human</th>
@@ -120,146 +49,197 @@ function Scoreboard({ winner, human, winnerLabel }: { winner: PPA; human: { ppa:
               <td className="m">{fmt(r.key, r.verity)}</td>
               <td className="m">{fmt(r.key, r.human)}</td>
               <td className="m">
-                {r.delta ? (
-                  <span className="t1-d" data-dir={r.delta.direction}>
-                    {r.delta.text} {r.delta.direction === "better" ? "(Verity better)" : r.delta.direction === "worse" ? "(human better)" : "(even)"}
-                  </span>
-                ) : (
-                  <span className="t1-na">n/a</span>
-                )}
+                {r.delta ? `${r.delta.text} ${r.delta.direction === "better" ? "(Verity better)" : r.delta.direction === "worse" ? "(human better)" : "(even)"}` : "n/a"}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="b-note">
-        <span className={`rkq ${eqy === "proven" ? "pass" : "fail"}`} aria-hidden />{" "}
+        <Sq kind={eqy === "proven" ? "pass" : "fail"} />{" "}
         {eqy === "proven"
-          ? "Proven equivalent to the human design (Yosys EQY)."
+          ? "Proven to work the same as the human design."
           : eqy === "not_equivalent"
-            ? "Not equivalent to the human design (Yosys EQY)."
+            ? "Does not work the same as the human design."
             : eqy === "inconclusive"
-              ? "Equivalence with the human design is inconclusive (Yosys EQY). Tested, not proven."
-              : "Equivalence with the human design was not checked."}
+              ? "Tested against the human design, but not proven the same."
+              : "Not checked against the human design."}
       </p>
-      <p className="b-note b-dim">
-        Human reference: the pack&apos;s hand-written reference.v at the same knobs, same tools and settings
-        {human.ppa.tools.length ? ` (${human.ppa.tools.join(", ")}, ${human.ppa.pdk})` : ""}. Shown even when the human design wins.
-      </p>
+      <details className="b-more">
+        <summary>About the human design</summary>
+        <p>
+          It is the hand-written reference.v that ships with this chip, built at the same settings and measured with the same tools
+          {human.ppa.tools.length ? ` (${human.ppa.tools.join(", ")}, ${human.ppa.pdk})` : ""}. It is shown even when the human design wins. The
+          proof uses Yosys EQY.
+        </p>
+      </details>
     </section>
   );
 }
 
 /**
- * RESULT: the winner with units, tools and its v1 baseline, the vs-human scoreboard (D14), and every discarded version
- * with the reason from its own run record. Nothing here is computed beyond reading and formatting run data.
+ * The Result tab: the winner with its numbers against our own v1, how it was picked, the comparison with a human
+ * design, and every dropped version with the reason from its own run record. Default text stays plain; the detail and
+ * the tool names live in the dropdowns. Nothing here is computed beyond reading and formatting run data.
  */
 export function ResultModule({
   run,
   hasRun,
   human,
   humanFeature,
+  priority,
+  signoff,
 }: {
   run: RunState;
   hasRun: boolean;
   human: { ppa: PPA; eqy: Equivalence } | null;
   humanFeature: boolean;
+  priority: Priority;
+  /** The sign-off sheet in one line, under the winner. Nothing from a server without sign-off checks. */
+  signoff?: ReactNode;
 }) {
   const log = useVerityStore((s) => s.log);
   const dropNotes = useMemo(() => (hasRun ? dropNotesOf(log) : new Map<string, string>()), [hasRun, log]);
   const finished = hasRun && TERMINAL.has(run.phase);
-  const winner = run.winnerId ? run.candidates[run.winnerId] : null;
+  const picked = run.winnerId ? run.candidates[run.winnerId] : null;
   const base = run.baselineId ? run.candidates[run.baselineId] : null;
+  // A run that ended before a winner was picked (stopped, cap, error) still shows v1 as "Best so far", like the chat says.
+  const winner = picked ?? (finished ? base : null);
+  const baseLabel = base?.label ?? "v1";
   const discarded = run.candidateOrder
     .map((id) => run.candidates[id])
     .filter((c) => c !== undefined)
     .map((c) => ({ c, why: discardWhy(c, run, dropNotes) }))
     .filter((d): d is { c: (typeof d)["c"]; why: string } => d.why !== null);
+  const lost = lostOnScore(run, priority);
+  const weights = picked?.fitness?.weights;
+  const tools = winner?.ppa ? `${winner.ppa.tools.join(", ") || "open tools"} on ${winner.ppa.pdk}` : null;
+
+  const row = (label: string, value: number | null, baseValue: number | null | undefined, text: (v: number) => string) => (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        <span className="m">{value !== null ? text(value) : "not measured"}</span>
+        {winner?.id === base?.id ? null : <small className="m">{vsBase(value, baseValue, baseLabel) ?? ""}</small>}
+      </dd>
+    </div>
+  );
 
   return (
-    <Mod label="Result" className="b-result">
-      <div className="b-result-body" tabIndex={0} aria-label="Result, scrollable">
-        {!hasRun ? (
-          <p className="b-empty">The winner, its measured numbers and the comparison with a human-written design appear here when a run ends.</p>
-        ) : !winner ? (
-          <p className="b-empty">{finished ? "This run ended without a measured winner." : "No winner yet. Versions are still being built and tested."}</p>
-        ) : (
-          <section className="b-sec" aria-label="Winner">
-            <h3 className="dp-h">
-              {finished ? "Winner" : "Best so far"} {winner.label}
-            </h3>
-            {winner.ppa ? (
-              <dl className="dp-dl">
-                <dt>Area</dt>
-                <dd className="m">{winner.ppa.areaUm2 !== null ? formatArea(winner.ppa.areaUm2) : "not measured"}</dd>
-                <dt>Clock period</dt>
-                <dd className="m">{winner.ppa.clockPeriodNs !== null ? formatNs(winner.ppa.clockPeriodNs) : "not measured"}</dd>
-                <dt>Power</dt>
-                <dd className="m">{winner.ppa.powerMw !== null ? `${formatMw(winner.ppa.powerMw)} (estimate)` : "not measured"}</dd>
-              </dl>
-            ) : (
-              <p className="b-note">Not measured yet.</p>
-            )}
-            {winner.fitness && base && winner.id !== base.id ? (
-              <p className="b-note">
-                vs {base.label}: area {gain(winner.fitness.gains.area)}, clock {gain(winner.fitness.gains.timing)}, power {gain(winner.fitness.gains.power)}.
-              </p>
-            ) : winner.id === base?.id ? (
-              <p className="b-note">The winner is the first verified version ({base.label}); no later version beat it.</p>
-            ) : null}
-            {winner.eqy ? (
-              <p className="b-note">
-                <span className={`rkq ${winner.eqy.status === "proven" ? "pass" : "fail"}`} aria-hidden />{" "}
-                {winner.eqy.status === "proven" ? `Proven equal to ${base?.label ?? "v1"} (Yosys EQY).` : `Equivalence with ${base?.label ?? "v1"}: ${winner.eqy.status.replace("_", " ")}.`}
-              </p>
-            ) : null}
-            {winner.ppa ? (
-              <p className="b-note b-dim">
-                Measured by {winner.ppa.tools.join(", ") || "open tools"} on {winner.ppa.pdk}. Open tools, not signoff.
-              </p>
-            ) : null}
-          </section>
-        )}
-
-        {hasRun && winner?.ppa && human ? (
-          <Scoreboard winner={winner.ppa} human={human} winnerLabel={winner.label} />
-        ) : hasRun ? (
-          <section className="b-sec" aria-label="Verity against the human reference">
-            <h3 className="dp-h">Verity vs human reference</h3>
-            <p className="b-note">
-              {!humanFeature
-                ? "Comparison with the human-written design is not available from this backend yet."
-                : finished
-                  ? "The agent did not send a human reference measurement for this run."
-                  : "Measured against the human-written design after the winner is chosen."}
+    <div className="b-result">
+      {!hasRun ? (
+        <p className="b-empty">The winner and its numbers appear here when a run ends.</p>
+      ) : !winner ? (
+        <p className="b-empty">{finished ? "This run ended without a measured winner." : "No winner yet. Versions are still being built and tested."}</p>
+      ) : (
+        <section className="b-sec" aria-label="Winner">
+          <p className="b-lab">{finished && picked ? "Winner" : "Best so far"}</p>
+          <p className="b-win">{winner.label}</p>
+          {winner.eqy ? (
+            <p className="b-proof">
+              <Sq kind={winner.eqy.status === "proven" ? "pass" : "fail"} /> {proofWords(winner.eqy.status, baseLabel)}
             </p>
-          </section>
-        ) : null}
+          ) : null}
+          {winner.ppa ? (
+            <dl className="b-rows">
+              {row("Area", winner.ppa.areaUm2, base?.ppa?.areaUm2, formatArea)}
+              {row("Clock period", winner.ppa.clockPeriodNs, base?.ppa?.clockPeriodNs, formatNs)}
+              {row("Power (estimate)", winner.ppa.powerMw, base?.ppa?.powerMw, formatMw)}
+              <div>
+                <dt>Versions tried</dt>
+                <dd className="m">{run.candidateOrder.length}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="b-note">Not measured yet.</p>
+          )}
+          {!picked ? (
+            <p className="b-note">{baseLabel} is the first version that passed the tests. The run ended before a winner was picked.</p>
+          ) : winner.id === base?.id ? (
+            <p className="b-note">{base.label} is the first version that passed. No later version beat it.</p>
+          ) : (
+            <p className="b-note b-dim">Lower is better for all three. Every change is against our own {baseLabel}.</p>
+          )}
+          {signoff}
+        </section>
+      )}
 
-        {discarded.length > 0 ? (
-          <section className="b-sec" aria-label="Discarded versions">
-            <h3 className="dp-h">Discarded, and why</h3>
-            <ul className="b-disc">
-              {discarded.map(({ c, why }) => (
-                <li key={c.id}>
-                  <span className="b-disc-v">
-                    <span className={`rkq ${c.status === "rejected" ? "fail" : "drop"}`} aria-hidden />
-                    {c.label}
-                  </span>
-                  <span>{why}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </div>
-    </Mod>
+      {winner ? (
+        <section className="b-sec b-explain" aria-label="Explanations">
+          {picked ? (
+            <>
+              <details className="b-more">
+                <summary>How the winner is picked</summary>
+                <p>
+                  Every version that passes all the tests is measured for size (area), speed (clock period) and power. Each one gets a combined
+                  score: how much better it is than {baseLabel} on each, weighted by your goal. The best score wins.
+                </p>
+                {weights ? (
+                  <p>
+                    Your goal was {GOAL_WORD[priority]}, so area counted {Math.round(weights.area * 100)}%, clock period{" "}
+                    {Math.round(weights.timing * 100)}% and power {Math.round(weights.power * 100)}%.
+                    {picked.fitness && picked.id !== base?.id ? ` ${picked.label} scored ${formatFitness(picked.fitness.score)}.` : null}
+                  </p>
+                ) : null}
+                {lost.map((s) => (
+                  <p key={s}>{s}</p>
+                ))}
+              </details>
+              <details className="b-more">
+                <summary>What does proven equal mean</summary>
+                <p>
+                  Tests check the cases someone wrote down. After the winner is picked, a formal checker (Yosys EQY) compares it with {baseLabel} for
+                  every possible input. Proven equal means it found no input where the two give different answers. When the proof cannot finish,
+                  Verity says the winner passes every test but is not proven.
+                </p>
+              </details>
+            </>
+          ) : null}
+          {tools ? (
+            <details className="b-more">
+              <summary>How these numbers were measured</summary>
+              <p>
+                Measured by {tools}. These are open tools, not a chip factory&apos;s signoff tools, so the numbers are best read against{" "}
+                {baseLabel}, which was measured the same way. Power is an estimate.
+              </p>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
+
+      {hasRun && picked?.ppa && human ? (
+        <Scoreboard winner={picked.ppa} human={human} winnerLabel={picked.label} />
+      ) : hasRun && picked ? (
+        <section className="b-sec" aria-label="Compared with a human-written design">
+          <h3 className="b-sec-h">Compared with a human-written design</h3>
+          <p className="b-note">
+            {!humanFeature
+              ? "This server does not compare with a human-written design yet."
+              : finished
+                ? "No human-written design was measured for this run."
+                : "Measured against a human-written design after the winner is picked."}
+          </p>
+        </section>
+      ) : null}
+
+      {discarded.length > 0 ? (
+        <details className="b-more b-sec">
+          <summary>
+            Why the other versions were dropped ({discarded.length})
+          </summary>
+          <ul className="b-disc">
+            {discarded.map(({ c, why }) => (
+              <li key={c.id}>
+                <span className="b-disc-v">
+                  <Sq kind={c.status === "rejected" ? "fail" : "drop"} />
+                  {c.label}
+                </span>
+                <span>{why}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
   );
-}
-
-/** Agent-computed gain in percent, positive = better (types.ts Fitness.gains). */
-function gain(g: number | null): string {
-  if (g === null) return "not measured";
-  const s = Math.abs(g).toFixed(1);
-  return g > 0 ? `${s}% better` : g < 0 ? `${s}% worse` : "no change";
 }

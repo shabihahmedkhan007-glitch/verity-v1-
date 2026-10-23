@@ -97,7 +97,7 @@ def test_parse_notes_dropped_unsupported_keys() -> None:
         "params": {"width": 12, "clock": 100},
         "note": "Parsed counter.",
     })
-    reply = _interpret(raw_response, families)
+    reply = _interpret(raw_response, families).reply  # _interpret returns the ParsedIntent (fact check)
     assert reply.result == "in_range"
     assert reply.family == "cnt8"
     assert reply.params == {"width": 12, "enable": True}

@@ -1,10 +1,11 @@
 """Auth (ARCHITECTURE 12.1): access codes, signed session tokens, signed stream tokens."""
 
 import hashlib
+import logging
 
 from pydantic import SecretStr
 
-from verity.api.auth import AuthService, anonymous_sid, iso_z
+from verity.api.auth import SECRET_FILE, AuthService, anonymous_sid, iso_z
 from verity.config import AuthConfig, load_settings
 
 
@@ -93,8 +94,64 @@ def test_anonymous_session_id_is_stable_per_ip_and_hides_the_ip() -> None:
     assert a.startswith("anon-") and "203.0.113.9" not in a
 
 
-def test_missing_secret_still_works_with_a_random_one() -> None:
-    auth = make_auth(signing_secret=None)
+def test_missing_secret_still_works(tmp_path) -> None:
+    auth = make_auth(signing_secret=None, data_dir=tmp_path / "data")
+    token, _ = auth.issue_session("team")
+    assert auth.read_session(token) is not None
+
+
+def test_missing_secret_is_stored_once_so_tokens_survive_a_restart(tmp_path, caplog) -> None:
+    caplog.set_level(logging.DEBUG)
+    data = tmp_path / "data"
+    first = make_auth(signing_secret=None, data_dir=data, env="development")
+    session, _ = first.issue_session("team")
+    stream = first.issue_stream_token("r_abc", "s_1")
+    stored = (data / SECRET_FILE).read_text(encoding="utf-8")
+    assert len(stored) >= 32
+
+    restarted = make_auth(signing_secret=None, data_dir=data, env="development")
+    assert restarted.read_session(session) is not None
+    assert restarted.read_stream_token(stream) == ("r_abc", "s_1")
+    assert (data / SECRET_FILE).read_text(encoding="utf-8") == stored  # read, not rewritten
+    assert stored not in caplog.text  # the secret is never logged
+    assert not list(data.glob("*.tmp"))
+
+
+def test_configured_secret_wins_over_the_stored_one(tmp_path) -> None:
+    data = tmp_path / "data"
+    stored_auth = make_auth(signing_secret=None, data_dir=data, env="development")
+    token = stored_auth.issue_stream_token("r_abc", "s_1")
+    configured = make_auth(signing_secret=SecretStr("c" * 40), data_dir=data, env="development")
+    assert configured.read_stream_token(token) is None
+
+
+def test_configured_secret_writes_no_file(tmp_path) -> None:
+    make_auth(signing_secret=SecretStr("c" * 40), data_dir=tmp_path / "data", env="development")
+    assert not (tmp_path / "data" / SECRET_FILE).exists()
+
+
+def test_production_never_stores_a_secret(tmp_path) -> None:
+    auth = make_auth(signing_secret=None, data_dir=tmp_path / "data", env="production")
+    assert not (tmp_path / "data" / SECRET_FILE).exists()
+    token, _ = auth.issue_session("team")
+    assert auth.read_session(token) is not None  # per-process secret; main() refuses to start like this anyway
+
+
+def test_a_damaged_stored_secret_is_replaced(tmp_path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / SECRET_FILE).write_text("short", encoding="utf-8")
+    first = make_auth(signing_secret=None, data_dir=data, env="development")
+    stored = (data / SECRET_FILE).read_text(encoding="utf-8")
+    assert len(stored) >= 32
+    token = first.issue_stream_token("r_abc", "s_1")
+    assert make_auth(signing_secret=None, data_dir=data, env="development").read_stream_token(token) is not None
+
+
+def test_an_unwritable_data_dir_falls_back_to_a_per_process_secret(tmp_path) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    auth = make_auth(signing_secret=None, data_dir=blocker / "data", env="development")  # mkdir fails
     token, _ = auth.issue_session("team")
     assert auth.read_session(token) is not None
 

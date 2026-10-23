@@ -2,7 +2,7 @@
 
 The fixer is deliberately conservative. It only rewrites declarations (wire/reg to logic, a body redeclaration of a
 port or signal, stray generate/endgenerate keywords, a declaration inside an always block hoisted to module level).
-It never touches an expression or the logic of a block.
+It never touches an expression or the logic of a block. `normalize_comment_chars` only ever changes comment text.
 """
 
 import re
@@ -68,6 +68,47 @@ _LOCATION_RE = re.compile(r"^[^\s:]+:\d+(?::\d+)?:\s*")
 # Yosys contract errors reach the repair prompt as "- ERROR: ..." bullets, not as %Error lines.
 _LATCH_RE = re.compile(r"Latch inferred for signal\s+[`']([^`']+)'")
 _NESTING_RE = re.compile(r"Invalid nesting of always blocks")
+
+
+# Typographic characters a model puts in comments (non-breaking hyphen, en and em dash, minus sign, curly quotes) that
+# the RTL rules reject as non-ASCII. Mapped only inside comments.
+_COMMENT_MAP: dict[int, str] = {
+    **{ord(ch): "-" for ch in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"},
+    **{ord(ch): "'" for ch in "\u2018\u2019\u201a\u201b\u2032"},
+    **{ord(ch): '"' for ch in "\u201c\u201d\u201e\u201f\u2033"},
+}
+
+
+def normalize_comment_chars(src: str) -> str:
+    """Map Unicode hyphens, dashes and quotes inside // and /* */ comments to ASCII. Code and string literals are never
+    touched, and any other non-ASCII character is left for the RTL rules to reject as before."""
+    if src.isascii():
+        return src
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if c == '"':
+            j = i + 1
+            while j < n and src[j] != '"' and src[j] != "\n":
+                j += 2 if src[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append(src[i:j])
+            i = j
+        elif c == "/" and nxt in ("/", "*"):
+            if nxt == "/":
+                end = src.find("\n", i)
+                j = n if end < 0 else end
+            else:
+                end = src.find("*/", i + 2)
+                j = n if end < 0 else end + 2
+            out.append(src[i:j].translate(_COMMENT_MAP))
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,7 +1,9 @@
 # Verity backend configuration. Every budget, limit, timeout, model route and price lives here.
 # Env overrides: VERITY_<KEY> for top-level keys, VERITY_<TABLE>__<KEY> for tables
 # (for example VERITY_BUDGET__RUN__MAX_USD=0.30). Named env vars (LLM_BASE_URL, LLM_API_KEY,
-# LLM_MODEL_ULTRA, LLM_MODEL_SUPER, SANDBOX_API_KEY, SANDBOX_BASE_URL) map onto [llm] and [tools.nebius_sandbox].
+# LLM_MODEL_ULTRA, LLM_MODEL_SUPER, SANDBOX_API_KEY, SANDBOX_BASE_URL, SERPER_API_KEY, TAVILY_API_KEY,
+# SUPABASE_URL, SUPABASE_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY) map onto [llm], [tools.nebius_sandbox], [research]
+# and [supabase].
 # No secrets in this file. Ever.
 # Sources: backend/ARCHITECTURE.md sections 12.2, 12.4, 18.3, 19, 20, 21.
 
@@ -24,8 +26,70 @@ retries = 2                    # on 429 / 5xx, with backoff
 backoff_s = 2.0
 cache_responses = false        # cache by (prompt hash, model, params); dev and evals only
 production_host = "api.tokenfactory.nebius.com"
+thinking_switch_prefixes = ["nvidia/"]   # models that take chat_template_kwargs.enable_thinking (GLM 5.3 ignores it)
+fallback_cooldown_s = 300      # a model that timed out, could not be reached or answered 5xx is skipped this long
 
-# Role routes (ARCHITECTURE 17). tier: ultra | super
+# Model fallback chains, by primary model id. On a timeout, a connection error or a 5xx the provider tries each `chain`
+# model in order (one try each, one that is in its own cooldown is skipped) and marks every failed model unhealthy for
+# fallback_cooldown_s; a 4xx or a bad answer never falls back. Per entry: model, and optionally thinking (false = no
+# reasoning, only for models that take the switch) and reasoning_effort (low | medium | high). The primary route's own
+# thinking and reasoning_effort are not carried over. A worst-case hold prices each call at the highest input price and the
+# highest output price across the primary and its chain, so a chain model may cost more per token than the primary (DeepSeek
+# V4 Pro takes 1.75 in against GLM 5.3's 1.40). Measured 2026-10-23: both GLM ids timed out at 45 s on a tiny JSON call while
+# Ultra answered in 0.3 s; DeepSeek V4 Pro answered a JSON call in 0.6 s with no thinking flag and no reasoning_effort, so it
+# stands in first and Ultra second. A fallback attempt gets at least 30 s, or the time the caller has left if that is less
+# (an attempt is skipped with under 5 s left; the thread agent passes the time left in its 90 s turn).
+# An empty chain (VERITY_LLM__FALLBACK='{"zai-org/GLM-5.3": {"chain": []}}') turns that model's fallback off.
+[llm.fallback."zai-org/GLM-5.3"]
+chain = [{ model = "deepseek-ai/DeepSeek-V4-Pro" }, { model = "nvidia/Nemotron-3-Ultra-550b-a55b", thinking = false }]
+
+[llm.fallback."zai-org/GLM-5.3-Flash"]
+chain = [{ model = "deepseek-ai/DeepSeek-V4-Pro" }, { model = "nvidia/Nemotron-3-Ultra-550b-a55b", thinking = false }]
+
+# Role routes (ARCHITECTURE 17). tier: ultra | super. `model` (an exact id) wins over the tier.
+# Optional per route: reasoning_effort (low | medium | high), thinking (false = no reasoning, only for models that
+# take the switch), max_output_tokens, timeout_s.
+# Nemotron is the engineer: the plan (Ultra), every line of Verilog (Ultra writes and fixes, Super optimizes) and the
+# intent router (3.5 Lightning). GLM 5.3 writes the chat answers, the fact-check class and the research summaries.
+# Routes chosen from scripts/probe_models.py on 2026-10-22: GLM 5.3 returns JSON with reasoning_effort low (17 reasoning
+# tokens, 0.8 s); it ignores enable_thinking false (274 reasoning tokens); Lightning returns JSON with thinking off.
+[routes.router]
+model = "nvidia/Nemotron-3_5-Lightning"
+temperature = 0.0
+thinking = false
+max_output_tokens = 300
+timeout_s = 30
+
+[routes.parser]
+model = "zai-org/GLM-5.3"
+temperature = 0.0
+reasoning_effort = "low"
+max_output_tokens = 2_000       # reasoning tokens count against this cap
+timeout_s = 25
+
+[routes.chat]
+model = "zai-org/GLM-5.3"
+temperature = 0.3
+reasoning_effort = "low"
+max_output_tokens = 2_000
+timeout_s = 30
+
+[routes.research]
+model = "zai-org/GLM-5.3"
+temperature = 0.2
+reasoning_effort = "low"
+max_output_tokens = 3_000
+timeout_s = 45
+
+# The thread's older turns, folded into a 20 to 40 word summary (POST /threads/{id}/messages). The agent loop itself
+# runs on the chat route above.
+[routes.memory]
+model = "zai-org/GLM-5.3"
+temperature = 0.0
+reasoning_effort = "low"
+max_output_tokens = 800
+timeout_s = 25
+
 [routes.planner]
 tier = "ultra"
 temperature = 0.2
@@ -51,6 +115,22 @@ output_per_m = 3.00
 input_per_m = 0.30
 output_per_m = 0.90
 
+[prices."zai-org/GLM-5.3"]           # Nebius catalog 2026-10-22
+input_per_m = 1.40
+output_per_m = 4.40
+
+[prices."zai-org/GLM-5.3-Flash"]
+input_per_m = 0.15
+output_per_m = 0.50
+
+[prices."nvidia/Nemotron-3_5-Lightning"]
+input_per_m = 0.06
+output_per_m = 0.24
+
+[prices."deepseek-ai/DeepSeek-V4-Pro"]   # third-party listing on 2026-10-23, not confirmed on the Nebius page
+input_per_m = 1.75
+output_per_m = 3.50
+
 [prices.fallback]
 input_per_m = 1.00
 output_per_m = 3.00
@@ -71,18 +151,18 @@ plan_max_output = 12_000       # Nemotron reasoning tokens count against this ca
 rtl_max_output = 24_000        # 12_000 cut 11 of 20 matmul4 drafts and 6 repair/optimizer calls at the cap (2026-10-16 gate)
 max_prompt_tokens = 12_000
 
-[budget.parse]
-max_output_tokens = 600         # POST /parse: one short JSON answer; thinking is off for this call
-
 [limits]
 auth_per_ip = 10               # POST /auth/session per IP ...
 auth_window_s = 600            # ... per 10 min
 api_per_session_per_min = 60
 runs_per_session_per_hour = 3
 parse_per_session_per_min = 6   # POST /parse per session
+ask_per_session_per_min = 6     # POST /runs/{id}/ask per session
+message_per_session_per_min = 6 # POST /threads/{id}/messages per session
 concurrent_per_session = 1
 concurrent_global = 2
-daily_usd = 5.00               # global estimated spend per UTC day, persisted in SQLite
+daily_usd = 10.00              # global estimated spend per UTC day, persisted in SQLite
+session_usd = 3.00             # one session's (later one signed-in user's) estimated spend per UTC day, persisted in SQLite
 default_mode = "full"          # fast | full
 
 [timeouts]
@@ -133,6 +213,55 @@ round2_children = 2
 elites = 2
 round2_requires_improvement = true
 max_prove_attempts = 2
+
+# Sign-off after the winner, on every run (fast and full). It starts after the human reference proof and `run done`,
+# so it never delays the result. CONTRACTS 6.4.
+[signoff]
+enabled = true
+extra_seeds = [2, 3, 4, 5, 6, 7, 8, 9]   # the locked tests on 8 more seeds (seed 1 already ran)
+max_mutants = 20               # planted bugs, fixed rules, no model
+max_survivor_proofs = 3        # EQY of surviving bugs against the winner: proven equal = harmless
+mutant_timeout_s = 30
+strength_budget_s = 150
+max_s = 300                    # whole sign-off; also capped by the run's wall-clock limit
+waves_on_repair = true         # a waveform of the first failing case goes into each repair prompt
+
+[research]
+adapter = "auto"               # auto | serper | tavily | fake | off. auto (real provider): both keys = Tavily for the web
+                               # and Serper for Scholar and Patents; one key = that service for all three; no key = off.
+                               # The fake adapter only when the provider is fake.
+serper_base_url = "https://google.serper.dev"
+serper_host = "google.serper.dev"
+tavily_base_url = "https://api.tavily.com"   # TAVILY_API_KEY goes only to this host (production guard pins it)
+tavily_host = "api.tavily.com"
+timeout_s = 8.0
+num = 10                       # results per query (Serper allows up to 10 for 1 credit)
+max_queries = 3                # Serper calls per research, built from code templates only
+max_sources = 8                # S1 to S8
+per_domain = 2
+snippet_chars = 300
+ttl_days = 30                  # web research expires after 30 days
+usd_per_credit = 0.001         # Serper Starter pack; counted into the daily spend
+tavily_usd_per_credit = 0.008  # Tavily pay-as-you-go; a basic search is 1 credit
+per_session_per_hour = 10      # new research per session (reused research is free and not counted)
+serper_credits_per_day = 300
+tavily_credits_per_day = 100   # Tavily free plan: 1,000 credits a month
+nearest_distance = 0.25        # reuse research of the same family when the knobs are this close
+
+# The thread agent (POST /threads/{id}/messages). Its model calls run on the [routes.chat] route above.
+[agent]
+turn_deadline_s = 90           # the agent part of one message: after this it stops calling the model and code answers from its steps
+
+# Accounts and saved chats (ARCHITECTURE 17.5). Values come from SUPABASE_URL, SUPABASE_SECRET_KEY and
+# SUPABASE_PUBLISHABLE_KEY (backend/.env or the shell); no secret goes in this file.
+[supabase]
+jwks_cache_s = 600             # sign-in signing keys are re-read at least this often (10 minutes at most)
+timeout_s = 8                  # one Supabase call (keys, token check, saved chats)
+host_suffix = ".supabase.co"   # production guard: SUPABASE_URL must be https and its host must end with this
+
+# Where chats and each user's list of runs are kept. Run files, events and spend always stay in SQLite and on disk.
+[threads]
+store = "auto"                 # auto = Supabase when SUPABASE_URL and SUPABASE_SECRET_KEY are set, else SQLite | sqlite | supabase
 
 [tools]
 image = "verity-tools:0.1"

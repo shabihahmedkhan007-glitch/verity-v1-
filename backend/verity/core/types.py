@@ -9,7 +9,7 @@ Definitions live in small sibling modules:
   budget.py     BudgetLimits, Usage, Reservation, SpendSnapshot, price_usd (ARCHITECTURE 20)
   llm_types.py  LLMRequest, LLMResponse, CallMeta, PlanOut, PlanResult, RtlOut (ARCHITECTURE 21, 10.1)
   records.py    Store records: RunRecord, RunPatch, AttemptMeta, ArtifactRef, EvalResultRow (ARCHITECTURE 7)
-  protocols.py  LLMProvider, LLMGateway, role fns, ToolRunner, Ledger, EventSink, Store, RunService
+  protocols.py  LLMProvider, LLMGateway, role fns, ToolRunner, Ledger, EventSink, Store, ThreadStore, RunService
   context.py    RunContext, Roles, RunOutcome
   fitness.py    compute_fitness, select_elites, pick_winner (frontend ARCHITECTURE 8.3)
   captions.py   caption templates and chapter labels
@@ -63,6 +63,7 @@ from .protocols import (
     RepairFn,
     RunService,
     Store,
+    ThreadStore,
     ToolRunner,
 )
 from .records import ACTIVE_STATUSES, ArtifactRef, AttemptMeta, EvalResultRow, RunPatch, RunRecord, RunStatus

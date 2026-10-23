@@ -12,24 +12,27 @@ from pydantic import BaseModel, ValidationError
 
 from ..config import Settings
 from ..contracts import (
+    AskRequest,
     CreateRunRequest,
     CreateRunResponse,
     HealthResponse,
     ParseRequest,
     SessionRequest,
     SessionResponse,
+    ThreadMessageRequest,
+    normalize_thread_id,
     to_json,
     to_wire,
 )
 from ..contracts.view_types import STEER_ADAPTER
-from ..core.errors import AdmissionDenied, LLMError
+from ..core.errors import AdmissionDenied, LLMError, NotFound
 from ..core.family import ParamsError
 from ..core.protocols import RunService
 from ..core.records import ACTIVE_STATUSES, RunRecord
 from .auth import AuthService, Principal, anonymous_sid, iso_z
 from .errors import ApiError, rate_limited, unauthorized, validation_summary
 from .ratelimit import TokenBucketLimiter
-from .sse import close_stream, sse_body
+from .sse import FINISHED_RETRY_MS, RETRY_MS, close_stream, sse_body
 
 log = logging.getLogger("verity.api")
 
@@ -53,6 +56,8 @@ class ApiState:
     auth_limiter: TokenBucketLimiter
     run_limiter: TokenBucketLimiter
     parse_limiter: TokenBucketLimiter
+    ask_limiter: TokenBucketLimiter
+    message_limiter: TokenBucketLimiter
 
 
 def _state(request: Request) -> ApiState:
@@ -78,10 +83,10 @@ def _bearer(request: Request) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
-def _principal(request: Request, state: ApiState) -> Principal:
+async def _principal(request: Request, state: ApiState) -> Principal:
     token = _bearer(request)
     if token:
-        principal = state.auth.read_session(token)
+        principal = await state.auth.authenticate(token)  # a Verity session token, else a Supabase access token
         if principal is not None:
             return principal
     if state.settings.auth.required:
@@ -89,10 +94,10 @@ def _principal(request: Request, state: ApiState) -> Principal:
     return Principal(sid=anonymous_sid(client_ip(request)), role="anonymous", anonymous=True)
 
 
-def _principal_opt(request: Request, state: ApiState) -> Principal | None:
+async def _principal_opt(request: Request, state: ApiState) -> Principal | None:
     token = _bearer(request)
     if token:
-        return state.auth.read_session(token)
+        return await state.auth.authenticate(token)
     if not state.settings.auth.required:
         return Principal(sid=anonymous_sid(client_ip(request)), role="anonymous", anonymous=True)
     return None
@@ -107,7 +112,7 @@ def _charge_session(state: ApiState, sid: str) -> None:
 async def session_guard(request: Request) -> Principal:
     """Session from the bearer token (or an anonymous one when auth is off), then the per-session bucket."""
     state = _state(request)
-    principal = _principal(request, state)
+    principal = await _principal(request, state)
     _charge_session(state, principal.sid)
     return principal
 
@@ -150,6 +155,14 @@ async def _owned_run(state: ApiState, run_id: str, sid: str) -> RunRecord:
     return run
 
 
+def _valid_thread_id(thread_id: str) -> str:
+    """A thread id is a UUID (any version); anything else is a 422. The lowercase form is the one stored."""
+    normal = normalize_thread_id(thread_id)
+    if normal is None:
+        raise ApiError(422, "The thread id must be a UUID.")
+    return normal
+
+
 def _json(model: BaseModel, status: int = 200) -> JSONResponse:
     return JSONResponse(to_wire(model), status_code=status, headers={"Cache-Control": "no-store"})
 
@@ -170,7 +183,8 @@ async def health(request: Request) -> JSONResponse:
             provider=settings.provider,
             models=settings.models_by_role(),
         )
-    return _json(result.model_copy(update={"auth_required": settings.auth.required}))
+    features = [*result.features, "accounts"] if state.auth.supabase_enabled and "accounts" not in result.features else result.features
+    return _json(result.model_copy(update={"auth_required": settings.auth.required, "features": features}))
 
 
 @router.post("/auth/session")
@@ -203,8 +217,18 @@ async def create_run(request: Request, principal: Principal = Depends(session_gu
     if wait > 0:
         raise rate_limited(wait)
     try:
+        extra: dict[str, str] = {}
+        if body.research_id:
+            extra["research_id"] = body.research_id
+        if body.thread_id:
+            extra["thread_id"] = body.thread_id
         run = await state.service.create_run(
-            session_id=principal.sid, preset_id=body.preset_id, priority=body.priority, mode=mode, params=body.params
+            session_id=principal.sid,
+            preset_id=body.preset_id,
+            priority=body.priority,
+            mode=mode,
+            params=body.params,
+            **extra,
         )
     except ParamsError as exc:
         state.run_limiter.refund(principal.sid)
@@ -214,6 +238,23 @@ async def create_run(request: Request, principal: Principal = Depends(session_gu
         raise
     token = state.auth.issue_stream_token(run.id, principal.sid)
     return _json(CreateRunResponse(run_id=run.id, cap_usd=run.budget.max_usd, stream_token=token), status=201)
+
+
+@router.get("/runs/mine")
+async def my_runs(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """The runs this session started (a signed-in user's, on any device), newest first, at most 50."""
+    return _json(await _state(request).service.list_my_runs(principal.sid, 50))
+
+
+@router.post("/runs/{run_id}/stream-token")
+async def run_stream_token(run_id: str, request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """A fresh stream token for a run this session started: the way a signed-in user's other device or tab (which never
+    saw the 201 of POST /runs) opens the live stream of a run that is still going."""
+    state = _state(request)
+    run = await _owned_run(state, run_id, principal.sid)
+    return JSONResponse(
+        {"streamToken": state.auth.issue_stream_token(run.id, principal.sid)}, headers={"Cache-Control": "no-store"}
+    )
 
 
 @router.get("/runs")
@@ -233,7 +274,7 @@ async def parse_text(request: Request, principal: Principal = Depends(session_gu
     if wait > 0:
         raise rate_limited(wait)
     try:
-        reply = await state.service.parse(body.text)
+        reply = await state.service.parse(body.text, session_id=principal.sid)
     except AdmissionDenied as exc:
         state.parse_limiter.refund(principal.sid)
         if exc.reason == "maintenance":
@@ -245,23 +286,109 @@ async def parse_text(request: Request, principal: Principal = Depends(session_gu
     return _json(reply)
 
 
+@router.post("/runs/{run_id}/ask")
+async def ask_run(run_id: str, request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """A question or a change request about an ended run, from its owner session (plan claim 3)."""
+    state = _state(request)
+    run = await _owned_run(state, run_id, principal.sid)
+    if run.status in ACTIVE_STATUSES:
+        raise ApiError(409, "The run is still going. Ask again when it ends.")
+    body = await _read_json(request, AskRequest)
+    wait = state.ask_limiter.acquire(principal.sid)
+    if wait > 0:
+        raise rate_limited(wait)
+    try:
+        reply = await state.service.ask(
+            run_id, session_id=principal.sid, text=body.text, focus_version=body.focus_version
+        )
+    except AdmissionDenied as exc:
+        state.ask_limiter.refund(principal.sid)
+        if exc.reason == "maintenance":
+            raise ApiError(503, "Live runs are offline for maintenance.", "maintenance") from None
+        raise  # budget_exhausted: the shared handler answers 429 with the reason
+    except BaseException:
+        state.ask_limiter.refund(principal.sid)  # 404, 403 or 409 from the service: nothing was answered
+        raise
+    return _json(reply)
+
+
+@router.post("/threads/{thread_id}/messages")
+async def thread_message(thread_id: str, request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """One message of a thread (backend ARCHITECTURE 17.4): the fact check on the first chip request, then the agent."""
+    state = _state(request)
+    thread_id = _valid_thread_id(thread_id)
+    body = await _read_json(request, ThreadMessageRequest)
+    if body.run_id:
+        run = await _owned_run(state, body.run_id, principal.sid)  # 404 or 403 for a run that is not this session's
+        if run.status in ACTIVE_STATUSES:
+            raise ApiError(409, "The run is still going. Ask again when it ends.")  # like POST /runs/{id}/ask
+    wait = state.message_limiter.acquire(principal.sid)
+    if wait > 0:
+        raise rate_limited(wait)
+    try:
+        reply = await state.service.thread_message(
+            thread_id, session_id=principal.sid, text=body.text, run_id=body.run_id, focus_version=body.focus_version
+        )
+    except AdmissionDenied as exc:
+        state.message_limiter.refund(principal.sid)
+        if exc.reason == "maintenance":
+            raise ApiError(503, "Live runs are offline for maintenance.", "maintenance") from None
+        raise  # budget_exhausted: the shared handler answers 429 with the reason
+    except LLMError:
+        state.message_limiter.refund(principal.sid)
+        log.warning("thread message: the fact check's model call failed", exc_info=True)
+        raise ApiError(502, "The model could not be reached. Try again shortly.") from None
+    except BaseException:
+        state.message_limiter.refund(principal.sid)
+        raise
+    return _json(reply)
+
+
+@router.get("/threads")
+async def list_threads(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """This session's threads, newest first (at most 50)."""
+    return _json(await _state(request).service.list_threads(principal.sid, 50))
+
+
+@router.get("/threads/{thread_id}")
+async def read_thread(thread_id: str, request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """The stored turns of one of this session's threads; another session's thread is a 404."""
+    thread_id = _valid_thread_id(thread_id)
+    try:
+        view = await _state(request).service.read_thread(principal.sid, thread_id)
+    except NotFound:
+        raise ApiError(404, "Thread not found.") from None
+    return _json(view)
+
+
 @router.get("/runs/{run_id}/events")
 async def run_events(run_id: str, request: Request) -> Response:
     state = _state(request)
     _valid_run_id(run_id)
 
     stream_token = request.query_params.get("st")
-    if stream_token:
-        claims = state.auth.read_stream_token(stream_token)
-        if claims is None or claims[0] != run_id:
-            raise unauthorized("Invalid or expired stream token.")
-        sid = claims[1]
-    elif state.settings.auth.required:
-        raise unauthorized("A stream token is required.")
+    claims = state.auth.read_stream_token(stream_token) if stream_token else None
+    if claims is not None and claims[0] == run_id:
+        _charge_session(state, claims[1])
+        run = await _owned_run(state, run_id, claims[1])
     else:
-        sid = _principal(request, state).sid
-    _charge_session(state, sid)
-    run = await _owned_run(state, run_id, sid)
+        found = await state.service.get_run(run_id)
+        if found is not None and found.status not in ACTIVE_STATUSES:
+            # A finished run replays on the same public rule as GET /runs/{id}/log, so a reload with an expired
+            # stream token (auth.stream_ttl_s) still shows it. A running run's live stream always needs a valid token
+            # (or, with auth off, the owner's anonymous session).
+            principal = await _principal_opt(request, state)
+            if principal is not None:
+                _charge_session(state, principal.sid)
+            run = found
+        elif stream_token:
+            raise unauthorized("Invalid or expired stream token.")
+        elif state.settings.auth.required:
+            raise unauthorized("A stream token is required.")
+        else:
+            sid = (await _principal(request, state)).sid
+            _charge_session(state, sid)
+            run = await _owned_run(state, run_id, sid)
 
     after = _after_seq(request)
     stream = state.service.stream(run_id, after)
@@ -283,7 +410,7 @@ async def run_events(run_id: str, request: Request) -> Response:
             raise ApiError(503, "The event stream is unavailable.") from None
 
     return StreamingResponse(
-        sse_body(agen, float(state.settings.sse.ping_s), first),
+        sse_body(agen, float(state.settings.sse.ping_s), first, FINISHED_RETRY_MS if first is not None else RETRY_MS),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -304,7 +431,7 @@ async def run_log(run_id: str, request: Request) -> Response:
     if run is None:
         raise ApiError(404, "Run not found.")
     if run.status in ACTIVE_STATUSES:
-        principal = _principal_opt(request, state)
+        principal = await _principal_opt(request, state)
         if principal is None:
             raise unauthorized("Missing or invalid session token.")
         _charge_session(state, principal.sid)
@@ -312,7 +439,7 @@ async def run_log(run_id: str, request: Request) -> Response:
             raise ApiError(403, "This run belongs to another session.")
     else:
         # Finished runs are publicly readable without ownership (spec 6.2, BACKEND_CHECKLIST item 7).
-        principal = _principal_opt(request, state)
+        principal = await _principal_opt(request, state)
         if principal is not None:
             _charge_session(state, principal.sid)
     log_model = await state.service.run_log(run_id)

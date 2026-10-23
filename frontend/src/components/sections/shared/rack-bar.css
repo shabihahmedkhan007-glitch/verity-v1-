@@ -9,11 +9,12 @@
 .rkbar a { color: inherit; text-decoration: none; }
 .rkbar a:focus-visible { outline: 2px solid var(--rk-a); outline-offset: 3px; }
 
-.rkbar-brand {
-  display: flex; align-items: center; gap: 10px; flex: none;
-  font-family: var(--font-display); font-weight: 900; font-size: 28px; letter-spacing: .02em; line-height: 1;
-}
-.rkbar-brand svg { width: 22px; height: 22px; fill: none; stroke: var(--rk-a); stroke-width: 1.5; stroke-linecap: square; }
+/* The logo (D38, D40): the Trace V in amber, the Register cut wordmark in the bar's ivory ink. The amber sits on the
+   symbol's svg, because the link itself inherits the bar's ink (.rkbar a). */
+.rkbar-brand { display: flex; align-items: center; gap: 11px; flex: none; }
+.rkbar-brand svg { display: block; width: auto; }
+.rkbar-brand .logo-sym { height: 26px; color: var(--rk-a); }
+.rkbar-brand .logo-word { height: 17px; }
 
 .rkbar-nav ul { display: flex; gap: 26px; list-style: none; margin: 0 0 0 12px; padding: 0; }
 .rkbar-nav a {

@@ -1,10 +1,10 @@
 # Verity backend architecture (`backend/`)
 
-The implementation contract for the Verity agent backend. Written 2026-10-05, before any backend code exists. Nothing here is built yet.
+The implementation contract for the Verity agent backend. Written 2026-10-05, before any backend code existed; the backend has been built since and runs as described here, with the additions in sections 17.1 to 17.3 (the chat roles, fact check, research, ask, and the sign-off of 2026-10-22 and 2026-10-23). The [REC], [OPEN] and [ASSUME] tags record the reasoning at the time; section 23 says which questions are now settled. The one-page map is `../ARCHITECTURE.md`.
 
 Read with:
-- `../frontend/ARCHITECTURE.md`: the frontend architecture. It owns the event and data contracts (section 5), the reducer, the fitness formula (section 8.3) and the first proposed agent API (section 10). **This backend must emit exactly those contracts.** Where this document proposes a change to them, it says so and lists it in section 23.
-- `../docs/MEETING.md` and `../REPORT.md`: requirements and decisions D1 to D10. They outrank this file.
+- `../docs/PRD.md` (requirements) and `../docs/DECISIONS.md` (D1 onward). They outrank this file. `CONTRACTS.md` wins on exact interfaces (decision D33 has the full order).
+- `../frontend/ARCHITECTURE.md`: the frontend architecture. It owns the event and data contracts (section 5), the reducer and the fitness formula (section 8.3). **This backend must emit exactly those contracts.** Where this document proposes a change to them, it says so and lists it in section 23.
 
 ## 0. How to read the claims in this file
 
@@ -88,6 +88,8 @@ Changes from the diagram in the brief, and why:
 - **Verifier and Prover are not LLM roles.** They are tool calls plus parsing. Only four roles call a model.
 - **Feasibility is split** into deterministic rules (cheap, trustworthy) and the planner's explanation (LLM). The rules decide; the LLM explains.
 - **OpenROAD place and route is not in the MVP path.** Post-synthesis timing from OpenSTA is the MVP timing number (section 11.4).
+
+Since 2026-10-22 (sections 17.1 to 17.3): four more model routes serve the chat (router on Nemotron 3.5 Lightning; parser, chat and research on GLM 5.3), so eight routes call a model, and only the four engineering roles above write Verilog. `POST /parse` adds a search service (Tavily for the web, Serper for Scholar and Patents) and Verity's own knowledge store (migrations 3 and 4). After `run done` the orchestrator runs a sign-off with three more sandbox scripts (`seeds`, `strength`, `wave`). Tools run in local Docker; the Nebius Sandboxes runner is written but unverified and off.
 
 ---
 
@@ -177,6 +179,7 @@ evolve round 1: 3 children of the best parent, one per strategy
   |      each child: lint -> sim -> FAIL? up to max_repairs_child (default 1) -> still FAIL: rejected
   |      each passing child: synth -> PPA -> fitness vs v1
   |      Judge: elites = best 2 by fitness among measured (v1 counts at 0)
+  |      copies: same cells, area and clock as an earlier version -> reason "Same result as vN" (D49)
   |    optional round 2 (if budget allows and round 1 improved on v1):
   |      2 children of the best elite, same rules
   |
@@ -186,7 +189,11 @@ prove  EQY: winner vs v1 (winner != v1)
   |                        (max 2 prove attempts, then winner = v1)
   |      inconclusive / timeout -> winner stands, labeled "tested, not proven"
   |
+human reference (D14): the pack's reference.v measured with the same tools, EQY winner vs reference (human_ref event)
+  |
 done   winner event, final RunLog, artifacts closed
+  |
+sign-off (section 17.3): after run done, every run (fast and full); never delays the result
 ```
 
 ### 5.2 Decision rules (all deterministic)
@@ -200,6 +207,10 @@ elif sim_failed:                   next = REPAIR
 elif sim_passed and not measured:  next = SYNTH
 if candidate.fitness is None:      never ranked
 if child.fitness <= parent.fitness: kept in the tree, not an elite
+if same cells, area and clock as an earlier measured version: a copy; the older one wins any tie and is
+                                   the only one proven (core/fitness.pick_winner skips a copy of a demoted one)
+winner = best fitness among versions no worse than v1 on the goal metric (D49); v1 always eligible;
+         elites do not use this check
 if budget.exhausted(any_limit):    stop issuing new LLM calls; finish what is measured;
                                    run phase = cap_reached; still run PROVE on the current best
                                    if the tool budget allows
@@ -289,14 +300,17 @@ Extends `../frontend/ARCHITECTURE.md` section 10 [FACT] with auth and a run log 
 | `GET /health` | none | | `{liveEnabled, reason?, capUsd, provider, models}`. `provider` lets judges and us confirm Nebius is wired. |
 | `POST /auth/session` | none (rate limited per IP) | `{accessCode}` | `200 {token, expiresAt}` or `401` |
 | `POST /runs` | session | `{presetId, priority, mode?}` | `201 {runId, capUsd, streamToken}` or `429 {reason}` |
+| `POST /runs/{id}/stream-token` | session, run owner | | `200 {streamToken}` (17.5) |
 | `GET /runs/{id}/events` | stream token (`?st=`) | SSE, `Last-Event-ID` | `id: <seq>` + `data: <RunEvent>` |
 | `GET /runs/{id}/log` | session | | `RunLog` JSON (same format as `golden.json`). Used for Results after a live run and for recording the golden run. |
 | `POST /runs/{id}/steer` | session, run owner | `SteerRequest` (existing) | `202` |
 | `POST /runs/{id}/stop` | session, run owner | | `202` |
 
-Not included on purpose: user accounts, run listing, artifact browsing endpoints (artifacts already travel as `artifact` events and the frontend builds the zip), admin endpoints (use the CLI on the server), any endpoint that runs a tool directly.
+Not included on purpose: user accounts, artifact browsing endpoints (artifacts already travel as `artifact` events and the frontend builds the zip), admin endpoints (use the CLI on the server), any endpoint that runs a tool directly.
 
 Free-text specs: `POST /runs` takes a `presetId` only in the MVP [DECIDED D7: "live runs are presets only"]. A free-text field is a later item that goes through the feasibility path in section 10.
+
+**Built since (2026-10-18 to 2026-10-23; exact shapes in `CONTRACTS.md` section 9):** `GET /runs` (public list of runs), `POST /runs` with knob `params` and an optional `researchId` (D13 replaced presets with knob families), `POST /parse` (the fact check, section 17.1), `POST /runs/{id}/ask` (section 17.2), a public `GET /runs/{id}/log` and event replay for finished runs, and `features` plus `sandbox_down` on `GET /health`. Plain English is input only: it maps onto a family and knobs that the server validates, and never becomes a reference or a test.
 
 ---
 
@@ -480,10 +494,13 @@ Why not OAuth: an extra provider app and redirect flow for a two-week build, and
 | New runs per session | 3 / hour |
 | Concurrent runs per session | 1 |
 | Concurrent runs global | 2 (also bounded by Sandboxes' 50 simultaneous operations [FACT]) |
-| Global estimated spend per day | $5, then `/health` returns `liveEnabled: false, reason: budget_exhausted` |
-| Per-run cap | $0.50 [matches the planner's assumption in REPORT 2026-10-04] |
+| Global estimated spend per day | $10 (`[limits] daily_usd`, D34), then `/health` returns `liveEnabled: false, reason: budget_exhausted` |
+| Estimated spend per session per UTC day | $3 (`[limits] session_usd`, D35), then 429 `session_budget_exhausted` for that session only; `/health` is not affected |
+| Per-run cap | $0.50 [matches the planner's assumption in REPORT 2026-10-04]; enforced here and still sent as `capUsd`, but the web never shows it (D36) |
 
-Rate limiting is an in-process token bucket keyed by session id and IP. That is correct only because there is one process; daily spend is persisted in SQLite so a restart does not reset it.
+Rate limiting is an in-process token bucket keyed by session id and IP. That is correct only because there is one process; daily spend and session spend are persisted in SQLite (`daily_spend`, `session_spend`) so a restart does not reset them.
+
+The session limit copies the daily one (same `DailySpend` arithmetic, same reserve-then-settle): at `POST /runs`, and at `POST /parse` and `POST /runs/{id}/ask` when they need a model call, `RunManager` checks the global day first and then the session's day (persisted spend plus the session's own runs in flight plus its open holds plus the new worst case, against `session_usd`). A refusal is `AdmissionDenied("session_budget_exhausted")`, answered as 429 with a sentence that has no dollar figure. Real costs settle through `Store.add_daily_spend(day, usd, session_id)`, which adds to `daily_spend` and `session_spend` in one transaction; the run's credits events, the parser and chat calls and the research spend all use it. `core.budget.spend_owner(session_id)` decides the key (today the session id; the one place to change when Supabase sign-ins make the session id a user id). Until then a new session gets its own $3, a known gap.
 
 ### 12.3 What the model can and cannot do
 
@@ -598,6 +615,8 @@ baseline_area_um2, final_area_um2, baseline_clock_ns, final_clock_ns,
 fitness_best, improved (bool), equivalence, pack_hash_ok
 ```
 
+`backend/evals/quality_report.py` (standard library only) reads saved run logs (`GET /runs/{id}/log` JSON, files or a folder) and prints one table per run and a total: v1 first try, new versions, copies, versions worse than v1 on the goal, rejected, winner and its change against v1, EQY vs v1 and vs the human design, seeds, planted bugs caught or harmless, spend and wall time. It is how a prompt or winner-rule change is compared before and after.
+
 Aggregates in `evals/report.md` (generated): pass@1, pass after repair, repair success rate, median area and timing gain vs v1, share of runs that improved, share proven equivalent, median cost and runtime. Comparisons are across `git_sha` and `prompt_versions`.
 
 Honesty rules: report gains only relative to our own v1; never compare to REvolution's numbers; say how many repeats each figure comes from.
@@ -673,12 +692,13 @@ Roles are Python modules in one process, each with a prompt template file, an ou
 ```
 backend/verity/roles/
   planner.py      prompts/planner.v2.md      -> PlanOut (pydantic)
-  rtl_gen.py      prompts/rtl_gen.v2.md      -> RtlOut {rtl, reason}
-  repair.py       prompts/repair.v2.md       -> RtlOut
-  optimizer.py    prompts/optimize.v2.md     -> RtlOut   (strategy in the prompt)
+  rtl_gen.py      prompts/rtl_gen.v3.md      -> RtlOut {rtl, reason}   (v3: declarations and defaults rules, ASCII hyphens, sized constants)
+  repair.py       prompts/repair.v4.md       -> RtlOut   (v3 added the cycle table, section 17.3; v4 adds the edge-by-edge self-check and, for a failing child, its passing parent)
+  optimizer.py    prompts/optimize.v4.md     -> RtlOut   (strategy in the prompt; v3 added cell types and the critical path; v4 adds the already-tried list,
+                                                           keep-control-registers, no hand-built arithmetic, the self-check and ASCII rules)
 ```
 
-Model routing is config [REC, to be confirmed by evals]:
+Model routing is config (`[routes.*]` in `config.toml`; confirmed by the 2026-10-16 gate and in use):
 
 | Role | Default model | Reason |
 |---|---|---|
@@ -687,9 +707,156 @@ Model routing is config [REC, to be confirmed by evals]:
 | Repair | Nemotron 3 Ultra | Debugging is hard; a cheap model that fails costs more calls |
 | Optimizer | Nemotron 3 Super | 3 to 5 calls per run; a failing child is cheap to discard |
 
+### 17.1 Chat roles, fact check and research (design-partner plan, claims 1, 2 and 5; 2026-10-22)
+
+Five more roles serve the chat around a run. Each route can name its own model (`[routes.<role>] model`, which wins over `tier`) and its own price (`[prices."<id>"]`). Nemotron stays the visible engineer (two of the four judging criteria score Nemotron use): it writes the plan and every line of Verilog. GLM 5.3 talks and summarizes.
+
+| Role | Model | Used by |
+|---|---|---|
+| router | Nemotron 3.5 Lightning, thinking off | `POST /runs/{id}/ask` intent router (17.2) |
+| parser | GLM 5.3, `reasoning_effort` low | `POST /parse` fact check: seven classes (the seventh, `question`, is answered by the agent), a label, family and knobs |
+| chat | GLM 5.3, `reasoning_effort` low | `POST /runs/{id}/ask` answers that are not code templates (17.2); the agent loop of `POST /threads/{id}/messages` (17.4) |
+| research | GLM 5.3, `reasoning_effort` low | the research summary of the search results |
+| memory | GLM 5.3, `reasoning_effort` low, temperature 0, 800 tokens, 25 s | the 20 to 40 word summary of older thread turns (17.4); the agent loop itself runs on `chat` |
+
+The routes come from `scripts/probe_models.py` (2026-10-22, $0.0016 spent): all three ids are served on the global Token Factory host; GLM 5.3 returns JSON with `reasoning_effort` low (17 reasoning tokens, 0.8 s); GLM 5.3 accepts `enable_thinking false` but ignores it (274 reasoning tokens), so the thinking switch is only sent to `nvidia/` models; Lightning returns JSON with thinking off (0.25 s). JSON mode is remembered per model, never for the whole provider.
+
+**Fallback (2026-10-23).** GLM 5.3 is the primary of the four chat roles, but on 2026-10-23 both GLM ids on Token Factory timed out at 45 s on a tiny JSON call while Nemotron 3 Ultra answered in 0.3 s, and the first bench message failed (the fact check raised a timeout, `POST /threads/{id}/messages` returned 502). One provider model being down must not break the bench, so each model can have an ordered fallback chain (`[llm.fallback."<id>"]`, CONTRACTS section 11): GLM 5.3 and GLM 5.3 Flash fall back first to DeepSeek V4 Pro (a JSON call in 0.6 s, no thinking flag, no `reasoning_effort`) and then to Nemotron 3 Ultra. DeepSeek's input price ($1.75 per 1M tokens, a third-party listing) is above GLM 5.3's ($1.40), so a worst-case hold prices each call at the highest input price and the highest output price across the primary and its chain (`Settings.hold_price_for`), not on the primary alone. The primary timeouts are short (parser 25 s, chat 30 s, research 45 s, memory 25 s) so the fallback starts fast. It lives in `OpenAICompatProvider.complete()` and fires only on a timeout, a connection error or a 5xx; a 4xx or an unreadable answer is not a model outage and raises as before. A model that failed is skipped for `llm.fallback_cooldown_s` (300 s) and recovers by the cooldown running out, so only the first request after an outage pays the primary's timeout. A caller with its own clock sets `LLMRequest.deadline_s`: each fallback attempt is then capped at the time left and one with under 5 s left is skipped (the thread agent, 17.4). The response says which model served it, and spend and the "Worded by ..." basis line use that model.
+
+```
+POST /parse -> RunManager.parse(text, session_id)
+  reserve the worst case on the daily budget (parser at its cap + one full research)
+  parse_intent()                    core/parse.py      parser route, six classes; code validates family and knobs
+    hardware_guard()                                   "not_chip" + a hardware word -> "unsure"
+    verdict from the class (code)
+    stated_knobs()                                     which knobs the sentence itself states (statedKnobs): the model's
+                                                       value must survive validation and the sentence must back it
+  not_chip -> reply, no search
+  ResearchService.lookup_or_search  research/service.py
+    queries from code templates     research/queries.py  family + knobs, or the label reduced to a hardware vocabulary
+    cache: family-plus-knobs key, or the templated queries (status ok, 30 days)
+    per-session limit, daily credit cap per service (Serper, Tavily)
+    search | scholar | patents (at most 3): Tavily for search and Serper for scholar and patents when both keys exist,
+      one key serves all three                             research/tavily.py, serper.py, routed.py
+    allowlist tiers A B C P, score, top 8, 2 per domain    research/sources.py
+    one research-route summary, S1 to S8 in a random delimiter, JSON  research/summary.py
+    code checks: ids, URLs, numbers, fixed technique list + keyword, doneBefore
+  verdict: failed or refused research on a hardware request -> could_not_check
+```
+
+Only the summary call reads web text; it has no tools and its output is shown to the user only. Only technique ids from a fixed per-family list (`research/techniques.py`, our own labels) and code-written numbers reach a run: the planner gets a "Known approaches" section and past-outcome lines, and the EXPLORE child gets one technique its parent does not use instead of the generic EXPLORE text. No web text, no summary text and no user text reaches a Nemotron role. A new run reads research by `researchId` (owned by the session and about the same family and knobs), else the exact key, else the nearest knobs (distance 0.25 or less), and past outcomes only with the same pack hash and tool image digest.
+
+Migration 3 adds `research`, `source`, `research_source`, `research_grant`, `run_outcome`, `strategy_outcome`, `runs.research_id` and `daily_spend.serper_credits`; migration 4 adds `research.tavily_credits` and `daily_spend.tavily_credits`; migration 5 adds `session_spend(session_id, day, usd)`; migration 6 adds `threads` and `thread_turns` (17.4). The shared store keeps the sha256 of the user's sentence, never the sentence. `run_outcome` is upserted from both endings (orchestrator `_publish_summary`, RunManager `_finalize`), with ratios against the run's own v1.
+
+### 17.2 Ask: the chat after the first message (plan claim 3; 2026-10-22)
+
+`POST /runs/{id}/ask` (CONTRACTS section 9) talks about an ended run with its owner. `RunManager.ask` checks the thread state in code (owner, not queued or running), then `verity/ask/` answers the turn:
+
+```
+load_card()          ask/tools.py     stored events (latest candidate per id, captions, rounds, winner), run row, report files
+prefilter()          ask/intent.py    free keyword rules; when none fires, one router call (Nemotron Lightning, JSON),
+                                      intent and topic checked against enums, version labels against the real versions
+dispatch
+  selection, drop, timing, cost       code templates (explain_selection replays core/fitness.py; critical_path parses OpenSTA)
+  other run and Verilog questions     chat route (GLM 5.3) on a numbered facts block; Verilog stripped; every number must
+                                      be a facts value; one retry naming the bad numbers; then the code answer
+  change_request                      propose_run: one parser-route call, validate_params, clamp or refuse; the idea is
+                                      what the new run's EXPLORE will read from research; the user confirms, the web posts
+  research                            the run's research, or ResearchService for its family and knobs
+  walkthrough                         ask/walkthrough.py: nine steps built by code from the run card (spec, plan, rtl, lint,
+                                      simulate, synth, improve, equivalence, signoff); no model call, no budget held
+  new_chip, small_talk, off_topic     fixed replies
+```
+
+A turn that may call a model reserves its worst case on the daily budget first (like `/parse`); template turns are free and still answer when the day's budget is used up. Techniques are ranked by our own past wins, then the run goal (`goals` tag on the fixed list), then the research order, for both the proposal's idea and the run's EXPLORE child. The last three turns per session and run are kept in memory only. The bench no longer talks to this path: its chat goes through the agent of 17.4, which keeps whole threads in the database. This path, its router and its tests stay for `POST /runs/{id}/ask`.
+
+### 17.3 Sign-off, waveforms and spec rules (Verilog-strength plan; 2026-10-23)
+
+After the winner is final, every run (fast and full) checks it again. The orchestrator (`machine._close`) runs the human reference proof, then `_finish` (`run done` and the Done caption), and only then starts `orchestrator/signoff.py`. The sign-off therefore never delays the result and never competes with the proof that gates `run done`; the run slot stays held until it ends (typically 20 to 90 s). Stop cancels it and a stopped run has no sheet. A sandbox error in any part never changes the run's status.
+
+```
+signoff.start(winner)            after run done; skipped (reported) when the time limit is already reached
+  seeds      verify_seeds        the locked tests on [signoff] extra_seeds in one `seeds` call; lint warnings by tag
+  strength   test_strength       core/mutants.py plants up to max_mutants bugs by fixed rules (seven, no model); one
+                                 `strength` call simulates them all; up to max_survivor_proofs survivors get a reset-aware
+                                 EQY against the winner (proven equal = harmless, different = missed, else undecided)
+  wave       waves.capture       one `wave` call: the first directed case of the winner
+signoff.finish                   waits up to the deadline (min of [signoff] max_s and the watchdog cutoff), then emits
+                                 waves/<id>.json, signoff/<id>.json, final/signoff.json and the sign-off caption
+```
+
+`eqyVsV1` comes from the prove stage and `eqyVsHuman` from the human reference. The three sandbox scripts (`seeds`, `strength`, `wave`) are Verity's own; they reuse the pack's locked tests and never change a pack file, so pack hashes do not move. The ban on `$dump` in model RTL stays: the wave script writes its own dump module. A version that fails its tests also gets `waves/<id>.json` (its first failing case) right before its repair, and the repair prompt carries a cycle table around the first mismatch (`roles/prompts/repair.v3.md`); the optimizer prompt (`optimize.v3.md`) adds the largest cell types and the critical path. The spec stage emits `spec/rules.json` (`TaskPack.spec_rules()`), the same rules the model already sees. Shapes: `CONTRACTS.md` 6.3 and 3.10 to 3.11.
+
+Delivery: the events follow the terminal `run` event, so the SSE response (which ends `TERMINAL_GRACE_S` = 5 s after the last event) is not the end of the story. `EventSource` reconnects with `Last-Event-ID` while the run is still live, receives the rest, and gets 204 once the run has ended and nothing is left; `frontend/src/lib/hooks/use-live-run.ts` treats only that 204 (or its 180 s bound) as the end after a terminal event.
+
 Canvas ops are emitted by the orchestrator from state (plan blocks become nodes, candidates become tree nodes), not by the LLM. This removes the open risk of Nemotron tool-call reliability for the canvas (`../frontend/ARCHITECTURE.md` section 14) and is compatible with section 10 there ("the agent is the only writer of canvas ops").
 
 Future separation: because roles only exchange pydantic objects through the orchestrator, any role can move behind a queue or a separate service later without changing the others. Not needed now.
+
+
+### 17.4 The chip engineer agent: threads, tools and memory (plan claims 1, 2, 4 and 5; 2026-10-23)
+
+After the first chip request every message of the bench is a conversation with an agent that acts like a senior RTL and ASIC engineer, picks its own tools and shows every step it took. One endpoint serves the whole chat, `POST /threads/{threadId}/messages` (CONTRACTS section 9). The agent loop runs on the `chat` route (GLM 5.3); Nemotron still writes the plan and every line of Verilog inside a run, and the Lightning router is not used by this path.
+
+```
+POST /threads/{id}/messages -> RunManager.thread_message -> AgentService.message()      ask/agent.py
+  load the thread (ThreadStore)            facts record, summary, the turns after it
+  a runId on the request                   added to the facts; the thread counts as checked; a run still going is a 409 (route)
+  hold the worst case                      5 chat calls + one research + the summary calls of the fold it can start, daily and session budget
+  not checked yet:  RunManager.parse()     the fact check of POST /parse, unchanged (own reserve, research, spend)
+      question                             check null, thread stays unchecked, the agent answers
+      not_a_chip                           check returned, reply null, nothing stored, the next message checks again
+      any other verdict                    check returned, thread checked, verdict/block/settings/research id -> facts
+  turn()                                   the loop below
+  save                                     facts (a proposal is written by code), the user's turn and Verity's turn
+  fold                                     14 turns not in the summary: one `memory` call folds the oldest 4 (at most 8 after a failure)
+```
+
+The loop (`AgentService.turn`) makes at most 5 chat-route calls and 4 tool steps, inside a turn deadline (`[agent] turn_deadline_s`, 90 s): a model call's timeout is cut to what is left of it, and so is every fallback attempt inside that call (`deadline_s`; none starts with under 5 s left, so a fallback model cannot carry the turn past it), no new call or tool starts after it, and code then answers from the steps so far (a tool still running is left to finish, so a research records its own spend). The web gives up at 120 s. Every call is one JSON object in JSON mode: `{"action":"tool","tool":...,"args":{...}}` or `{"action":"answer","text":...,"bullets":[...],"chips":[...]}`. After 4 tool steps the 5th call asks for an answer only. The context of every call is built by `ask/memory.py`: the system message is the persona (`ask/prompt.py`: the role, the hard rules (among them: say "proven" only for an EQY pass, and never offer a choice of architecture, algorithm or structure as an option, though such terms may be explained in general), the tools with their argument shapes, the JSON format, the rules of the mode) plus the `<verity_facts source="code">` block (the mode `first_message | discussion_no_run | discussion_after_run`, the buildable families with their settings and ranges, that custom blocks are coming next, that Verity has no architecture choice (`<design_choices>`: Nemotron picks the structure of each version, the user steers only with the block settings and the priority), the tools Verity runs, the thread's facts record, the fact check of this message if there was one, the latest finished run's facts from `reply.build_facts`, which state every version's equivalence-proof (EQY) result in the walkthrough's words: proven equal from reset, inconclusive, not equal or not checked, the human-reference result of the kept version, and the sign-off sheet's `eqyVsV1` and `eqyVsHuman` where a sheet exists and wins over the version's own record); the user message is `<earlier_summary>`, `<earlier_turns>` (every turn the summary does not cover yet: 10 to 13 once the thread is long), `<steps_so_far>` with each tool result, and the message last. Everything that is not code-owned is data and is escaped so it cannot close one of these tags.
+
+Tools (`ask/agent_tools.py`). The model names a tool and its arguments; code validates both, runs the tool and writes the step label. An unknown tool or an argument that does not pass is a refused step with a plain reason, never an exception and never an effect. A step label is a fixed phrase of code built only from code-owned values (a tool, a version label the run has, a count): a bad block, setting or argument name the model wrote goes only into the result text the model reads. A message runs at most one new research (a second one that is not already saved is refused; saved research is free), which is why the hold covers one. `propose_run` is left out of the tool list the prompt shows on the first message (the fact check's card is the user's chip), and a call to it anyway is refused in the text the model reads with no step line. One message repeats nothing: the same tool with the same arguments gives the model the earlier result and adds no step line, a second chip card is answered (to the model only) with "A chip card is already made in this message; answer now." and adds none, and identical neighbouring step labels collapse into one when the reply is built (`agent.shown_steps`; a refused card does not use up the one card).
+
+| Tool | What code does |
+|---|---|
+| `list_blocks` | the live families with settings, ranges and defaults (from the packs with a `family.py`), and that custom blocks are coming next |
+| `research(topic)` | topic reduced to letters, digits, spaces and hyphens (60 characters), then to the fixed hardware vocabulary (`research.queries.safe_label`); queries are code templates around it; `ResearchService.lookup_or_search` reuses saved research and applies the per-session limit and the credit caps; the agent sees checked summary sentences and source titles and domains, never snippets |
+| `run_facts(run_id?, topic?, version?)` | `ask/reply.py` and `ask/tools.py` on a finished run of this thread: overview, selection, drop, timing, cost, tests, or rtl (Verilog only for an RTL question, as in 17.2); overview, selection and tests also carry the EQY result of every version (`walkthrough.eqy_facts`) |
+| `walkthrough(run_id?)` | `ask/walkthrough.py`; the reply carries the nine steps |
+| `propose_run(family, knobs, priority?)` | the family must be live, settings are checked against the knob table (`core.family.validate_params`); a whole number out of range is clamped and the reply says so, anything else is refused; settings left out keep the pending proposal's or the thread's values for that family; a goal word in the user's message ("smaller", "faster", "lower power", "cheaper", from `ask/propose.py`) with no setting value in it keeps the thread's settings whatever the model sent and sets only the priority (the prompt says the same); returns a `RunProposal` and never starts a run |
+| `open_tab(tab, version?, run_id?)` | `openTab` on the reply, for a run of this thread |
+
+A run is the agent's to use only when its id is in the thread's facts record and its row belongs to the calling session. The answer then goes through the same checks as 17.2, on a wider allowed set: `strip_verilog`; every number must be in the facts block, a tool result, the user's own message or the fact check of this message (never the summary or the earlier turns); numerically equal values are the same number (1.862 = 1.8620, 2099.8 = 2099.80, .862 = 0.862), a different value never passes; one retry that names the bad numbers and asks for each needed number copied exactly as the facts write it, not dropped (it counts as one of the 5 calls), then a code-written reply from what the last tool found (each tool has one plain sentence for this, through `strip_verilog`; on a first message the note fits the verdict of the card above it, so a card with no Run button never says "press Run"). Once a run has finished in the thread there is a fourth check, next to the number check (`reply.proof_claims`, also in 17.2's `chat_answer`): a sentence that calls a design proven, proved, formally verified or equivalent to another ("proven", "proved", "proof that", "formally", "equivalent to") needs an EQY pass in the run facts or a tool result, taken from the run's own EQY records and never from model text. A pass against v1 backs any such sentence; a pass against the human-written design backs only a sentence that says "human". A sentence that denies it ("is not a proof", "not proven", "inconclusive", "no proof that") and a question pass. Without a pass the one retry (shared with the number retry, one note per problem) names the true EQY status, and if the retry still claims it code cuts those sentences and keeps the rest of the answer; an answer with nothing left becomes the code-written reply above. A first-message note is cut to two sentences and three bullets by code. The words the user reads (answer, bullets, chips, the thread summary and the research sentences) carry no em dash or en dash (`core.captions.plain_dashes`: a range like 4 to 32 keeps its numbers, any other dash becomes a comma, a non-breaking hyphen becomes a plain hyphen), a bare pack id the model writes becomes the block's plain name without a size ("adder with carry", "counter with enable", "sequence detector", "MAC array": a pack title carries its default size, and the thread's counter may be 12-bit), the block list leads each block with that name, then its settings with ranges and defaults, and marks the id as `id for propose_run`, a bullet or chip that is empty or a piece of the model's JSON (`chips:[`, a quote, brace or bracket first, a `word":` key) is dropped, a sentence is stripped as Verilog only for a real sized literal (`8'b1010`), never for a possessive like `v2's`, and a clamp note names the asked number only when the user's own message has it. Code never acts on model text except through the tool table, and a proposal waits for the user to press Run, so text in a tool result, an earlier turn or the summary that says "start a run" changes nothing.
+
+Memory. Three parts, all owned by code. (1) The facts record (`threads.facts_json`): `checked`, the verdict, the block and its settings (the in-family card or the closest chip), which settings the sentence stated, the research id, the run ids and the proposal that waits for Run. It is written from the fact check, from a proposal, from a `runId` on a message and from `POST /runs` with a `threadId`, and by nothing else. (2) The recent turns, verbatim: every turn the summary does not cover yet (10 to 13 once the thread is long); a turn is one user message plus Verity's reply (two `thread_turns` rows, user 300 characters and Verity 1,200 at most). (3) A summary of everything older, 20 to 40 words, made by one `memory`-route call (a second one when the first comes back under 20 words for turns that held more than 20 words of user text) and cut to 40 words with Verilog stripped by code. It is folded in batches: when 14 turns are not in the summary yet, the oldest 4 are folded in, leaving 10, so a fold happens once every 4 turns and not on every message. If the call fails the old summary stays, and the next fold takes everything above 10, at most 8. The agent reads the summary as data to save tokens; its numbers are never allowed in an answer.
+
+Storage is behind its own protocol. `core.protocols.ThreadStore` (`get_or_create`, `load`, `append_turns`, `update_facts`, `update_summary`, `list_threads`, `claim`, and since 17.5 `add_user_run` and `list_user_runs`) is the only way the agent and the routes touch a thread; `SqliteStore` implements it with migrations 6 and 7 and `SupabaseThreadStore` with Postgres (17.5), and `[threads] store` picks one. `owner` is `core.budget.spend_owner(session id)`, the same key as the session spend limit; a signed-in user's session id is `u:<user id>` (17.5), so the owner is the user on every device. A message waits for the earlier message of the same thread (one lock per thread).
+
+Money. The hold is the worst case of the agent part (5 chat calls at their output cap with the full context, each priced at the highest input and output price across the chat model and its fallback chain, four tool results, one research, and two summary calls over the turns the fold of this message would take, none when this message starts no fold), taken before the fact check so a refusal happens before anything is spent; every real call cost, the summary included, is added to the daily and the session spend. The fake provider holds and spends nothing, and its deterministic agent (`llm/fake.py`) lists the blocks for "what can you build", proposes a run for "faster", "smaller" or "N-bit" on a thread with a block (for the block the message names, an adder, counter, sequence detector or pattern, MAC or multiply-accumulate, else the thread's own), walks through a run, and otherwise answers in plain words with no digits.
+### 17.5 Accounts and saved chats (Supabase; 2026-10-23)
+
+Chats and each user's list of runs can live in a Supabase project; run files, events and spend ledgers never do (they stay in SQLite and on disk). Two independent switches, both off until `SUPABASE_URL` is set: sign-in, and the chat store.
+
+```
+browser   supabase-js signInWithPassword (email + password, no sign-up anywhere)  -> access token (a JWT)
+          every REST call:  Authorization: Bearer <Verity session token | Supabase access token>
+server    api/auth.py  AuthService.authenticate(token)
+            1. Verity token (itsdangerous)                 sid "s_..." , role team | judge
+            2. Supabase token, when SUPABASE_URL is set    sid "u:<user id>", role user
+                 JWKS keys (<=10 min old) -> the key's own alg (ES256 | RS256) -> iss, aud, exp, sub uuid
+                 no keys published (legacy shared secret)  -> GET auth/v1/user with the publishable key, kept 60 s
+          session_guard -> Principal(sid, role, email?) -> rate limits, spend owner, run ownership, stream token, threads
+store     main.py picks the ThreadStore from [threads] store:
+            sqlite   SqliteStore (migrations 6, 7)         tests, local work, no network
+            supabase SupabaseThreadStore                   httpx -> https://<ref>.supabase.co/rest/v1/<table>, header apikey: <secret key>
+```
+
+Why the sid carries the user. `core.budget.spend_owner(sid)` already keys threads, the run list and the per-day session spend, so making the sid `"u:" + user id` is the whole change: a user signing in on another device lands on the same threads, runs, spend and rate limits. A judge who uses the access code keeps a per-login session as before. The two never mix: one prefix is `u:`, the other `s_`. A stream token is signed for `{runId, sid}` and `POST /runs` returns the first one to the tab that started the run; another device or tab of the same user opens a running run's stream by asking `POST /runs/{id}/stream-token` (owner only, `session_guard` then `_owned_run`) for a fresh one.
+
+Token checks (`verify_supabase_token`). The algorithm comes from the matched JWK (EC P-256 gives ES256, RSA gives RS256) and `jwt.decode` is given only that one, so an HS256 token signed with the public key bytes and an `alg: none` token are refused before and again inside the library. The JWKS is cached at most `[supabase] jwks_cache_s` (600 s); a `kid` the server has not seen reads the keys again (not more often than every 30 s). Only the error type is logged when Supabase cannot be reached, and then nobody signs in: a Supabase token is `401`, an access-code session still authenticates (its bench chat is another matter, see the Data API store below).
+
+The Data API store. One `httpx.AsyncClient` with the header `apikey: <secret key>` and no `Authorization` header (the new `sb_secret_` keys are not JWTs; a secret key sent from a browser gets `401`). The key bypasses row level security, so the three tables (`threads`, `thread_turns`, `user_runs`; `backend/supabase/schema.sql`) have RLS on, no policies, no grants for `anon` and `authenticated`, and full grants for `service_role` only; every query names its owner. Calls are small and explicit: `GET` with `eq`, `gt`, `in` and `not.is.null` filters, `POST` with `on_conflict` and `resolution=ignore-duplicates` (get-or-create, the run index), `PATCH` with `return=representation` (no row back means `NotFound`). `append_turns` reads the last `seq`, inserts both rows in one request, then sets the thread's `updated_at` and, once, its `title` (the first user message); the agent's per-thread lock means two writers do not meet, and a duplicate-key `409` from one that does is retried once with a fresh `seq`. Any transport error, `4xx`/`5xx`, or unexpected body becomes `StoreUnavailable` (HTTP `502`, "Saved chats are unreachable right now."); the log line is the method, the table, the status and the Postgres error code, never a key, header or body (`api/redact.py` also scrubs the `apikey` header and `sb_secret_` strings). The one store chosen at startup serves every owner, so during a Supabase outage the bench chat (`POST /threads/{id}/messages`), the chats list and `GET /runs/mine` are a `502` for access-code sessions too; starting a run, runs already started, replays and the fact check (`POST /parse`) are unaffected.
+
+What is kept for another device. `thread_turns.reply` holds `{"check": ParseReply | null, "reply": AgentReply}` as the POST sent it (JSON, 32 KB at most, dropped when larger), and `GET /threads/{id}` returns it as `reply` and `check` on Verity rows. The run list is `user_runs` (`RunManager.create_run` writes it after the run starts; `GET /runs/mine` joins it to the run's status in SQLite). Moving a pre-sign-in session's chats into an account was dropped; `ThreadStore.claim` stays in the protocol and is implemented, but nothing calls it.
 
 ---
 
@@ -838,12 +1005,12 @@ Structured output: the Planner asks for JSON and validates with pydantic; whethe
 | Token limits | Per-run ledger with every limit in section 20; per-call output caps | Per-user monthly quotas |
 | Evals | 6 task packs; packs, functional, repair, optimization, regression, performance, isolation suites; JSONL + generated report | More packs, CVDP-style harder tasks, CI on every prompt change |
 | Version tracking | Immutable artifacts, attempts and lineage in SQLite, prompt and model versions per attempt | Cross-run comparison UI |
-| Circuit viewer | Backend emits `CircuitGraph` JSON artifact | Frontend viewer, post-mapping netlist view |
-| Multi-agent roles | 4 LLM roles as modules + deterministic verifier, judge, prover | Separate processes only if needed |
+| Circuit viewer | Backend emits `CircuitGraph` JSON artifact; the bench Architecture tab draws it (built 2026-10-23) | Post-mapping netlist view |
+| Multi-agent roles | 4 engineering roles plus 4 chat routes (router, parser, chat, research; section 17.1) as modules + deterministic verifier, judge, prover, sign-off | Separate processes only if needed |
 | Celery | No | Only for an EDA worker class (section 18.2) |
 | Redis | No | With Celery, or for multi-process rate limits |
 | Heartbeats | SQLite heartbeat + watchdog + SSE pings + restart recovery | Leases across workers |
-| Feasibility checker | Deterministic rules on presets + planner output | Free-text classifier + human-approved reference proposal |
+| Feasibility checker | Deterministic rules on knob families + planner output; the free-text fact check (`POST /parse`, section 17.1) is built | Human-approved reference proposal |
 | INT4/INT8 | As task-pack constraints (showcase), locked by contract check | More types (FP8, bfloat16) as new packs |
 | Candidate search | v1 + 3 children, optional round 2 with 2 children, elites = best 2 | Adaptive strategy choice (bandit), larger populations if credits allow |
 | Optimization | SIMPLIFY, OPTIMIZE, EXPLORE; area + post-synth timing | Power via SAIF, OpenROAD on finalists, REFACTOR and FUSION strategies |
@@ -863,10 +1030,12 @@ Structured output: the Planner asks for JSON and validates with pydantic; whethe
 | O6 | `timed_out` in the UI | New phase or `error` with message | `error` with message (no contract change) |
 | O7 | Fixed latency for optimizer children | Fixed by pack (EQY-friendly) or free (more optimization room) | Fixed for the MVP |
 | O8 | Power metric | `null`, or OpenSTA default-activity estimate labeled as estimate | Decided 2026-10-16: OpenSTA vectorless estimate (input activity 0.1, pack target clock), labeled as estimate; `null` when it fails. SAIF/VCD not wired |
-| O9 | Free-text specs before submission | Build reference-proposal flow, or presets only | Presets only [DECIDED D7]; reopen only after the 2026-10-25 freeze passes |
+| O9 | Free-text specs before submission | Build reference-proposal flow, or presets only | Presets only [DECIDED D7]; reopen only after the 2026-10-26 freeze passes (D46) |
 | O10 | Run budget numbers | Section 20 defaults | Confirm after M2 measurements |
 | O11 | Reuse of REvolution code | Study only, or vendor parts (MIT, needs credit) | Study only; our loop is small enough to write, which keeps "new work" clear |
 | O12 | Steering scope | Plan gate only, or during evolution | Plan gate only for the MVP (pins and toggles before RTL) |
+
+Status on 2026-10-23: O1 settled on mac4 as the featured run (`frontend/public/runs/mac4-real.json`). O2 (hosting) is still open and blocks judging (`../docs/PRD.md` C8). O3: tools run in local Docker; the Sandboxes runner is unverified. O4: access code plus bearer, built. O5: the stream token and access code prompt are built in the frontend. O6: `error` with message, as recommended. O8: decided 2026-10-16 (see the row). O9: superseded by D13 (knob families with server-checked ranges) and the fact check (D17). O11: study only. O12: plan gate only.
 
 ---
 
@@ -904,7 +1073,7 @@ Each milestone ends with something that runs end to end. Dates follow the gates 
 | **M2** | Repair + budgets + auth | FIX loop with failing cases; budget ledger and caps; access-code login and stream token; rate limits; watchdog and heartbeats; `fsm_seq` and `mac4_int8` packs. Gate 2026-10-11: 3 specs to passing RTL unaided. |
 | **M3** | PPA + candidates | Yosys + OpenSTA, fitness, round 1 with 3 children, elites, `CircuitGraph`. Gate 2026-10-18: measurable gain vs v1 on the showcase pack. |
 | **M4** | Evals + equivalence | EQY on the winner; evals CLI with the six suites; first `evals/report.md` |
-| **M5** | Ship | Production guard on, hosted API, record the golden run from a real Nebius run into `frontend/public/runs/golden.json`, README with tool licenses and REvolution credit. Gate 2026-10-25: feature freeze. |
+| **M5** | Ship | Production guard on, hosted API, record the golden run from a real Nebius run into `frontend/public/runs/golden.json`, README with tool licenses and REvolution credit. Gate 2026-10-26: feature freeze (moved from 2026-10-25, D46). |
 
 Proposed `backend/` layout:
 
@@ -957,7 +1126,7 @@ Source: Min, Cho, Jang, Kang, "REvolution", ASP-DAC 2026, arXiv 2510.21407; code
 - Nebius Sandboxes: microVM isolation, OCI image import, 2 to 5 s start, default run timeout 120 s, output truncated at 65,536 bytes, disposable mode, no inbound network, beta limit of 50 simultaneous operations (docs.tokenfactory.nebius.com/sandboxes).
 - The frontend's event contract, fitness formula and reconnect behavior (this repo).
 
-**Already decided:** D1 to D10 in `../REPORT.md`, especially D7 (presets only, replay first, capped live runs) and D8 (REvolution-lite).
+**Already decided:** D1 to D10 in `../REPORT.md` at the time, especially D7 (presets only, replay first, capped live runs) and D8 (REvolution-lite). Every decision now lives in `../docs/DECISIONS.md` (D13 amended D7; D16 onward cover the chat, research and sign-off).
 
 **Recommendations:** everything tagged [REC], chiefly: one process, no Celery/Redis; deterministic orchestrator with no LLM tools; task packs as the locked reference; Icarus + cocotb for sim with Verilator as linter; OpenSTA instead of OpenROAD in the MVP; access-code login with stream tokens.
 
@@ -971,6 +1140,6 @@ Source: Min, Cho, Jang, Kang, "REvolution", ASP-DAC 2026, arXiv 2510.21407; code
 
 **Conflicts with existing docs (flagged, not silently reconciled):**
 - `../frontend/ARCHITECTURE.md` section 10 proposes no authentication; this document adds a login for the live path only. Replay remains public as D7 requires.
-- `../docs/MEETING.md` section 5 says the agent "reads errors + waveform" to fix; this document sends failing cases (expected vs got) instead of waveforms to save tokens. Waveform input is a later option.
+- `../docs/MEETING.md` section 5 says the agent "reads errors + waveform" to fix; this document sends failing cases (expected vs got) instead of waveforms to save tokens. Waveform input is a later option. (Since 2026-10-23 the repair prompt also carries a cycle table from a waveform of the first failing case, section 17.3.)
 - `../docs/MEETING.md` section 8 sizes the population as "4 x 4 x 5 rounds"; D8 (2 to 4 per round) supersedes it, and this document uses 3 then 2.
 - `../docs/MEETING.md` section 7 uses a single `LLM_MODEL`; this document uses one model variable per route.

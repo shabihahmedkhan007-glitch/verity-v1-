@@ -44,7 +44,7 @@ async def test_parse_cost_lands_in_the_daily_spend(tmp_path, packs) -> None:
         reply = await manager.parse("an RTX 6090")
         assert isinstance(reply, ParseOutOfRange)
         spent = await store.daily_spend(datetime.now(UTC).strftime("%Y-%m-%d"))
-        price = settings.price_for(settings.model_for("planner"))
+        price = settings.price_for(settings.model_for("parser"))
         assert spent == pytest.approx((2000 * price.input_per_m + 400 * price.output_per_m) / 1e6)
         assert spent > 0
     finally:

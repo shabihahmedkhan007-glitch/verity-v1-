@@ -49,6 +49,28 @@ def clean(text: str, limit: int = 200) -> str:
     return cut + "..."
 
 
+_DASH = r"[\u2012\u2013\u2014\u2015]"  # figure dash, en dash, em dash, horizontal bar
+_DASH_RANGE = re.compile(rf"(?<=\d)[ \t]*{_DASH}[ \t]*(?=\d)")
+_DASH_RUN = re.compile(rf"[ \t]*{_DASH}(?:[ \t]*{_DASH})*[ \t]*")
+_MARK = "\x00"
+
+
+def plain_dashes(text: str) -> str:
+    """The project rule for words a model wrote: no em dash and no en dash. A number range (digits on both sides) becomes
+    "4 to 32"; any other dash becomes a comma that folds into the punctuation beside it, and a dash at the start or the
+    end of a line is dropped. A non-breaking hyphen (U+2011) becomes a plain hyphen. The numbers in the text do not change."""
+    text = text.replace("\u2011", "-")
+    if not re.search(_DASH, text):
+        return text
+    text = _DASH_RANGE.sub(" to ", text.replace(_MARK, ""))
+    text = _DASH_RUN.sub(_MARK, text)
+    text = re.sub(rf"(?m)^{_MARK}|{_MARK}$", "", text)
+    text = re.sub(rf"([,;:.!?]){_MARK}", r"\1 ", text)
+    text = re.sub(rf"\({_MARK}", "(", text)
+    text = re.sub(rf"{_MARK}(?=[,;:.!?)])", "", text)
+    return re.sub(r"[ \t]{2,}", " ", text.replace(_MARK, ", "))
+
+
 def _num(value: float, decimals: int = 0) -> str:
     return f"{value:,.{decimals}f}"
 
@@ -242,9 +264,90 @@ def done(versions: int, fixes: int, rejected: int, human_inputs: int) -> str:
     )
 
 
+def signoff(
+    label: str,
+    test_count: int,
+    seeds_passed: int,
+    seeds_run: int,
+    lint_errors: int,
+    lint_warnings: int,
+    caught: int | None,
+    planted: int | None,
+) -> str:
+    """After `Done`: the sign-off of the winner. Every number is from the sign-off artifact of this run."""
+    if seeds_passed == seeds_run:
+        tests = f"all {test_count} tests passed on {seeds_run} seed{'s' if seeds_run != 1 else ''}"
+    else:
+        tests = f"the {test_count} tests passed on {seeds_passed} of {seeds_run} seeds"
+    lint = (
+        f"{lint_errors} lint error{'s' if lint_errors != 1 else ''} and "
+        f"{lint_warnings} warning{'s' if lint_warnings != 1 else ''}"
+    )
+    if planted:
+        strength = f"{caught} of {planted} planted bugs caught"
+    else:
+        strength = "test strength not measured"
+    return f"Sign-off for {label}: {tests}, {lint}, {strength}."
+
+
 def stopped() -> str:
     return "Run stopped by you."
 
 
 def failed(reason: str) -> str:
     return f"Run ended: {clean(reason, 160)}"
+
+
+# ---------- infrastructure failures: one plain sentence the user can act on ----------
+# Used for the terminal `run error` message, its caption and the POST /runs 503. The raw detail stays in the server
+# log only (verity.api.redact scrubs tokens there).
+DOCKER_DOWN = "The test machine (Docker) is not running. Start Docker and try again."
+IMAGE_MISSING = "The test machine is missing its tool image. Build the sandbox image and try again."
+SANDBOX_TIMEOUT = "The test machine stopped answering. Restart Docker and try again."
+SANDBOX_BROKEN = "The test machine failed. Try again, and restart Docker if it keeps happening."
+MODEL_TIMEOUT = "The model service took too long to answer. Try again in a minute."
+MODEL_UNREACHABLE = "The model service could not be reached. Check the internet connection and try again."
+MODEL_RATE_LIMITED = "The model service is rate limiting this key. Wait a minute and try again."
+MODEL_KEY = "The model service did not accept the API key. Check LLM_API_KEY and try again."
+MODEL_DOWN = "The model service had an error. Try again in a minute."
+RESTARTED = "The server restarted during this run. Try again."
+
+_DOCKER_DOWN_MARKS = (
+    "failed to connect to the docker api",
+    "cannot connect to the docker daemon",
+    "is the docker daemon running",
+    "error during connect",
+    "dockerdesktoplinuxengine",
+    "cannot start docker",
+)
+_IMAGE_MISSING_MARKS = ("no such image", "unable to find image", "pull access denied", "manifest unknown")
+_TIMEOUT_MARKS = ("timed out", "timeout")
+
+
+def sandbox_failed(detail: str) -> str:
+    """Plain sentence for a sandbox infrastructure failure (ToolInfraError text plus its stderr tail)."""
+    text = detail.lower()
+    if any(mark in text for mark in _DOCKER_DOWN_MARKS):
+        return DOCKER_DOWN
+    if any(mark in text for mark in _IMAGE_MISSING_MARKS):
+        return IMAGE_MISSING
+    if any(mark in text for mark in _TIMEOUT_MARKS):
+        return SANDBOX_TIMEOUT
+    return SANDBOX_BROKEN
+
+
+def model_failed(detail: str, status: int | None, retryable: bool) -> str | None:
+    """Plain sentence for a model service failure (LLMError), or None when it is not an infrastructure problem
+    (a prompt over the per-call limit, a fake provider error): the caller keeps its own wording then."""
+    text = detail.lower()
+    if status == 429:
+        return MODEL_RATE_LIMITED
+    if status in (401, 403) or "llm_api_key is not set" in text:
+        return MODEL_KEY
+    if "timed out" in text:
+        return MODEL_TIMEOUT
+    if "could not reach" in text:
+        return MODEL_UNREACHABLE
+    if retryable or (status is not None and status >= 500):
+        return MODEL_DOWN
+    return None

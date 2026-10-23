@@ -1,5 +1,7 @@
 # Verity: Project Meeting Brief
 
+> **History, superseded by `docs/PRD.md`.** This is the brief for the 2026-10-02 meeting. Requirements now live in `PRD.md` and decisions in `DECISIONS.md`. The plain-English hardware glossary in section 12 is still current; the tool list in section 5 (Place & Route with OpenROAD) is not what Verity runs, see `GLOSSARY.md`.
+
 **Meeting:** Friday 2026-10-02
 **Project:** Verity: AI Hardware Engineer
 **Goal of this meeting:** agree the scope, lock the open decisions, and assign owners so the build starts this weekend.

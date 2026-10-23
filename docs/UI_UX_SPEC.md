@@ -4,6 +4,8 @@ Design brief and page specs for the Verity web app, produced with impeccable's s
 
 Copy in quotes is exact UI text. Component names refer to the inventory in section 5. "Owner" letters refer to the build plan tasks: A domain components, B canvas and state, C pages and sections, S scaffold.
 
+> **Status (2026-10-23).** Section 6 (the bench, a chat workspace that replaces `/try`) is current, and so is the verdict copy in 6.4. Sections 0 to 4 describe the 2026-10-04 canvas design; the studio has since become a rack of modules (D11, D12) and the notes in each section say what changed. Requirements: `PRD.md`; decisions: `DECISIONS.md`. Both outrank this file (D33).
+
 ---
 
 ## 0. Design brief (shape summary)
@@ -23,7 +25,7 @@ Copy in quotes is exact UI text. Component names refer to the inventory in secti
 | Anchor references | Keysight and Rigol oscilloscope front panels (one meaning per signal color, plain labels); a TI chip datasheet (numbered, factual, tables over adjectives); Linear's product pages (the product UI is the hero image) | Figma (canvas plus right inspector); GitHub pull request diff (code changes); Vercel deployment view (build step rail with live status); Linear (density and restraint) |
 | Anti-goal | Hacker-terminal costume, neon glow, generic AI SaaS hero | n8n-style pipeline canvas where moving boxes means nothing |
 
-**Scope.** Production-ready, shipped quality, desktop first (1440 x 900 design target), all four pages plus 404, MVP by feature freeze 2026-10-25.
+**Scope.** Production-ready, shipped quality, desktop first (1440 x 900 design target), all four pages plus 404, MVP by feature freeze 2026-10-26 (D46).
 
 **Visual direction probes.** Skipped: this harness has no native image generation. The brand thumbnail (`Verity_AI_Hardware_Verification.png`) was used as the visual anchor instead.
 
@@ -38,13 +40,15 @@ Copy in quotes is exact UI text. Component names refer to the inventory in secti
 | Route | Page | Register | Primary user | Reached from |
 |---|---|---|---|---|
 | `/` | Landing | brand | Judge (cold arrival) | Devpost link, video, README |
-| `/studio?run=golden` | Studio: recorded run | product | Judge | Landing CTA or hero click, Results "Back to the run" |
-| `/studio?run=<id>` | Studio: live run | product | Judge, engineer | Try live after Start |
-| `/try` | Try live | product | Judge, engineer | Landing nav, Studio top bar |
+| `/studio` (default `?run=mac4-real`) or `?run=golden` | Studio: recorded run (the real mac4 run by default; `golden` is the labelled sample) | product | Judge | Landing CTA or hero click, Results "Back to the run" |
+| `/studio?run=<id>` | Studio: a finished live run | product | Judge, engineer | A run link |
+| `/bench` | Bench: live chat workspace (section 6) | product | Judge, engineer | Landing (two ways in), the top bar |
+| `/signin` | Sign in (section 6a): email and password, and an access code link; no sign-up | product | Judge, engineer | Landing live buttons; `/bench` when a sign-in is needed |
+| `/try` | Forwards to `/bench` (old preset form kept as history in section 6x) | n/a | n/a | old links |
 | `/results?run=golden` or `?run=<id>` | Results and export | product | Judge, engineer | Studio when done, replay bar "Skip to results" |
 | any other | 404 | product | anyone | broken link |
 
-`run` defaults to `golden` when missing. No other pages: an About page is not justified because the landing carries how it works, trust and limits in four short sections.
+`run` defaults to `mac4-real` on `/studio` when missing (it was `golden` before the real run was recorded). No other pages: an About page is not justified because the landing carries how it works, trust and limits in four short sections.
 
 ### 1.2 Flow
 
@@ -55,10 +59,10 @@ Copy in quotes is exact UI text. Component names refer to the inventory in secti
   [ /  Landing ]--hero replay auto-plays ($0)--+
        |  "Watch the full run" or click hero    |  "Try it live"
        v                                        v
-  [ /studio?run=golden ]               [ /try ]--Start live run--> [ /studio?run=<id> ]
-       |  replay ends: "See results"            |  live unavailable: "Watch the recorded run"
-       v                                        v                         |  done / cap / stop
-  [ /results?run=golden ] <-------------------------------------------------+
+  [ /studio?run=mac4-real ]            [ /bench ]--describe, Run--> result, sign-off, chat (section 6)
+       |  replay ends: "See results"            |  live unavailable: "Watch a recorded run" (to /studio)
+       v
+  [ /results?run=mac4-real ]                     (/try forwards to /bench)
        |  "Download design (.zip)"
        v
      zip file
@@ -68,7 +72,7 @@ Clicks alone finish the story: Landing, "Watch the full run", (replay plays itse
 
 ### 1.3 Shared shell
 
-- One persistent `AppHeader` (56px) on Studio, Try and Results: `Wordmark` (links to `/`), a page context slot, a right-side action slot. The landing has its own `LandingNav` (64px).
+- Since D12, every page except the bench uses the one `RackBar` top bar (Studio through `StudioBand`, Results and 404 through `AppHeader`); the bench has its own sidebar (section 6). As first designed: one persistent `AppHeader` (56px) on Studio, Try and Results: `Wordmark` (links to `/`), a page context slot, a right-side action slot. The landing has its own `LandingNav` (64px).
 - No sidebar navigation: there are only four pages.
 - Page `<title>`: "Verity: AI Hardware Engineer" on `/`; "Studio: 4-lane MAC array, 8-bit | Verity" (run title inserted); "Try live | Verity"; "Results: <run title> | Verity"; "Not found | Verity".
 - Description meta (all pages): "Describe a chip in plain English. Verity writes the Verilog, tests it, fixes its own bugs, then redesigns it to run faster and smaller. Built on NVIDIA Nemotron and Nebius." OG image `/og.png`.
@@ -142,7 +146,7 @@ Hero: left column spans 5 columns, right 7 columns plus bleed. Hero height `min(
 ### 2.4 Interactions
 
 - Hero canvas is read-only (`interactive: false`): no pan, zoom, drag or selection. Clicking anywhere on it navigates to `/studio?run=golden` and the playback continues from the same moment (module-level store). Hover shows a 1px `--border-strong` outline and the tooltip "Open in Studio".
-- "Watch the full run" goes to `/studio?run=golden` (same continuation). "Try it live" goes to `/try`.
+- "Watch the full run" goes to `/studio?run=golden` (same continuation). "Try it live" goes to `/bench` (`/try` forwards there).
 - Nav links scroll to `#how` and `#trust` (smooth scroll disabled under reduced motion). "GitHub" opens the repo in a new tab (URL is open question 6).
 - Keyboard: the pause button is the first focusable element after the CTAs.
 
@@ -161,7 +165,7 @@ Hero: left column spans 5 columns, right 7 columns plus bleed. Hero height `min(
   - "Prove": "The winner is checked against v1 with an equivalence prover before you download it."
 - TrustSection H2 (id `trust`): "Why the numbers hold up".
   - "The answer key is locked." / "AI agents have been caught editing tests to make them pass. Verity's golden model and tests live where the agent cannot write."
-  - "Better is measured, never guessed." / "Every score comes from Yosys and OpenROAD reports, relative to our own v1. We never ask the model whether a design is better."
+  - "Better is measured, never guessed." / "Every score comes from Yosys and OpenSTA reports, relative to our own v1. We never ask the model whether a design is better."
   - "Faster versions are proven equal." / "Before a winner ships, Yosys EQY checks that it behaves exactly like v1."
 - LimitsSection H2: "What Verity will not do".
   - "It will not design a GPU. AI-written hardware stops being reliable on large designs, so Verity works on small blocks of up to about 300 lines and shows the loop making them better."
@@ -271,7 +275,7 @@ Grid: `grid-rows-[var(--topbar-h)_var(--rail-h)_1fr_var(--bottombar-h)]`, `grid-
 ### 3.7 Copy (key elements)
 
 - Top bar: run title from the spec; `ModeBadge` "Replay" or "Live"; counter "Human inputs: 2" with tooltip listing each input, e.g. "1. The spec (4-lane MAC array, smallest area)" and "2. Multiplier pipeline set to 2-stage"; credits "$0.00 replay" (tooltip "Replays cost nothing. The original run cost $0.42.") or "$0.18 of $0.50"; Autopilot tooltip "On: nothing waits for you. Every step continues on its own." Replay: switch shown on and disabled, tooltip "The recording ran on Autopilot."
-- Stage rail labels and tooltips: "Spec" (Your description, read by Nemotron.), "Plan" (Blocks drafted by the agent.), "Lock" (Golden model and tests locked.), "RTL" (Verilog written.), "Lint" (Verilator checks the code.), "Sim" (iverilog and cocotb run the locked tests.), "Fix" (The agent repairs failing versions.), "Synth" (Yosys and OpenROAD measure area, timing, power.), "Evolve" (New versions compete in small rounds.), "Prove" (Yosys EQY checks the winner equals v1.). Detail text: "x1" fixes count, "R1 of 2".
+- Stage rail labels and tooltips: "Spec" (Your description, read by Nemotron.), "Plan" (Blocks drafted by the agent.), "Lock" (Golden model and tests locked.), "RTL" (Verilog written.), "Lint" (Verilator checks the code.), "Sim" (iverilog and cocotb run the locked tests.), "Fix" (The agent repairs failing versions.), "Synth" (Yosys and OpenSTA measure area, timing, power.), "Evolve" (New versions compete in small rounds.), "Prove" (Yosys EQY checks the winner equals v1.). Detail text: "x1" fixes count, "R1 of 2".
 - Countdown: "Building in 8 s", buttons "Build now", "Hold", "Resume"; helper "Steer by pinning a block or toggling a variant. Every change restarts the countdown."; Autopilot off: "Waiting for you." button "Build".
 - Bottom bar end: "Run complete. Winner: v5." / partial: "Run stopped early. Best so far: v3." / no winner: "No version passed the locked tests."
 - Empty tree: "Versions appear here after the first build."
@@ -321,7 +325,7 @@ Status always reads as square + icon or word + color; never color alone.
 | "RTL" | `CodeView` language verilog, filename "v3.v", line numbers, "Copy" button, footer "38 lines" | "v6 has no RTL yet. The agent is writing it." |
 | "Diff" | Compare selector (`ToggleGroup`): "From parent (v1 to v3)" and, if fixed, "Fix (attempt 1 to 2)". `CodeDiff` with +/- gutter symbols, line counts "+6 -2". Heading: the attempt's reason. | v1: "v1 is the first version. Its fix is under Fix (attempt 1 to 2)." |
 | "Tests" | Summary per attempt: "Attempt 1: 13 of 16 passed" (FAIL badge) then "Attempt 2: 16 of 16 passed" (PASS badge); `ExpectedVsGotTable` columns "Test", "Inputs", "Expected", "Got", "Cycle" (mono values, mismatching characters bold); "Agent's diagnosis:" paragraph; lint row "Lint: pass (Verilator)"; footer "Checked against the locked golden model (16 tests)." | Simulating: skeleton rows + "Running 16 tests." |
-| "PPA" | `PpaTable` rows Area, Cells, Clock period, Fmax, Power with value and delta vs v1; `FitnessBreakdown` ("Fitness 6.8 = 0.60 x area +12.5 + 0.25 x timing -7.8 + 0.15 x power +8.3"); `EqyBadge` if run; `HonestyNote` "Relative to our own v1, open-source tools (Yosys, OpenROAD, Nangate45). Not signoff."; `SampleDataBadge` if sample | FAIL/rejected: "Not measured. Versions that fail the locked tests are never synthesized." Baseline: deltas show "baseline". |
+| "PPA" | `PpaTable` rows Area, Cells, Clock period, Fmax, Power with value and delta vs v1; `FitnessBreakdown` ("Fitness 6.8 = 0.60 x area +12.5 + 0.25 x timing -7.8 + 0.15 x power +8.3"); `EqyBadge` if run; `HonestyNote` "Relative to our own v1, open-source tools (Yosys, OpenSTA, Nangate45). Not signoff."; `SampleDataBadge` if sample | FAIL/rejected: "Not measured. Versions that fail the locked tests are never synthesized." Baseline: deltas show "baseline". |
 
 ---
 
@@ -436,7 +440,114 @@ Layer key: **P** primitive (shadcn), **D** domain (presentational), **N** canvas
 
 ---
 
-## 6. Try live `/try`
+## 6. Bench `/bench` (replaces Try live; D15, then the chat workspace of 2026-10-22)
+
+**Purpose.** Build a real chip live by talking to Verity, then check the result. **Primary user:** judge who wants proof it is real; engineer. **Primary action:** Send, then Run. The chat is the control; the run data is the proof (`PRODUCT.md`). `/try` forwards here. Built in `frontend/src/components/sections/bench/`; structure in `frontend/ARCHITECTURE.md`.
+
+### 6.1 Layout at 1440 x 900
+
+```
++-----------+--------------------------------------+----------------------------+
+| sidebar   | chat                                 | panel (tabs)               |
+| New chip  |   your sentence                      | Progress Result Versions   |
+| Home      |   verdict line + research + sources  | Verilog Architecture  [v4] |
+| Watch a   |   chip card: knobs, goal, [Run]      |                            |
+| run       |   progress line, Stop                | one tab at a time          |
+| Your runs |   answers, proposals, version chips  |                            |
+| health    |  [ composer: chip "v4" x | Send ]    |                            |
++-----------+--------------------------------------+----------------------------+
+```
+
+Below 900 px the sidebar is a drawer and the panel is a full-screen sheet. Expand on the Architecture tab moves the step view into the main area with the composer still under it.
+
+Both sides open and close from a button. The sidebar's close button sits beside the logo. From 900 px it folds the sidebar away, the chat takes its width, and the button that brings it back sits at the left of the top bar; the choice is kept in this browser and applies on the workspace page too. On a phone the same button closes the drawer. The panel's close button sits in its header. While a run is in view and the panel is closed, an Open the panel button sits at the right of the top bar.
+
+Signed in with an account (section 6a), the sidebar adds "Chats" above "Your runs", both read from the server, and its foot shows the account's email and "Sign out".
+
+### 6.2 The flow
+
+1. **Send** a description. `POST /parse` answers with a verdict (a shape plus a word, never colour alone), "I assumed" chips for any knob the sentence did not state, and a compact chip card (knobs, goal, Run). Out of range offers "Use the closest chip".
+2. **Run** opens the Progress tab (five plain steps, the latest line, credits, Stop). When the run is done the Result tab opens by itself once.
+3. **After the result**, a sign-off line arrives on the Result tab ("Sign-off checks running", then the line and "Open the sign-off sheet"). It arrives without a reload.
+4. **Ask** about the run. Selecting a version anywhere puts a removable chip such as "v4" in the composer and opens a tab about that version; no card is posted into the chat. "Walk me through it" starts a code-built walkthrough on the Architecture tab. A change request returns a proposal with Confirm.
+5. **Talk to the chip engineer** (when the server has the agent). The chat is one thread. The first message still gets the fact check; after it, every message is a conversation with Verity as a senior chip engineer, before a run and after one. A message such as "what are the components we can create?" is answered, never read as a new chip. Each reply starts with one small closed line, "Used 3 tools", that opens to the steps Verity took (for example "Read the run" or "Searched papers: 3 sources"), a check mark for a step that worked and a plain mark for one that did not. Under it: the words, bullets, suggestion chips (tapping one sends it as the next message), and a walkthrough on the Architecture tab when there is one; the research with its sources and S-number chips, the searches, the cost of the check and how the words were checked sit in one closed "Details" at the end of the reply. A reply can open a panel tab for a run and version. A proposed chip is a chip card with Run before any run, and the proposal with Confirm after one; nothing runs until Run or Confirm. The thread is kept in this browser: a reload restores it, also before any run, and opening a run from Your runs restores its thread. New chip starts a new thread. Without the agent, steps 1 to 4 run as written.
+
+### 6.3 Panel tabs
+
+| Tab | Shows |
+|---|---|
+| Progress | The five steps, the latest line, credits, Stop and Reconnect |
+| Result | The winner against our own v1, the human reference comparison (labelled), the sign-off line |
+| Versions | Every version with its status word and the reason a dropped one was dropped |
+| Verilog | The RTL of the version in view |
+| Architecture | The engineer's steps as a rail (each a shape and a word, each opening its evidence: rules, plan, lint, waveform, synthesis, proofs, sign-off sheet) and the real circuit of the version in view; Expand for a big view |
+| vN | One version: badges read from the run (tests, seeds, lint, proofs, area and clock against v1), why it was written, its waveform, a diff against its parent version, and Ask about vN |
+
+### 6.4 States and copy
+
+States: empty, parsing, each of the five verdicts, running, done, stopped, failed, offline, lost connection, sign-off running, sign-off none, sign-off ready.
+
+Verdict copy (the first line of the first reply; words and shapes in `frontend/src/components/sections/bench/chat.ts` `VERDICT`, shapes in `brand.md` 1.2a). The verdict is ink, never amber: it is a read on a request, not a result.
+
+| Verdict | Shape | What follows it |
+|---|---|---|
+| "Buildable now" | filled square | "I assumed: ..." chips, the chip card with Run; the research (S-number chips, sources) in Details when it ran |
+| "Buildable with changes" | square with a dot | The reason, "The closest chip I can build is ...", "Use the closest chip" and "Pick it yourself" |
+| "Not buildable here" | half-filled square | The reason, the closest chip if there is one (else "Nothing I can build comes close."), "Pick it yourself"; research and "What Verity cannot build" in Details |
+| "Not a chip" | hollow square | A kind sentence, "Try one of these instead." with example chips; "No search needed: checked against what Verity can build." in Details |
+| "Could not check" | dashed square | Try again on the verdict line; on a chip card, "Not fact-checked: I could not look this up just now." |
+
+While the reply is pending: "Reading your description..." or, when research runs, "Reading your description and checking it against sources..."; a later message in a thread with the agent says "Verity is thinking...". Sources show their tier as a word (paper or standard, vendor, project or university, open source or wiki, patent) and a date when the search gave one; The research, sources, "What this check cost" and the basis line sit in the reply's closed "Details". Copy is plain language; tool names and raw errors sit in dropdowns. Verdict, step and sign-off status are a shape plus a word. A step the run never reached says "Not reached". Assertions and coverage read "Not run by Verity yet". Every number comes from run data and says "vs v1" or "vs the human design".
+
+## 6a. Sign in `/signin` (D47)
+
+**Purpose.** Let a reader with an account into the live bench. **Primary user:** a judge or teammate the Verity team gave an account to. **Primary action:** Sign in. There is no sign-up: the team makes every account in the Supabase dashboard and hands it out, so no sign-up link, button or wording appears anywhere. Built in `frontend/src/components/sections/signin/`; structure in `frontend/ARCHITECTURE.md` section 8.4.
+
+### 6a.1 Layout at 1440 x 900
+
+```
++--------------------------------------------------------------+
+| VERITY logo (links to /)                                     |
+|                                                              |
+|                     Sign in to Verity                        |
+|           Use the account the Verity team gave you.          |
+|                                                              |
+|                     Email                                    |
+|                     [ you@example.com            ]           |
+|                     Password                                 |
+|                     [ ********                   ]           |
+|                     [ Sign in ]   (the one amber action)     |
+|                     ------------------------------------     |
+|                     Have an access code?                     |
++--------------------------------------------------------------+
+```
+
+One column about 400 px wide on the bench's warm ground, centred a little above the middle. The title uses the display face like the bench's welcome. Amber is the Sign in button and keyboard focus, nothing else. Below 900 px the column fills the width with 16 px sides and the fields, button and links are at least 44 px tall.
+
+### 6a.2 States and copy
+
+| State | What shows |
+|---|---|
+| Empty | Both fields empty; Sign in is disabled until both have text |
+| Signing in | Fields disabled, the button reads "Signing in..." |
+| Wrong login | A hollow square and "That email and password do not match." under the fields (also for an account the team has not made) |
+| Too many tries | A hollow square and "Too many attempts. Wait a minute and try again." |
+| Offline | A hollow square and "Verity could not reach the sign-in service. Check your connection and try again." |
+| Access code | "Have an access code?" opens the bench's own access code form ("Access code", Continue); its errors are the ones the bench already shows ("That access code was not recognized.") |
+| Already signed in | The page forwards at once, with no form |
+| Signed in now | Goes to the `?next=` path, else `/bench` |
+
+`?next=` takes a path on this site only (it starts with one `/`, not `//`, has no backslash, and is not `/signin`); anything else goes to `/bench`. A build without accounts shows the access code form alone, open, under "Live runs here need an access code." Errors are plain sentences, never a server message.
+
+### 6a.3 Where it is reached from, and what it guards
+
+- The landing's live buttons ("Build one live" in the bar and the hero, "Try it live" in the footer) open `/signin?next=/bench` when accounts are set up, else `/bench`.
+- When the server says it needs a sign-in (`authRequired`) and the reader has neither an account nor an access code session, `/bench` sends them to `/signin?next=<where they were>`. `/studio`, `/results` and the landing stay public. Local development, where nothing is required, opens the bench as before.
+- Sidebar (bench and Home): signed in, "Chats" lists the account's saved chats (newest first) above "Your runs", both from the server so they follow the account to another device; a chat opens with its messages rebuilt from what Verity stored, and the next message continues it. The foot shows the account's email and "Sign out". Not signed in, the sidebar shows the runs started in this browser, as before, with no Chats. Sign out also clears the chats and runs this browser kept.
+
+## 6x. Try live `/try` (retired 2026-10-18, kept as history)
+
+> **History.** `/try` now forwards to `/bench` (section 6). The text below describes the old preset form.
 
 **Purpose.** Start a capped live run from a preset. **Primary user:** judge who wants proof it is real; engineer. **Primary action:** "Start live run".
 
@@ -512,7 +623,7 @@ Two columns inside `max-w-[64rem]`: form 7 columns, preview 5 columns (sticky). 
 | | PpaDeltaChart: v1 = 100 bars vs v5, three rows              | | Model   NVIDIA Nemotron on   | |
 | +------------------------------------------------------------+ |         Nebius Token Factory  | |
 | | All versions                                               | | Tools   iverilog, cocotb,     | |
-| | #  Version  Made by   From  Tests  Area   Period Power Fit  | |         Yosys, OpenROAD, EQY  | |
+| | #  Version  Made by   From  Tests  Area   Period Power Fit  | |         Yosys, OpenSTA, EQY   | |
 | | 1  v5 [W]   OPTIMIZE  v3    16/16  -17.4% +5.6% -13.5% 11.1| +-------------------------------+ |
 | | 2  v3 [E]   OPTIMIZE  v1    16/16  -12.5% +7.8% -8.3%  6.8 | | Download                      | |
 | | 3  v2 [E]   SIMPLIFY  v1    16/16  -8.2%  -0.6% -4.2%  5.7 | | [Download design (.zip)]      | |
@@ -622,7 +733,7 @@ Nothing else moves.
 
 ## 13. MVP vs stretch
 
-| Page | MVP (by 2026-10-25) | Stretch |
+| Page | MVP (by 2026-10-26) | Stretch |
 |---|---|---|
 | Landing | Hero with auto-playing replay, pause, CTAs, loop, trust, limits, footer, narrow-screen story | Scroll-linked chapter highlights, short muted demo video fallback |
 | Studio | Stage rail; Plan Board + Evolution Tree canvas (tree and chain); all node states; inspector with RTL, Diff, Tests (expected vs got), PPA; replay bar; live bar with credits; countdown gate with Build now / Hold / Autopilot; pins and variant toggles UI (sends steer; replan depends on the agent); winner override; Human inputs counter; banners for cap, error, stop; narrow story mode | Waveform viewer (Surfer); netlist or layout image; "pin + explore note" on tree cards; operator menu; drag-to-fuse; fork a live run from a replay card; free-text steering on a selected block |
@@ -636,7 +747,7 @@ Nothing else moves.
 
 1. **Showcase chip.** 4x4 matrix multiply or the small MAC array (`REPORT.md` open decision). The sample data uses a 4-lane MAC; the UI is chip-agnostic, but presets and the recorded run depend on it.
 2. **Real replanning.** Pins and variant toggles are built in the MVP UI per the locked decision, but whether the agent truly regenerates the plan and RTL from them depends on the backend reaching that point by the 2026-10-18 gate. If not, steer events are accepted and shown as "Queued for the next round" rather than triggering a replan. Needs an owner decision.
-3. **Live credit cap and daily budget.** The spec assumes $0.50 per run (from `/health`) and a daily budget that can run out. Real numbers are a team decision.
+3. **Live credit cap and daily budget.** Decided 2026-10-23 (D34 to D36): $0.50 per run, $3.00 per session per UTC day and $10.00 per day for the server, all enforced by the backend. The UI shows only what a run actually spent and never a limit figure; a 429 from a limit reads as a plain sentence with no number.
 4. **EQY eligibility.** Versions that change pipeline latency may not prove equal to v1. Decide whether such versions can win, or whether the winner must be EQY-proven (the UI supports both).
 5. **Hosting.** Nebius or Vercel (`REPORT.md`). The static export works on both; the agent URL and CORS depend on it.
 6. **Links.** GitHub repo URL, Devpost page URL and demo video URL for the footer and nav.

@@ -24,27 +24,28 @@ REFERENCE_MAX_LINES = 2_000
 REFERENCE_MAX_BYTES = 200_000
 
 
-async def measure_human_ref(st: RunState, winner_id: str) -> None:
-    """Emit one human_ref event for the winner, or nothing when the pack has no reference.v."""
+async def measure_human_ref(st: RunState, winner_id: str) -> Equivalence | None:
+    """Emit one human_ref event for the winner, or nothing when the pack has no reference.v. Returns the proof it sent
+    (the sign-off reports it as eqyVsHuman), or None when it sent none."""
     ctx, em, pack = st.ctx, st.em, st.ctx.pack
     try:
         text = pack.reference_rtl()
         winner = st.cands.get(winner_id)
         if text is None or winner is None or winner.rtl_obj is None:
-            return
+            return None
         ppa = PPA(pdk=DEFAULT_PDK)
         eqy = Equivalence(status="inconclusive", against_id=winner_id)
         if ctx.ledger.exhausted() == "max_wall_s":
             eqy = not_run_equivalence(winner_id, "Not run: the time limit was reached.")
             await em.human_ref(ppa, eqy)
-            return
+            return eqy
         await em.caption(cap.measuring_human_reference())
         try:
             ref = Rtl.validate(text, top=pack.top, max_lines=REFERENCE_MAX_LINES, max_bytes=REFERENCE_MAX_BYTES)
         except RtlRejected as exc:
             log.warning("run %s: reference.v rejected: %s", ctx.run_id, exc)
             await em.human_ref(ppa, eqy)
-            return
+            return eqy
 
         try:
             with ctx.busy():
@@ -69,7 +70,9 @@ async def measure_human_ref(st: RunState, winner_id: str) -> None:
             except Exception as exc:
                 log.warning("run %s: reference EQY failed: %s", ctx.run_id, exc)
         await em.human_ref(ppa, eqy)
+        return eqy
     except (asyncio.CancelledError, RunStopped):
         raise
     except Exception:
         log.exception("run %s: human reference stage failed", ctx.run_id)
+        return None

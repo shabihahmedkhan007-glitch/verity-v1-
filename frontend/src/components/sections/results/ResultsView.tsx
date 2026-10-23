@@ -160,7 +160,7 @@ function ResultsBody({ runId }: { runId: string }) {
               title={`Partial run: stopped during round ${round}.`}
               body={
                 summary.phase === "cap_reached"
-                  ? "The credit cap was reached. The best version so far is shown."
+                  ? "The run reached its spend limit. The best version so far is shown."
                   : "Everything finished so far is kept."
               }
             />

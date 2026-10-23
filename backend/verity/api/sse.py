@@ -1,6 +1,6 @@
 """Hand-rolled SSE framing (CONTRACTS S12, ARCHITECTURE 9.2).
 
-Wire format: `retry: 3000`, then per event `id: <seq>` and `data: <RunEvent JSON>`, and a `: ping` comment every
+Wire format: `retry: 3000` (250 for the replay of a finished run), then per event `id: <seq>` and `data: <RunEvent JSON>`, and a `: ping` comment every
 `sse.ping_s` seconds so proxies keep the connection open. EventSource ignores comment lines.
 """
 
@@ -13,7 +13,8 @@ from ..contracts import EventBase, event_to_json, is_terminal
 
 log = logging.getLogger("verity.api")
 
-RETRY_FRAME = b"retry: 3000\n\n"
+RETRY_MS = 3000  # how long the browser waits before it reconnects
+FINISHED_RETRY_MS = 250  # a finished run replays and ends: the reconnect that is answered 204 should come at once
 PING_FRAME = b": ping\n\n"
 TERMINAL_GRACE_S = 5.0  # how long to wait for the stream to end after the terminal run event
 
@@ -54,7 +55,7 @@ def _schedule_close(agen: AsyncIterator[EventBase], pending: "asyncio.Future[Eve
 
 
 async def sse_body(
-    agen: AsyncIterator[EventBase], ping_s: float, first: EventBase | None = None
+    agen: AsyncIterator[EventBase], ping_s: float, first: EventBase | None = None, retry_ms: int = RETRY_MS
 ) -> AsyncIterator[bytes]:
     """Yield SSE frames until the service stream ends.
 
@@ -68,7 +69,7 @@ async def sse_body(
     pending: asyncio.Future[EventBase] | None = None
     terminal_seen = False
     try:
-        yield RETRY_FRAME
+        yield f"retry: {retry_ms}\n\n".encode()
         if first is not None:
             yield event_frame(first)
             terminal_seen = is_terminal(first)

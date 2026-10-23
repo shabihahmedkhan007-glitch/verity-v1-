@@ -164,8 +164,7 @@ export function NarrationFor({ run, mode, notice }: { run: RunState; mode: "repl
       return { tone: "fail", word: "Error", text: `The run stopped: ${live.error ?? "the agent reported an error."} Everything finished so far is kept.`, actions: another };
     }
     if (run.phase === "cap_reached") {
-      const cap = run.credits.capUsd !== null ? ` (${formatUsd(run.credits.capUsd)})` : "";
-      return { tone: "warn", word: "Cap", text: `Credit cap reached${cap}. The agent stopped after round ${run.round} and kept the best version so far.` };
+      return { tone: "warn", word: "Limit", text: `The run reached its spend limit. The agent stopped after round ${run.round} and kept the best version so far.` };
     }
     if (run.phase === "stopped") return { tone: "plain", word: "Stopped", text: "You stopped the run. Everything finished so far is kept.", actions: another };
     return null;
@@ -234,8 +233,6 @@ export function TimelineBar({ run, mode, meta }: { run: RunState; mode: "replay"
   let body: ReactNode;
   if (isLive) {
     const conn = live.connection === "idle" ? "connecting" : live.connection;
-    const cap = run.credits.capUsd;
-    const ratio = cap ? Math.min(1, run.credits.usedUsd / cap) : 0;
     body = (
       <div className="tr" data-live="">
         {runid}
@@ -265,12 +262,7 @@ export function TimelineBar({ run, mode, meta }: { run: RunState; mode: "replay"
           <div className="grp">
             <span className="lab">Credits</span>
             <span className="tlb-credits">
-              <span className="m">{cap ? `${formatUsd(run.credits.usedUsd)} of ${formatUsd(cap)}` : `${formatUsd(run.credits.usedUsd)} spent`}</span>
-              {cap ? (
-                <span className="tlb-meter" role="meter" aria-label="Credits used" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={run.credits.usedUsd}>
-                  <span style={{ transform: `scaleX(${ratio})` }} />
-                </span>
-              ) : null}
+              <span className="m">{`${formatUsd(run.credits.usedUsd)} spent`}</span>
             </span>
           </div>
         </div>

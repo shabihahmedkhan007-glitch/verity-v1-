@@ -10,6 +10,8 @@ import logging
 
 from ..contracts import WinnerOverrideInput, WinnerOverrideSteer
 from ..core import captions as cap
+from ..core.fitness import result_key
+from ..core.llm_types import TriedVersion
 from ..core.rtl import Rtl
 from ..core.types import (
     RunContext,
@@ -112,12 +114,31 @@ async def _round(st: RunState, round_n: int, assignment: list[tuple[str, str]], 
         if isinstance(outcome, BaseException):  # _child handles every expected failure; Stop and cancel must surface
             raise outcome
 
+    await _mark_copies(st)
     elite_ids = st.current_elites()
     await em.round(round_n, parents, elite_ids)
     await st.apply_elites(elite_ids)
     if any(c.status == "measured" for c in children):
         await em.caption(cap.elites_kept([st.cands[i].label for i in elite_ids]), chapter)
     return True
+
+
+async def _mark_copies(st: RunState) -> None:
+    """A version whose synthesis gives the same cell count, area and clock period as an earlier measured version
+    (v1 included) is a copy of it: no new idea. Run once per round, in version order, so the older one is always the
+    original, whatever order the parallel children finished in. The version stays "measured" and keeps its score (so
+    the older one wins any tie and round 2 cannot start on a copy alone); only its reason says it is a copy. It is
+    never repaired again, and the winner pick never chooses it over the original or proves it again."""
+    seen: dict[tuple[int, float, float], Cand] = {}
+    for cand in sorted(st.cands.values(), key=lambda c: c.number):
+        key = result_key(cand.ppa) if cand.status == "measured" else None
+        if key is None:
+            continue
+        original = seen.setdefault(key, cand)
+        if original is not cand and cand.copy_of is None:
+            cand.copy_of = original.id
+            cand.reason = f"Same result as {original.label}"
+            await st.em.candidate(cand)
 
 
 async def _child(st: RunState, child: Cand) -> None:
@@ -133,9 +154,19 @@ async def _child(st: RunState, child: Cand) -> None:
         if limit is not None:
             raise BudgetExhausted(limit)
         ctx.check_stop()
+        extra = _explore_idea(st, child, parent)
         with ctx.busy():
             out = await ctx.roles.optimize(
-                ctx.llm, ctx.pack, parent.rtl_obj.text, parent.ppa, base.ppa, ctx.priority, child.created_by
+                ctx.llm,
+                ctx.pack,
+                parent.rtl_obj.text,
+                parent.ppa,
+                base.ppa,
+                ctx.priority,
+                child.created_by,
+                parent_measure=parent.measure,
+                tried=_tried(st, child, parent),
+                **extra,
             )
         await st.credits()
         if not await build.evaluate(st, child, out, baseline=False):
@@ -156,6 +187,41 @@ async def _child(st: RunState, child: Cand) -> None:
     except Exception:
         log.exception("run %s: %s failed unexpectedly", ctx.run_id, child.label)
         await _reject(st, child, chapter)
+
+
+def _tried(st: RunState, child: Cand, parent: Cand) -> list[TriedVersion]:
+    """The other finished versions of this run (not v1, not the parent, not this child), oldest first: their strategy,
+    their reason and, from the measurements, how they compare with v1, or that they were rejected. Versions still in
+    flight are left out, so round 1 (all children run at once) has nothing to list; round 2 sees all of round 1."""
+    out: list[TriedVersion] = []
+    for other in sorted(st.cands.values(), key=lambda c: c.number):
+        if other.parent_id is None or other.id in (child.id, parent.id):
+            continue
+        if other.status == "measured" and other.ppa is not None:
+            out.append(TriedVersion(other.label, other.created_by, other.reason, other.ppa))
+        elif other.status == "rejected":
+            out.append(TriedVersion(other.label, other.created_by, other.reason, None))
+    return out
+
+
+def _explore_idea(st: RunState, child: Cand, parent: Cand) -> dict[str, str]:
+    """EXPLORE children get one technique from the research that the parent does not use (our own text from the
+    fixed list), instead of the generic EXPLORE idea. Recorded in ctx.techniques for the run outcome."""
+    ctx = st.ctx
+    if child.created_by != "EXPLORE" or ctx.references is None:
+        return {}
+    from ..research.techniques import mentioned_in
+
+    used = {t for cid, t in ctx.techniques.items() if cid == parent.id}
+    if parent.parent_id is None and st.plan is not None:  # v1 follows the plan: read its approach from the plan text
+        plan_text = " ".join([st.plan.summary, *(f"{b.name} {b.reason}" for b in st.plan.blocks)])
+        used |= mentioned_in(ctx.pack.id, plan_text)
+    used |= {t for cid, t in ctx.techniques.items() if st.cands.get(cid) and st.cands[cid].round == child.round}
+    tech = ctx.references.explore_idea(used)
+    if tech is None:
+        return {}
+    ctx.techniques[child.id] = tech.id
+    return {"idea": f"{tech.label}: {tech.idea}."}
 
 
 async def _reject(st: RunState, child: Cand, chapter: str) -> None:

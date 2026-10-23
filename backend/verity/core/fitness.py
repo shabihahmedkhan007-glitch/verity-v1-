@@ -5,7 +5,10 @@
     missing metric (null for v1 or c) -> drop it, renormalize the remaining weights to sum 1
     FAIL or rejected -> fitness null, never ranked
     elites: best 2 by fitness among measured versions so far (v1 counts, score 0)
-    winner: highest fitness; tie -> smaller area
+    winner: highest fitness among versions no worse than v1 on the run's goal metric (area for "area", clock period
+            for "speed", power for "power", zero tolerance: equal is allowed, any increase is not); tie -> smaller area,
+            then the older version. v1 is always eligible. A missing goal metric (v1 or the version) skips the check.
+            The goal check is for the final winner only; elites keep the plain ranking.
 
 Recorded `Fitness.weights` are the EFFECTIVE (renormalized) weights, with 0 for a dropped metric, so the web
 breakdown rows (weight x gain) sum to the score. Gains are rounded to 2 decimals, weights to 4, and the score
@@ -77,9 +80,42 @@ def select_elites(candidates: Sequence[Candidate], k: int = 2) -> list[str]:
     return [c.id for c in rankable(candidates)[:k]]
 
 
+GOAL_METRIC: dict[Priority, str] = {"area": "area_um2", "speed": "clock_period_ns", "power": "power_mw"}
+
+
+def goal_value(ppa: PPA | None, priority: Priority) -> float | None:
+    return getattr(ppa, GOAL_METRIC[priority], None) if ppa is not None else None
+
+
+def worse_on_goal(candidate: Candidate, baseline: Candidate | None) -> bool:
+    """True when the version is worse than v1 on the run's goal metric (lower is better for all three). Never true for
+    v1 itself, or when either value is missing (then today's plain ranking applies)."""
+    if baseline is None or candidate.id == baseline.id or candidate.fitness is None:
+        return False
+    priority = candidate.fitness.priority
+    value, base_value = goal_value(candidate.ppa, priority), goal_value(baseline.ppa, priority)
+    return value is not None and base_value is not None and value > base_value
+
+
+def result_key(ppa: PPA | None) -> tuple[int, float, float] | None:
+    """Cell count, area and clock period: two versions with the same key synthesized to the same result (a copy).
+    None when any of the three is missing, so an incomplete measurement is never called a copy."""
+    if ppa is None or ppa.cell_count is None or ppa.area_um2 is None or ppa.clock_period_ns is None:
+        return None
+    return (ppa.cell_count, ppa.area_um2, ppa.clock_period_ns)
+
+
 def pick_winner(candidates: Sequence[Candidate], exclude: Sequence[str] = ()) -> str | None:
-    """AI pick. `exclude` holds ids demoted by EQY not_equivalent."""
+    """AI pick. `exclude` holds ids demoted by EQY not_equivalent. A version worse than v1 on the goal is never picked,
+    and neither is a copy (same cells, area and clock) of a demoted version: it would only be proven unequal again."""
+    by_id = {c.id: c for c in candidates}
+    demoted = {key for i in exclude if i in by_id and (key := result_key(by_id[i].ppa)) is not None}
     for c in rankable(candidates):
-        if c.id not in exclude:
-            return c.id
+        if c.id in exclude:
+            continue
+        assert c.fitness is not None
+        base = by_id.get(c.fitness.baseline_id)
+        if base is not None and c.id != base.id and (result_key(c.ppa) in demoted or worse_on_goal(c, base)):
+            continue
+        return c.id
     return None

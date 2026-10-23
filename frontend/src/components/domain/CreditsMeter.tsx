@@ -1,14 +1,12 @@
 import { Coins } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { formatUsd } from "@/lib/format";
 import type { RunMode } from "@/lib/contracts/types";
 
-export type CreditsMeterProps = { mode: RunMode; usedUsd: number; capUsd: number | null; recordedUsd?: number };
+export type CreditsMeterProps = { mode: RunMode; usedUsd: number; recordedUsd?: number };
 
-/** Spend against the cap. Replays cost nothing; live runs show a meter that turns warn above 80 percent. */
-export function CreditsMeter({ mode, usedUsd, capUsd, recordedUsd }: CreditsMeterProps) {
+/** What the run spent. Replays cost nothing. The spend limit is enforced by the server and never shown as a figure. */
+export function CreditsMeter({ mode, usedUsd, recordedUsd }: CreditsMeterProps) {
   if (mode === "replay") {
     const tip =
       recordedUsd !== undefined
@@ -31,23 +29,11 @@ export function CreditsMeter({ mode, usedUsd, capUsd, recordedUsd }: CreditsMete
     );
   }
 
-  const ratio = capUsd && capUsd > 0 ? Math.min(1, usedUsd / capUsd) : 0;
-  const reached = capUsd !== null && usedUsd >= capUsd;
-  const warn = capUsd !== null && ratio >= 0.8;
   return (
     <div className="inline-flex items-center gap-2 text-sm">
-      <Coins aria-hidden className={cn("size-4", warn ? "text-warn" : "text-fg-muted")} />
-      <span className={cn("font-mono", warn ? "text-warn" : "text-foreground")}>
-        {capUsd === null ? formatUsd(usedUsd) : `${formatUsd(usedUsd)} of ${formatUsd(capUsd)}`}
-      </span>
-      {capUsd !== null ? (
-        <Progress
-          value={ratio * 100}
-          aria-label="Credits used"
-          className={cn("h-1.5 w-20 rounded-[2px] bg-surface-3", warn ? "[&>div]:bg-warn" : "[&>div]:bg-fg-muted")}
-        />
-      ) : null}
-      {reached ? <span className="text-warn">Cap reached</span> : null}
+      <Coins aria-hidden className="size-4 text-fg-muted" />
+      <span className="font-mono text-foreground">{formatUsd(usedUsd)}</span>
+      <span className="text-fg-muted">spent</span>
     </div>
   );
 }

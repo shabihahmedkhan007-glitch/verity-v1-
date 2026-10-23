@@ -1,4 +1,6 @@
-# AI Hardware Engineer — Spec → Chip → Verified Hardware Agent
+# AI Hardware Engineer: Spec → Chip → Verified Hardware Agent
+
+> **History, superseded by `docs/PRD.md`.** The original concept brief (2026-09-27). Verity as built is described in `docs/PRD.md` and `ARCHITECTURE.md`.
 
 ## 1. Basic Idea
 
@@ -87,7 +89,7 @@ Normally, engineers have to determine:
 
 The AI receives the English requirement.
 
-### Step 1 — Understand the requirement
+### Step 1: Understand the requirement
 
 ```text
 INPUT
@@ -102,7 +104,7 @@ Low power
 Small area
 ```
 
-### Step 2 — Design an architecture
+### Step 2: Design an architecture
 
 The AI proposes an architecture such as:
 
@@ -117,7 +119,7 @@ Input → │ Processing  │
              Output
 ```
 
-### Step 3 — Generate RTL
+### Step 3: Generate RTL
 
 The AI generates the actual hardware description, for example:
 
@@ -127,7 +129,7 @@ module matrix_multiplier (...);
 endmodule
 ```
 
-### Step 4 — Test it
+### Step 4: Test it
 
 The AI automatically generates test cases.
 
@@ -165,7 +167,7 @@ It investigates the RTL and attempts to fix it.
 
 ---
 
-# 4. The Advanced Part — Autonomous Optimization
+# 4. The Advanced Part: Autonomous Optimization
 
 Suppose the first design works.
 

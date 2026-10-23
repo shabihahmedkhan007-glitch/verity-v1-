@@ -1,7 +1,8 @@
 """Composition root and the `verity-api` console script (CONTRACTS section 1).
 
     settings -> production guard -> packs (fail fast) -> provider (B) -> tool runner (C)
-             -> SqliteStore (E) -> RunManager (D) -> FastAPI app (E) -> uvicorn, one worker
+             -> SqliteStore (E) [+ SupabaseThreadStore for chats and run lists] -> research (search adapter +
+             ResearchService, or off) -> RunManager (D) -> FastAPI app (E) -> uvicorn, one worker
 
 Everything except opening the store is built synchronously here. The store opens in the app lifespan, inside the
 server's event loop, followed by service.start() (startup recovery and the watchdog).
@@ -18,9 +19,13 @@ from .api.redact import RedactFilter, log_config
 from .config import Settings, load_settings
 from .core.errors import VerityError
 from .core.pack import load_packs
+from .core.parse import live_families
 from .llm.factory import build_provider
+from .research import ResearchService, build_search_adapter
 from .runs.manager import RunManager
+from .core.protocols import ThreadStore
 from .store import SqliteStore
+from .store.supabase_threads import SupabaseThreadStore
 from .tools.factory import build_tool_runner
 
 log = logging.getLogger("verity.main")
@@ -35,14 +40,29 @@ def build_app(settings: Settings) -> FastAPI:
     provider = build_provider(settings)  # builder B
     tools = build_tool_runner(settings)  # builder C
     store = SqliteStore(settings)
-    service = RunManager(settings, store, provider, tools, packs)  # builder D
+    adapter = build_search_adapter(settings)  # Serper, the fake adapter, or None (research off)
+    research = (
+        ResearchService(settings, store, provider, adapter, live_families(packs)) if adapter is not None else None
+    )
+    # Chats and each user's list of runs: Supabase when it is configured (threads.store), else SqliteStore, which is also
+    # the ThreadStore (migrations 6 and 7). The agent and the routes see only the protocol.
+    supabase = SupabaseThreadStore(settings) if settings.threads_store() == "supabase" else None
+    threads: ThreadStore = supabase if supabase is not None else store
+    service = RunManager(settings, store, provider, tools, packs, research=research, threads=threads)  # builder D
+    log.info("research: %s", adapter.name if adapter is not None else "off")
+    log.info("chats: %s, accounts: %s", "supabase" if supabase is not None else "sqlite", settings.supabase_auth_enabled())
 
     return create_app(
         settings,
         service,
-        startup=[store.open],
-        # Run in reverse: the LLM client closes first, the store last.
-        shutdown=[store.close, provider.aclose],
+        startup=[store.open, *([supabase.open] if supabase is not None else [])],
+        # Run in reverse: the search and LLM clients close first, the stores last.
+        shutdown=[
+            store.close,
+            *([supabase.close] if supabase is not None else []),
+            provider.aclose,
+            *([research.aclose] if research is not None else []),
+        ],
     )
 
 

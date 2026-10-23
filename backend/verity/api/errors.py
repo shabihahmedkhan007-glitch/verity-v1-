@@ -12,16 +12,22 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..contracts import ErrorResponse, to_wire
-from ..core.errors import AdmissionDenied, Conflict, Forbidden, NotFound, UnknownPreset
+from ..core import captions as cap
+from ..core.errors import AdmissionDenied, Conflict, Forbidden, NotFound, StoreUnavailable, UnknownPreset
 
 log = logging.getLogger("verity.api")
 
 _ADMISSION_TEXT = {
     "busy": "Another live run is in progress.",
     "budget_exhausted": "Live runs are paused: the daily budget is used up.",
+    # No dollar figure in the text: the UI shows what was spent, never the limit.
+    "session_budget_exhausted": "You have reached today's spend limit for this session. Try again tomorrow.",
     "maintenance": "Live runs are offline for maintenance.",
     "rate_limited": "Too many requests. Try again shortly.",
+    "sandbox_down": cap.DOCKER_DOWN,
 }
+# The sandbox check picks one of these sentences; anything else falls back to the fixed text above.
+_SANDBOX_TEXT = frozenset({cap.DOCKER_DOWN, cap.IMAGE_MISSING})
 
 
 class ApiError(Exception):
@@ -70,6 +76,9 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AdmissionDenied)
     async def _admission(_: Request, exc: AdmissionDenied) -> JSONResponse:
+        if exc.reason == "sandbox_down":  # the server cannot run tests right now: 503, not a client limit
+            text = str(exc) if str(exc) in _SANDBOX_TEXT else _ADMISSION_TEXT["sandbox_down"]
+            return error_response(503, text, "sandbox_down")
         reason = exc.reason if exc.reason in _ADMISSION_TEXT else "busy"
         return error_response(429, _ADMISSION_TEXT[reason], reason)
 
@@ -84,6 +93,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Forbidden)
     async def _forbidden(_: Request, __: Forbidden) -> JSONResponse:
         return error_response(403, "This run belongs to another session.")
+
+    @app.exception_handler(StoreUnavailable)
+    async def _store_unavailable(_: Request, exc: StoreUnavailable) -> JSONResponse:
+        return error_response(502, str(exc))
 
     @app.exception_handler(Conflict)
     async def _conflict(_: Request, exc: Conflict) -> JSONResponse:

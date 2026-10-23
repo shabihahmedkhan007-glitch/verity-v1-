@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""/verity/bin/bundle <verify|measure|eqy>: stdin-tar fallback for sandboxes that cannot mount files.
+"""/verity/bin/bundle <verify|measure|eqy|seeds|strength|wave>: stdin-tar fallback for sandboxes that cannot mount files.
 
-Reads an uncompressed tar from stdin with members `work/dut.v`, optional `work/b.v`, and `pack/<files>`.
+Reads an uncompressed tar from stdin with members `work/dut.v`, optional `work/b.v` or `work/mutants.json`, and
+`pack/<files>`.
 The pack goes to a read-only directory under /tmp/verity/pack, the work files into $VERITY_WORK_DIR (default
 /work, falling back to /tmp/verity/work when that is not writable), then the stage script replaces this process
 (exec), so its stdout and exit code pass straight through.
@@ -18,10 +19,10 @@ import tarfile
 from pathlib import Path, PurePosixPath
 
 BIN_DIR = Path(__file__).resolve().parent
-STAGES = ("verify", "measure", "eqy")
+STAGES = ("verify", "measure", "eqy", "seeds", "strength", "wave")
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 MAX_MEMBERS = 200
-WORK_FILES = {"dut.v", "b.v"}
+WORK_FILES = {"dut.v", "b.v", "mutants.json"}
 
 
 def _fail(message: str) -> None:

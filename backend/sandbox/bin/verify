@@ -20,6 +20,7 @@ from typing import Any
 LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 import verity_common as vc  # noqa: E402
+import verity_sim as vs  # noqa: E402
 
 LINT_LOG_CAP = 4_000
 SIM_LOG_CAP = 4_000
@@ -40,10 +41,13 @@ def stage_lint(top: str, dut: Path, result: dict[str, Any], versions: dict[str, 
     errors = len(re.findall(r"^%Error", text, re.MULTILINE))
     warnings = len(re.findall(r"^%Warning-", text, re.MULTILINE))
     ok = proc.rc == 0 and errors == 0
+    counts = vs.lint_counts(text)
     result["lint"] = {
         "ok": ok,
         "errors": errors,
         "warnings": warnings,
+        "by_tag": counts["by_tag"],
+        "latches": counts["latches"],
         "log": vc.head(text, LINT_LOG_CAP),
         "tool": f"Verilator {versions.get('verilator', 'unknown')}",
     }

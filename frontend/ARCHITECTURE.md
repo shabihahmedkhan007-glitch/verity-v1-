@@ -1,40 +1,39 @@
 # Verity architecture (frontend focus)
 
-How the Verity web app is built and how it talks to the future agent backend. Written 2026-10-04, before any code exists. Read with `PRODUCT.md`, `brand.md` and `UI_UX_SPEC.md` (all in `../docs/`). Requirements still live in `../docs/MEETING.md` and `../REPORT.md`; when this file and those disagree, flag it.
+How the Verity web app is built and how it talks to the agent backend. Written 2026-10-04 as the build plan; the app and the backend have been built since, and this file is kept current for the pages (`/`, `/studio`, `/bench`, `/results`), the store and the bench (section 9). Read with `PRODUCT.md`, `brand.md` and `UI_UX_SPEC.md` (all in `../docs/`). Requirements live in `../docs/PRD.md` and decisions in `../docs/DECISIONS.md`; both outrank this file (D33). When they disagree, flag it.
 
-Status of claims: library APIs below were checked against current docs via Context7 and versions via `npm view` on 2026-10-04. Anything not checked is marked **(unverified)**. The agent backend API in section 10 is a **proposed contract**; nothing on the backend exists yet.
+Status of claims: library APIs below were checked against current docs via Context7 and versions via `npm view` on 2026-10-04. Anything not checked is marked **(unverified)**. The backend API is built; section 10 summarises it and `../backend/CONTRACTS.md` section 9 has the exact shapes.
 
 ---
 
 ## 1. System overview
 
 ```
-                     replay path ($0, no network after page load)
- +------------------+   GET /runs/golden.json (static file)    +----------------------+
- | Browser          | <----------------------------------------| frontend/ static export    |
- | frontend/ (Next.js,   |                                          | (any static host)     |
- | static export)   |                                          +----------------------+
- |                  |   live path (presets only, capped)
- |  one reducer  <--+-- SSE  GET  {AGENT_URL}/runs/{id}/events  +----------------------+
- |  for both paths  |--- REST POST {AGENT_URL}/runs, /steer     | backend/ FastAPI        |
- +------------------+                                          | (future, Python)      |
-                                                               |  - Nemotron 3 Ultra / |
-                                                               |    Super via Nebius   |
+                     replay path ($0, no network after the run file loads)
+ +------------------+   GET /runs/*.json (static files)        +-----------------------+
+ | Browser          | <----------------------------------------| frontend/ static      |
+ | frontend/        |                                          | export (any host)     |
+ | (Next.js static  |                                          +-----------------------+
+ |  export)         |   live path (knob families, capped)
+ |  one reducer  <--+-- SSE  GET  {AGENT_URL}/runs/{id}/events +-----------------------+
+ |  for both paths  |-- REST POST /parse, /runs, /runs/{id}/ask| backend/ FastAPI      |
+ +------------------+         /steer, /stop; GET /health, /log |  - Nemotron and GLM   |
+                                                               |    5.3 on Nebius      |
                                                                |    Token Factory      |
-                                                               |    (OpenAI-compatible)|
-                                                               |  - Token Factory      |
-                                                               |    Sandboxes: Verilator|
-                                                               |    iverilog, cocotb,  |
-                                                               |    Yosys, OpenROAD,   |
-                                                               |    Yosys EQY          |
-                                                               |  - golden model +     |
+                                                               |  - Tavily and Serper  |
+                                                               |    research           |
+                                                               |  - Docker sandbox:    |
+                                                               |    Verilator, Icarus, |
+                                                               |    cocotb, Yosys,     |
+                                                               |    OpenSTA, Yosys EQY |
+                                                               |  - golden model and   |
                                                                |    tests outside the  |
                                                                |    agent's write path |
-                                                               +----------------------+
+                                                               +-----------------------+
 ```
 
-- `frontend/`: the Next.js app in this plan. Builds to static files. Holds no secrets.
-- `backend/`: future FastAPI service (not part of this frontend plan). Owns LLM calls, sandbox runs, the locked golden model, fitness computation, credit caps and the canonical event stream. API keys live only here (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` per `MEETING.md` section 7).
+- `frontend/`: the Next.js app. Builds to static files. Holds no secrets.
+- `backend/`: the FastAPI agent (`../backend/README.md`). Owns model calls, research, sandbox runs, the locked golden model, fitness computation, money caps and the canonical event stream. API keys live only in `backend/.env` (`LLM_API_KEY`, `TAVILY_API_KEY`, `SERPER_API_KEY`).
 - The golden run is a recorded event log (`frontend/public/runs/golden.json`) played through the same reducer as live events. Replay never calls the agent.
 
 ## 2. Frontend stack (verified 2026-10-04)
@@ -70,7 +69,10 @@ Node on the dev machine: v24.13.1, npm 11.8.0.
 |---|---|---|
 | `/` | `app/page.tsx` | Landing. Auto-plays the golden run in the hero. |
 | `/studio` | `app/studio/page.tsx` | Run view. `?run=golden` (default) or `?run=<liveRunId>`. |
-| `/try` | `app/try/page.tsx` | Preset picker for a capped live run. |
+| `/bench` | `app/bench/page.tsx` | The live chat workspace (`../docs/UI_UX_SPEC.md` section 6, section 9 below). `?run=<id>` reopens a run. |
+| `/workspace` | `app/workspace/page.tsx` | Home, behind the sidebar's Home link (D37). The runs started in this browser, newest first, with totals, family filter, two charts and a Combine preview (section 9, Workspace specifics). Same frame and sidebar as `/bench`; no query params. |
+| `/signin` | `app/signin/page.tsx` | Email and password sign-in for the live bench (section 8.4). `?next=` is the path to return to. No sign-up. |
+| `/try` | `app/try/page.tsx` | Forwards to `/bench` on the client (D15; a static export has no server redirects). |
 | `/results` | `app/results/page.tsx` | Summary, ranking, winner override, zip export. `?run=` as above. |
 | 404 | `app/not-found.tsx` | Exported as `404.html`. |
 
@@ -110,31 +112,36 @@ frontend/
     app/
       layout.tsx  globals.css                                       (S)
       page.tsx                         landing                      (C)
-      studio/page.tsx  try/page.tsx  results/page.tsx  not-found.tsx (C)
+      studio/page.tsx  bench/page.tsx  workspace/page.tsx  try/page.tsx  results/page.tsx  not-found.tsx (C)
     components/
       ui/            shadcn primitives (generated)                  (S)
       brand/         Wordmark, PoweredBy                            (A)
       domain/        presentational, props-only components          (A)
-      sections/      rack/* (landing), studio/*, try/*, results/*, shared/*  (C)
+      sections/      rack/* (landing), landing/links.ts, studio/*, bench/*, workspace/*, results/*, shared/*  (C)
                      rack/: RackPage, RackNav, RackHead, ModSpec, ModLoop, ModResult, Inside, RackFooter, Ears, icons, rack.css
                      studio/: chrome/ (Mod, Seg7, StudioBand), loop/ (LoopModule, derive-leds), timeline/ (TimelineBar, Narration),
                               detail/ (DetailPanel, follow, CandidateDetail, ItemDetails), table/ (CharacteristicsTable),
                               figure/ (derive.ts, proof.ts only)
+                     bench/: AppShell, Sidebar, ChatThread, AgentTurn, Composer, ChipCard, Research, AskTurns, OutputPanel, ProgressTab,
+                             ResultModule, RtlModule, VersionTab, ArchitectureTab, CircuitView, Signoff, Waveform, AccessCode,
+                             ExamplePrompts, chat.ts, rail.ts, artifacts.ts, derive.ts, bench.css (section 9)
+                     workspace/: WorkspaceView, RunCard, Charts (DeltaChart, SpendChart), BarRows, CombinePreview, derive.ts, workspace.css
                      shared/: RackBar + rack-bar.css, AppHeader, rack-fonts.ts, app-roots.ts, datasheet-base.css, app-pages.css, VignetteGrid
     lib/
       utils.ts       cn() from shadcn                               (S)
       env.ts         AGENT_URL, isLiveConfigured                    (S)
       format.ts      number, delta, unit, time formatters           (S)
       contracts/     types.ts, view-types.ts, schemas.ts,           (S)
-                     stages.ts, presets.ts
+                     stages.ts, presets.ts, research.ts, ask.ts, agent.ts
       verilog/       highlight.ts                                   (A)
       run/           reducer.ts, fitness.ts, selectors.ts           (B)
-      canvas/        layout.ts, zones.ts, visibility.ts             (B)
+      canvas/        layout.ts, zones.ts, visibility.ts (node data the reducer still builds for the studio views) (B)
       sources/       replay.ts, live.ts                             (B)
       store/         index.ts, slices/*.ts                          (B)
       hooks/         use-replay-driver.ts, use-live-run.ts,         (B)
-                     use-live-health.ts, use-countdown.ts,
-                     use-reduced-motion.ts, use-run-views.ts
+                     use-live-health.ts, use-live-session.ts, use-countdown.ts,
+                     use-reduced-motion.ts, use-run-views.ts,
+                     use-recent-runs.ts, use-threads.ts, use-runs-list.ts, use-media-query.ts
       export/        zip.ts                                         (B)
 ```
 
@@ -199,7 +206,7 @@ export interface Attempt {
 export interface PPA {
   areaUm2: number | null; cellCount: number | null;
   clockPeriodNs: number | null; powerMw: number | null;   // null = not measured
-  tools: string[];               // e.g. ["Yosys 0.x", "OpenROAD"]
+  tools: string[];               // e.g. ["Yosys 0.x", "OpenSTA"]
   pdk: string;                   // e.g. "Nangate45"
 }
 export interface FitnessWeights { area: number; timing: number; power: number }
@@ -334,15 +341,14 @@ Edges created by the golden run: plan chain (spec to first block, block to block
 
 ## 7. Store (Zustand, slices pattern)
 
-`src/lib/store/index.ts` builds one module-level store with the documented slices pattern (`create<Store>()((...a) => ({ ...createRunSlice(...a), ... }))`) and components select with `useShallow`. A module-level store is safe here because the app is a static client SPA (no per-request server state). It also means the landing hero's playback position carries into `/studio` on client navigation.
+Four slices: `run`, `playback`, `ui`, `live` (there is no canvas slice: the studio has drawn no canvas since 2026-10-15, and the bench circuit view keeps its own React state). `src/lib/store/index.ts` builds one module-level store with the documented slices pattern (`create<Store>()((...a) => ({ ...createRunSlice(...a), ... }))`) and components select with `useShallow`. A module-level store is safe here because the app is a static client SPA (no per-request server state). It also means the landing hero's playback position carries into `/studio` on client navigation.
 
 | Slice | State | Actions |
 |---|---|---|
 | `run` | `snapshot: RunSnapshot` | `applyEvent(e)`, `applyEvents(es)`, `resetRun(init)` |
-| `canvas` | (reads `snapshot.nodes/edges`) | `onNodesChange(changes)` (via `applyNodeChanges`, only position and selection changes are honored), `onEdgesChange`, `markUserMoved(id)` (called from `onNodeDragStop`; sets `origin: "user"`) |
 | `playback` | `source: "replay" \| "live" \| null`, `status: "loading" \| "ready" \| "playing" \| "paused" \| "ended" \| "error"`, `tMs`, `durationMs`, `speed: 1 \| 2`, `chapters`, `log: RunEvent[]`, `cursor` | `load(log)`, `play()`, `pause()`, `seek(tMs)`, `restart()`, `setSpeed()`, `tick(dtMs)` |
 | `ui` | `selection: { kind: NodeKind; id: string } \| null`, `inspectorTab: "rtl" \| "diff" \| "tests" \| "ppa"`, `autopilot: boolean` (default true), `instant: boolean` (suppresses enter animations during seeks), `inspectorOpen` (narrow screens) | `select()`, `setTab()`, `setAutopilot()` |
-| `live` | `connection: "idle" \| "connecting" \| "open" \| "retrying" \| "closed" \| "error"`, `runId`, `error?`, `pendingSteers` | `startLive(presetId, priority)`, `steer(req)`, `stopRun()` |
+| `live` | `connection: "idle" \| "connecting" \| "open" \| "retrying" \| "closed" \| "error"`, `runId`, `error?`, `pendingSteers`, `tailOpen` (the stream stays open after the result for the sign-off) | `startLive(presetId, priority, params?, title?, researchId?)`, `steer(req)`, `stopRun()`, `overrideWinnerLocal(id)`, `adoptLiveRun(runId)` |
 
 Hooks (B) that sections (C) consume:
 - `useRun<T>(selector)`: typed selector over `snapshot.run`.
@@ -450,6 +456,7 @@ live:   EventSource {AGENT_URL}/runs/{id}/events                 |
 ### 8.2 Live (`lib/sources/live.ts`, `hooks/use-live-run.ts`)
 - `EventSource(`${AGENT_URL}/runs/${runId}/events`)`. The server sends `id: <seq>` so the browser resumes with `Last-Event-ID` on reconnect (standard SSE behavior). Client ignores events with `seq <= lastSeq`.
 - After 3 failed reconnects within 30 s: close, set `connection: "error"`, show the "Lost connection" banner.
+- After the terminal `run` event the tail stays open (`live.tailOpen`, at most 180 s), because the sign-off sheet arrives after the result shows. The server ends the SSE response 5 s after its last event, so `EventSource` reconnects with `Last-Event-ID`, receives the sign-off events, and the server answers 204 when nothing is left. Only that close (`readyState` CLOSED) or the 180 s bound ends the tail; a close that is still reconnecting does not (`use-live-run.ts`). A finished run with no sheet therefore shows "Sign-off checks running" for about one reconnect before it reads "none"; the server asks for that reconnect after 250 ms (`retry: 250`) when it replays a finished run, and after 3 s while a run is live.
 - Steering: `POST /runs/{id}/steer` returns 202; the server echoes a `human` event, which is the only thing that increments the Human inputs counter. Pending steers show as "queued" until echoed.
 - If `NEXT_PUBLIC_AGENT_URL` is unset or `/health` says live is off, live entry points render the "Live runs are offline" state; replay is unaffected.
 
@@ -470,6 +477,20 @@ winner: highest fitness; tie -> smaller area. The user may override.
 ```
 
 `lib/run/fitness.ts` (B) contains only display helpers (breakdown rows, priority metric) and a `recomputeFitness()` used by a dev assertion that the fixture's stored scores match this formula. It is never used to decide anything in live mode. The UI never asks an LLM whether a design is better.
+
+### 8.4 Accounts (Supabase sign-in; D47, plan `.planning/verity-supabase-chats.html`)
+
+Chats and each account's list of runs live in Supabase Postgres, behind the server (the browser never reads them from Supabase). The browser only signs in. Run files, events and spend ledgers stay in Verity's own SQLite and disk.
+
+- **Email and password only, and no sign-up anywhere.** The team makes each account in the Supabase dashboard and gives it to a judge. `signUp` is never called; the sign-in page has no sign-up link or wording.
+- **Env (public by design):** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, read in `lib/env.ts` (`isAccountsConfigured`, and `LIVE_HREF`, where the landing's live buttons go). The secret key is the server's and never reaches `frontend/`. With either unset there is no sign-in gate: the bench works as in local development, and shows the access code form when the server asks for one.
+- **Client:** `lib/sources/live.ts` makes the `@supabase/supabase-js` client on first use from a dynamic `import()` (`detectSessionInUrl: false`), so the replay path and a build without accounts never load it. `signIn(email, password)`, `signOut()` (scope `local`: the account stays signed in on its other devices), `currentAccount()` (the email or null; `getSession` refreshes an expired token) and `onAccountChange(cb)`. `useAccount()` (`hooks/use-account.ts`) gives `unknown` until the saved session is read, then `signed_in` or `signed_out`. Plain errors: a wrong login is "That email and password do not match."; an unreachable service says so; a 429 asks for a minute.
+- **Auth header:** `authHeaders()` is async. It sends the Supabase access token when signed in (from `getSession`, which refreshes it), else the access code session token as before. The server tries its own token first, then the Supabase one; a Supabase user's session id is `u:<user id>`, so rate limits, spend limits, run ownership, stream tokens and chats follow the account to another device. The stream token from `POST /runs` is kept in `sessionStorage` of the tab that started the run; `openEventStream` in any other tab or device finds none and gets one from `POST /runs/{id}/stream-token` first (then opens the stream), so an account's running run streams on a second device.
+- **`/signin`** (`sections/signin/SignInView.tsx`, `signin.css` under `.vs.signin`): title "Sign in to Verity", email and password, "Sign in" as the one amber action, and "Have an access code?" opening the bench's `AccessCode` form (`createSession`). On success it goes to `?next=` when that is a path on this site and not `/signin` (`safeNext`), else `/bench`. A reader who is already signed in is forwarded at once.
+- **Entry points:** the landing's "Build one live" and "Try it live" buttons go to `/signin?next=/bench` when accounts are configured, else `/bench`. Other "Try it live" links go to `/bench`, which the guard below handles.
+- **Bench guard** (`BenchView`): when `/health` says `authRequired`, accounts are configured, and there is neither an account nor a code session, the page goes to `/signin?next=<current path and query>` and renders nothing meanwhile. Nothing is decided until the saved account has been read, so a signed-in reader never bounces. An account counts as an access code until the server rejects its token; then the access code form shows, as before. `/studio` and the rest of the replay stay public.
+- **Sidebar lists** (`Sidebar.tsx`, `hooks/use-account-lists.ts`): signed in, "Chats" is `GET /threads` and "Your runs" is `GET /runs/mine` (`listThreads`, `listMyRuns`, zod-checked; an item that does not read is skipped). They load on mount, after a message is answered, a run starts or a run ends (`refreshAccountLists()`), and when the window is focused again. A list that fails keeps its last answer and says so. Not signed in, the sidebar shows the browser's own "Your runs" as before and no Chats. The foot shows the account's email and "Sign out", which also forgets the chats and runs kept in this browser (`verity.threads`, `verity.openThread`, `verity.recentRuns`), so the next person on this browser does not find them.
+- **Opening a chat** from the Chats list is a link to `/bench?thread=<id>`. `BenchView` reads `GET /threads/{id}` (`readThread`) and `GET /runs/mine` together and rebuilds the messages with `threadFromServer` (`bench/chat.ts`): each Verity turn is rebuilt from its stored `reply` and `check` the way a live answer is (`agentMessages`), and a turn stored without them comes back as its text and its step line. A run joins the chat at the point it started, by its `createdAt`; a chip card or proposal that a run followed shows as sent. The chat continues with the same thread id, its latest run comes into view (`?thread=` gives way to `?run=`), and `verity.threads` keeps a copy as a cache.
 
 ## 9. Component architecture
 
@@ -495,21 +516,55 @@ Studio specifics (rack re-skin 2026-10-16, decision D12 in `REPORT.md`; replaces
 - Theme: the rack world under `.vs` (`studio.css`, tokens `--rk-*` in `globals.css`) on top of `sections/shared/datasheet-base.css` (the file keeps its old name). Root class `STUDIO_ROOT` = `vs` + `RACK_FACES`.
 - Landing (`components/sections/rack/`, scope `.rk`): `RackPage` = `RackNav`, `RackHead`, a rack of `ModSpec`, `ModLoop`, `ModResult` (each with `Ears`), then `Inside` and `RackFooter`. /try (`.vt`), /results (`.vr`) and the 404 page (`.vn`) take the same tokens (`app-roots.ts`, `app-pages.css`); every page uses the one `RackBar` top bar (/try, /results and 404 through `AppHeader`).
 
-## 10. Proposed agent API (contract for `backend/`, not built)
+Workspace specifics (plan `.planning/verity-workspace-home.html`, D34 to D37):
+- The sidebar's closed state (900px and up) is `lib/hooks/use-sidebar.ts`, kept in localStorage `verity.sidebar`; `AppShell` sets `data-side="shut"` and its menu button reopens it. `AppShell`'s `actions` slot holds the bench's Open the panel button.
+- `WorkspaceView` reuses the bench frame (`AppShell` with its `label` prop, `Sidebar` with `home`, `bench.css`) and adds `workspace.css` under `.vs`. Home in the sidebar is `/workspace`; the VERITY logo is still `/`. New chip goes to `/bench`.
+- Which runs: `useRecentRuns()` (localStorage `verity.recentRuns`) joined by id to `GET /runs?limit=100` (`useRunsList`, `listRuns` in `lib/sources/live.ts`, zod-checked; an item it cannot read is skipped, a field it cannot read becomes absent). `derive.ts` does the join and every number the page shows. A listed run the server did not return keeps its card with "Not in the server's latest runs"; when the request fails the page says so and shows runs from the browser only. Nothing is read before hydration, so an empty list is never shown by mistake.
+- A card links to `/bench?run=<id>` (the query `BenchView` reads). Its status square is amber only when the server says done and names a winner; a run known only from this browser gets the neutral square. Area, clock and power are `outcome.*VsV1` (ratios against that run's own v1) shown as signed percent; the sign-off line is `outcome.signoff`; spend is `outcome.usd`. Every figure is run data and says "vs v1".
+- Charts are plain SVG (`BarRows`, no chart library), sized to their container in pixels so text keeps its size on a phone. Horizontal bars, one row per run, from a single baseline (the 0% line for changes: left of it is better). Marks are neutral inks (`--rk-ink-2`, `--rk-ink-3`), never amber. Each chart has a caption, a legend when it has two series, a hover and focus tooltip, a per-row accessible name and a "View as table" twin. The palette was checked with the dataviz validator: the two inks separate (CVD and normal-vision delta E 15.0) and clear 3:1 contrast on the panel; the lightness-band and chroma checks fail by design, because the brand allows no hue in a chart (D12), so identity also rides the legend, the value labels and the table. `BarRows` passes the tick step to `tickText`, so the spend axis shows 3 decimals while the step is under one cent ($0.005, $0.010) and never repeats a label.
+- No limit figure anywhere (D36): the UI shows what runs spent, never `capUsd` or a daily or session limit. The new 429 reason `session_budget_exhausted` maps to "You have reached today's spend limit for this session. Try again tomorrow." in `lib/sources/live.ts`. On POST /parse that reason arrives as `reason: "spend_limit"` (a plain rate limit stays `rate_limited`); `replyTo` then makes an error message with `spendLimit: true` and the chat hides "Pick it yourself", because Run is refused by the same limit. Ask and proposal turns saved in this browser before D36 may still say "Cap $0.50." or "of its $0.50 cap"; `withoutCap` (`bench/chat.ts`) drops that clause when they render.
+- Combine is a preview (`CombinePreview`): a dashed panel, a "Coming soon" tag, a diagram, a disabled button and one sentence. Nothing in it runs.
 
-Base URL from `NEXT_PUBLIC_AGENT_URL` (a public URL, not a secret). CORS must allow the web origin. All validation, rate limits and credit caps are enforced server-side; the browser is untrusted.
+Bench specifics (plan `.planning/verity-verilog-strength.html`, claims 1 to 5; all new wire fields are optional, so an older server shows what it showed before):
+- Picking a version anywhere (a Versions row, the Verilog or Architecture picker, a version name in an answer) calls `BenchView.pickVersion`: the panel selection (`ui.select`) and a run-scoped composer chip (`attached`, React state) are set together but kept apart, so removing the chip leaves the panel alone. A Versions row or an answer link also opens the version tab ("v4", `VersionTab.tsx`); a picker keeps the tab it is on. The chip clears on New chip and on another run; it is not kept across a reload. Ask sends its label as `focusVersion`, and the saved user turn keeps `version`.
+- Architecture tab (`ArchitectureTab.tsx`): a step rail derived by `rail.ts` from run data, each step opening its evidence; the circuit of the version in view from `circuit/<id>.json`, drawn by `CircuitView.tsx` (xyflow plus dagre, top to bottom, loaded with `next/dynamic`, first view at a readable zoom, Fit for the whole). Expand moves it into the main area (`expanded`), with the composer still under it. A walkthrough is the `steps` of an ask answer: its highlight (rail step, circuit parts, and its own version) is separate from the reader's picks, and Next and Back never call the model.
+- Artifacts are parsed with zod in `artifacts.ts` (`signoff/<id>.json`, `waves/<id>.json`, `spec/rules.json`, `circuit/<id>.json`, and the synth and STA text reports); a file that does not parse reads as "could not be read". `Signoff.tsx` renders the sheet and the one line on the Result tab; `Waveform.tsx` renders expected next to got with an outline and a word on a mismatch.
+- The first message's verdict, research and assumed knobs (`statedKnobs` from POST /parse) are saved with the run in `verity.recentRuns`, so a reload of `?run=` shows the same first reply.
 
-| Method and path | Request | Response |
-|---|---|---|
-| `GET /health` | | `{ liveEnabled: boolean, reason?: "budget_exhausted" \| "busy" \| "maintenance", capUsd: number }` |
-| `POST /runs` | `{ presetId: string, priority: Priority }` | `201 { runId, capUsd }` or `429 { reason }` |
-| `GET /runs/{id}/events` | SSE, `Last-Event-ID` supported | `id: <seq>` + `data: <RunEvent JSON>` per event |
-| `POST /runs/{id}/steer` | `SteerRequest` (below) | `202` |
-| `POST /runs/{id}/stop` | | `202`, then a `run` event with `phase: "stopped"` |
+Chat thread with the chip engineer agent (plan `.planning/verity-chip-engineer-agent.html`, claims 1, 2, 4 and 5; used when `GET /health` lists `agent`; without it every path above runs as before):
+- One path for every message. `BenchView.send` calls `postMessage(threadId, text, runId?, focusVersion?, signal?)` (`lib/sources/live.ts`, `POST /threads/{threadId}/messages`), before a run and after one. `threadId` is a UUID made in the browser (`newThreadId` in `chat.ts`), one per thread; `runId` is the run on screen and `focusVersion` the version on the chat box. The chat box stays locked while a run is going. A second message before any run no longer reaches POST /parse: only the first message of a thread is fact-checked, and the server does it inside the same call.
+- The reply has two parts. `check` (the POST /parse reply, present only when this message ran the fact check) is read by `replyTo` into the card, refusal or error it always was, with the verdict, research and "I assumed" chips. `reply` follows it: `answer` (words, bullets, suggestion chips, research with its sources, a walkthrough in `steps`), `proposal` or `refused`, each with `toolSteps`. `reply` is null only for "Not a chip". Everything optional is read one by one, so a tool step, a tab or a source this bench cannot read is dropped and never fails the reply (`lib/contracts/agent.ts`).
+- Step line (`AgentTurn.tsx`, `ToolSteps`): one closed dim line, "Used 3 tools" (a failed tool is counted there too), that opens to one line per tool step, a check mark when it worked and a plain mark when it did not, in the server's words. Ink only. A reply keeps its plain words visible (verdict, reason or answer and bullets, suggestion chips, the closest-chip line and buttons, chip and proposal cards, walkthroughs) and folds the rest into one closed "Details" (`ReplyDetails` in `Research.tsx`, a native `details`): the research sentences, each followed by its S1 S2 chips on a row of their own, the sources and "Show more sources", "Searched", "Used saved research", "What this check cost", "What Verity cannot build" and the basis line. A live chip card keeps its own "What Verity cannot build" dropdown. While a reply is pending the thread says "Verity is thinking..."; the first message of a thread keeps the longer "checking it against sources" wait.
+- A proposal before any run is a chip card with Run (`agentMessages` in `chat.ts` builds a `card` message from `presetId`, `params` and `priority`, and the existing `ChipCard` path starts the run). After a run it is today's proposal turn (`ProposalCard`) with Confirm. Nothing runs until Run or Confirm. A chip card, refusal or proposal stays live until a later one, or a run, replaces it; an answer in between does not end it.
+- `openTab` goes through `showTab`: for the run on screen the tab opens at once (the version it names is picked; "signoff" is the winner's version tab); for another run of this browser the page opens that run first (the thread stays) and the tab follows once the run is read.
+- The thread is one list of messages (`ThreadMessage` in `lib/hooks/use-threads.ts`): the reader's messages, the check, the agent's replies, and a `run` marker where each run started. The run lines (progress, the end) show at the marker of the run in the URL, other runs show a quiet "Open that run" note, and replies after a run sit after its lines. A run with no stored thread (started before the agent) is brought into a thread when its first message is sent (`seedThread`): the saved question, card and turns, then a marker.
+- Memory in this browser (`use-threads.ts`): `verity.threads` keeps the newest 20 threads by `threadId`, each with its newest 60 messages and an `updatedAt`. A waiting line, a failed reply and a question that got no reply are not kept (`persistableMessages`), and a stored message that does not read is dropped alone. `verity.openThread` names the open thread. A reload restores the open thread (also before any run), read once after hydration; opening a run from "Your runs" restores the thread its entry names (`RecentRun.threadId`, set when Run is pressed from a thread; `POST /runs` carries `threadId`). New chip starts a new thread (a new id and an empty list; the Workspace page clears `verity.openThread` before it opens the bench). The server keeps its own memory of the thread.
+- The thread decides the path, not the last health answer. `viaAgent` is `agentOn` (the server lists `agent`) or a thread that has an id (only the agent path makes one), so once a thread has used the agent, every later message in it goes to `postMessage`, also while `/health` does not answer. `useLiveHealth` keeps the last known `features` and `authRequired` when a recheck fails (the status still says "error"). A failed message never calls `beginThread` and never clears the thread, so the stored thread is never overwritten with a shorter list by a path switch. Send waits (disabled, "Connecting...") while the first `/health` answer is still `checking`, because the path is not known yet.
+- A failed message shows its error with "Try again" in the chat (`ChatThread`, agent thread only; not for an access code or a spend limit). A first message that failed or timed out is sent again on a new thread id (`resend`): the server may have run, and paid for, its fact check without this page seeing it, and only a thread's first message is fact-checked, so the same id could answer without a card. A later message is sent again on the same thread. "Try again" on a failed fact check (verdict `could_not_check`) also asks on a new thread id, and is offered only while the check is the whole conversation.
+- The agent part of a message stops at 90 s on the server (`[agent] turn_deadline_s`) and code answers from the steps found; the web gives up at 120 s (`MESSAGE_TIMEOUT_MS`), which is the "took too long" retry above. A message about a run that is still going is a 409 (`still_running`, "This run is still going. Ask again when it ends."); the chat box is locked while a run goes, so this is a guard only.
+- Errors reuse the spend-limit sentences (a 429 with `budget_exhausted` or `session_budget_exhausted` is reason `spend_limit`, with no figure; `rate_limited` is a wait of a minute). A 403, or a 404 with a run, means the run is not this session's. A failed later message leaves the question in the chat box.
 
-`SteerRequest` is defined in `src/lib/contracts/view-types.ts` (section 7.1).
+## 10. Agent API (built; exact shapes in `../backend/CONTRACTS.md` section 9)
 
-The agent is the only writer of canvas ops. It must validate its LLM's tool calls against the same op schema (zod on the web side; a pydantic mirror on the Python side) and emit one complete op per tool call (never partial arguments). Live default `autoContinueMs` for the plan gate: 10000.
+Base URL from `NEXT_PUBLIC_AGENT_URL` (a public URL, not a secret). CORS must allow the web origin. All validation, rate limits and money caps are enforced server-side; the browser is untrusted. Every call lives in `src/lib/sources/live.ts`. Each call may carry `Authorization: Bearer <token>`: a Verity session token (from `POST /auth/session`) or a Supabase access token (section 8.4).
+
+| Method and path | Used for |
+|---|---|
+| `GET /health` | live or offline, `capUsd`, `models` per role, `authRequired`, `features` |
+| `GET /runs` | the runs this server knows, newest first, each with an optional `outcome` (ratios against that run's own v1, versions, actual spend, sign-off seeds); public; the Workspace page |
+| `POST /auth/session` | the access code, when the server requires one |
+| `GET /threads`, `GET /threads/{threadId}` | the signed-in account's chats, and one chat's stored turns with each reply and check (section 8.4); owner only |
+| `GET /runs/mine` | the runs the caller started, newest first, at most 50: `{id, title, threadId, createdAt, status}`; owner only |
+| `POST /parse` | the first message without the agent: verdict, research, family and knobs, `statedKnobs` |
+| `POST /threads/{threadId}/messages` | every message with the agent (`agent` in `features`): `{text, runId?, focusVersion?}` gives `{threadId, check, reply}`; the first message of a thread also carries the fact check |
+| `POST /runs` | start a run: `{presetId, priority, mode?, params?, researchId?, threadId?}` gives `{runId, capUsd, streamToken}` |
+| `POST /runs/{id}/stream-token` | a fresh stream token for a run the caller started (owner only): `openEventStream` asks for one when the tab has none stored, as on an account's other device |
+| `GET /runs/{id}/events` | SSE with `?st=<streamToken>`, resumes with `Last-Event-ID`; 204 when nothing is left |
+| `GET /runs/{id}/log` | a finished run as a `RunLog` (public) |
+| `POST /runs/{id}/ask` | the chat after a run without the agent: answers, walkthrough steps, proposals |
+| `POST /runs/{id}/steer`, `POST /runs/{id}/stop` | plan gate steering and Stop |
+
+`SteerRequest` is defined in `src/lib/contracts/view-types.ts` (section 7.1). The backend emits canvas ops from run state, never from a model (`../backend/ARCHITECTURE.md` section 17), and the frontend only sees events that passed its zod schemas. Live default `autoContinueMs` for the plan gate: 10000.
 
 ## 11. Golden-run fixture
 
@@ -526,7 +581,7 @@ Plan revision 1 (4 blocks): `blk-in` Input registers; `blk-mult` Multiplier arra
 
 Recorded human inputs (counter ends at 2): the spec at 0 ms, and a toggle at 12000 ms: `blk-mult` pipeline to `2-stage`. Plan revision 2 marks `blk-mult` as changed ("Multiplier array (4 lanes, 2-stage)").
 
-Versions (all numbers are sample data; PDK "Nangate45", tools "Yosys", "OpenROAD"):
+Versions (all numbers are sample data; PDK "Nangate45", tools "Yosys", "OpenSTA"; OpenROAD until D27 on 2026-10-23):
 
 | Version | id | Round | Parent | Created by | Reason | Tests | Area µm² | Cells | Period ns | Power mW | Fitness | Final status |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -578,7 +633,7 @@ Timeline (`durationMs: 90000`, compressed with highlights). Chapters: Spec 0, Pl
 ## 12. Conventions
 
 - **Client components:** every file under `components/sections` and every hook starts with `"use client"`. Domain components add it only if they use state or effects. Pages stay server components that render client sections inside `Suspense`.
-- **Secrets:** none in `frontend/`. The only env var is `NEXT_PUBLIC_AGENT_URL` (a public base URL). Never add `NEXT_PUBLIC_*` keys, tokens or the Nebius key. `.env*` stays gitignored; commit `.env.example` only.
+- **Secrets:** none in `frontend/`. The env vars are public URLs only (`NEXT_PUBLIC_AGENT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_GITHUB_URL`, `NEXT_PUBLIC_DEVPOST_URL`, `NEXT_PUBLIC_DEMO_VIDEO_URL`) plus the dev-only `NEXT_DIST_DIR`. Never add `NEXT_PUBLIC_*` keys, tokens, the Nebius key or the Tavily and Serper keys. The one key allowed there is the Supabase publishable key, which Supabase designs to be public; the Supabase secret key lives only in `backend/.env`. `.env*` stays gitignored; commit `.env.example` only.
 - **Untrusted input:** every event from the network or the fixture passes `RunEventSchema.safeParse` before `reduce`. Rendered strings from events are plain text (React escapes them); never use `dangerouslySetInnerHTML` (the Verilog highlighter returns React nodes, not HTML).
 - **Naming:** components `PascalCase.tsx`, one component per file; hooks `use-kebab-case.ts` exporting `useCamelCase`; lib files `kebab-case.ts`; types `PascalCase`; zod schemas `PascalCaseSchema`; CSS custom properties `--kebab-case`. Node ids: `spec`, `blk-*`, `golden`, `c<n>`; labels `v<n>`.
 - **Formatting numbers:** only through `lib/format.ts` (`formatArea`, `formatNs`, `formatMw`, `formatMhz`, `formatPct`, `formatDelta` with the U+2212 minus, `formatUsd`, `formatClock`). Measured values render in `font-mono`.
@@ -594,8 +649,8 @@ Run from `frontend/`:
 |---|---|
 | `npm run typecheck` (`tsc --noEmit`) | Contracts and components agree |
 | `npm run lint` (`eslint`) | Lint clean (Next 16 removed `next lint`; the script calls ESLint directly) |
-| `npm run validate:fixture` (`node scripts/validate-fixture.ts`) | `public/runs/golden.json` parses with `RunLogSchema`, events are seq-ordered, `tMs` non-decreasing, every `candidate.fitness.score` matches section 8.3 within 0.01 |
-| `npm run build` (`next build`) | Static export succeeds; `out/index.html`, `out/studio/index.html`, `out/try/index.html`, `out/results/index.html`, `out/runs/golden.json` exist |
+| `npm run validate:fixture` (`node scripts/validate-fixture.ts <file>`) | `public/runs/golden.json`, `mac4-real-raw.json` and `mac4-real.json` parse with `RunLogSchema`, events are seq-ordered, `tMs` non-decreasing, every `candidate.fitness.score` matches section 8.3 within 0.01 |
+| `npm run build` (`next build`) | Static export succeeds; `out/index.html`, `out/studio/index.html`, `out/bench/index.html`, `out/try/index.html`, `out/results/index.html`, `out/runs/golden.json` exist |
 | `npx serve out` or any static server, then open `/` | Replay plays with the network tab showing no requests after `golden.json` |
 | `grep -rn "sources/live\|EventSource\|AGENT_URL" src/lib/sources/replay.ts src/lib/hooks/use-replay-driver.ts` | Prints nothing: the replay path cannot call the agent |
 | `grep -rnP "\x{2014}\|\x{2013}" src public ../*.md ../docs/*.md` (in a shell, the pattern is `"\x{2014}|\x{2013}"`; the backslash here only escapes the table pipe) | Prints nothing: no em or en dashes |
@@ -605,5 +660,5 @@ Run from `frontend/`:
 ## 14. Unverified or open technical items
 
 - Verified late on 2026-10-04 and already applied: React Flow's real `--xy-*` variable names (from `dist/style.css`), its `outline: none` on focused nodes (restored in `globals.css`), and the `Node<NodeData extends Record<string, unknown>>` constraint (so `NodeData` is a type alias).
-- Whether Nemotron on Nebius returns tool calls reliably enough for the op set (`UI_CANVAS_RESEARCH.md`: tool calling documented, structured JSON output unconfirmed). Frontend is unaffected: it only sees validated events.
+- Settled: no model emits canvas ops or calls tools; the backend builds ops from run state, so Nemotron tool-call reliability does not matter here.
 - EQY equivalence between versions with different pipeline latency may not prove. The UI supports `not_equivalent`, `inconclusive` and `not_run`; the agent team decides which versions are eligible.

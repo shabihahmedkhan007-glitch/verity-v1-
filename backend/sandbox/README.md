@@ -15,11 +15,20 @@ sandbox/
   bin/verify            lint (Verilator), interface check (Yosys), simulation (cocotb + Icarus)
   bin/measure           Yosys synthesis on Nangate45, OpenSTA timing, circuit graph
   bin/eqy               winner vs v1 with Yosys EQY
+  bin/seeds             sign-off: the locked tests on more seeds, lint warnings by tag
+  bin/strength          sign-off: the locked tests on planted bugs (mutants.json from the backend)
+  bin/wave              one test case as a waveform, cut around its first mismatch
   bin/bundle            stdin-tar fallback for backends that cannot mount files
   lib/verity_common.py  subprocess with deadlines, JSON emit, version probes (stdlib only)
   lib/verity_circuit.py Yosys JSON to the CircuitGraph wire format (stdlib only)
-  lib/verity_tb.py      cocotb helpers used by every task pack (Recorder, read_int, fmt_hex, reset, ...)
+  lib/verity_sim.py     compile and run the locked tests (seeds, strength, wave; verify keeps its own copy)
+  lib/verity_wave.py    VCD parsing, sampling, golden replay and the window (stdlib only)
+  lib/verity_tb.py      cocotb helpers used by every task pack (Recorder, read_int, fmt_hex, reset, ...; wave mode)
 ```
+
+`seeds`, `strength` and `wave` were added on 2026-10-22 (CONTRACTS 3.9 to 3.11). The VCD comes from a dump module the
+`wave` script writes (a second top level), never from the design, so `$dump*` stays banned in model RTL. No pack file
+changes: seeds reach the testbench through `VERITY_SEED`, and wave mode lives in `verity_tb.py`.
 
 Inside the image: scripts in `/verity/bin`, helpers in `/verity/lib` (on `PYTHONPATH`), liberty at
 `/verity/pdk/nangate45/NangateOpenCellLibrary_typical.lib` (`$VERITY_LIBERTY`), tool versions in

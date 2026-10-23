@@ -172,9 +172,9 @@ function EqyLamp({ run, baselineLabel }: { run: RunState; baselineLabel: string 
 
 /**
  * The VERSIONS module: one row per version, filled in only as the record measures it, then the winner note and the
- * EQY lamp. Clicking a row pins the inspector to that version (ui.select).
+ * EQY lamp. Clicking a row pins the inspector to that version (ui.select), or does what `onPick` says instead.
  */
-export function CharacteristicsTable({ run, follow }: { run: RunState; follow: Selection | null }) {
+export function CharacteristicsTable({ run, follow, onPick }: { run: RunState; follow: Selection | null; onPick?(id: string): void }) {
   const { selection, select } = useUi();
   const order = run.candidateOrder.map((id) => run.candidates[id]).filter((c): c is Candidate => Boolean(c));
   const baselineId = run.baselineId ?? order.find((c) => c.isBaseline)?.id ?? null;
@@ -182,7 +182,7 @@ export function CharacteristicsTable({ run, follow }: { run: RunState; follow: S
   const baselineLabel = baseline?.label ?? "v1";
   const toolsPpa = baseline?.ppa ?? order.find((c) => c.ppa)?.ppa ?? null;
   const tools = toolsPpa ? [...toolsPpa.tools, toolsPpa.pdk].filter(Boolean).join(", ") : null;
-  const pick = useCallback((id: string) => select({ kind: "candidate", id }), [select]);
+  const pick = useCallback((id: string) => (onPick ? onPick(id) : select({ kind: "candidate", id })), [onPick, select]);
 
   return (
     <Mod label="Versions" right={<span className="lab">All deltas vs {baselineLabel}</span>} ariaLabel="Versions">

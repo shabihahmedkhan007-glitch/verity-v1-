@@ -19,7 +19,9 @@ from ..contracts import (
     SpecInput,
     ToggleInput,
     ToggleSteer,
+    to_json,
 )
+from ..contracts.signoff import SpecRules
 from ..core import captions as cap
 from ..core.types import BudgetExhausted, LLMError, PlanOut, PlanResult, RoleOutputError
 from .feasibility import check_plan
@@ -29,6 +31,7 @@ from .state import RunState
 log = logging.getLogger("verity.orchestrator")
 
 GATE_POLL_S = 5.0
+SPEC_RULES_PATH = "spec/rules.json"
 
 
 class StageFailed(Exception):
@@ -48,6 +51,7 @@ async def spec_stage(st: RunState) -> None:
     await em.run("running")
     await em.human(SpecInput(t_ms=ctx.now_ms(), preset_id=pack.id, priority=ctx.priority))
     await em.spec(pack.to_spec(ctx.priority))
+    await em.artifact(SPEC_RULES_PATH, to_json(SpecRules(rules=pack.spec_rules())))
     await em.add_node("spec", "spec", "plan", "Spec", ref_id="spec")
     await em.stage("spec", "done")
     await em.caption(cap.spec_read(pack.summary, ctx.priority), cap.CH_SPEC)
@@ -59,8 +63,11 @@ async def spec_stage(st: RunState) -> None:
 # ======================================================================
 async def _call_plan(st: RunState, previous: PlanOut | None, steering: list[PinInput | ToggleInput]) -> PlanResult:
     ctx = st.ctx
+    # Known approaches from research and past runs: technique labels and code-written numbers only (claim 2).
+    refs = ctx.references.planner_text() if ctx.references is not None else ""
+    extra = {"references": refs} if refs else {}
     with ctx.busy():
-        result = await ctx.roles.plan(ctx.llm, ctx.pack, ctx.priority, previous=previous, steering=steering)
+        result = await ctx.roles.plan(ctx.llm, ctx.pack, ctx.priority, previous=previous, steering=steering, **extra)
     await st.credits()
     await st.record_meta(result.meta)
     return result

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LIVE_HREF } from "@/lib/env";
 import { ArrowIcon } from "./icons";
 
 /** Headline, lead and the two calls to action. */
@@ -17,7 +18,7 @@ export function RackHead() {
           bugs, then grows smaller versions and <b>proves the winner equal</b> to its first one.
         </p>
         <nav className="choose" aria-label="Two ways in">
-          <Link prefetch={false} href="/bench" className="way live">
+          <Link prefetch={false} href={LIVE_HREF} className="way live">
             <span className="way-t">
               <span className="sq pass" aria-hidden />
               Build one live

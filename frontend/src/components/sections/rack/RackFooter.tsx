@@ -1,3 +1,4 @@
+import { LIVE_HREF } from "@/lib/env";
 import { REAL } from "./real-run";
 import Link from "next/link";
 import { DEMO_VIDEO_URL, DEVPOST_URL, GITHUB_URL } from "../landing/links";
@@ -37,7 +38,7 @@ export function RackFooter() {
           <Link prefetch={false} href="/studio?run=mac4-real">
             Watch the full run
           </Link>
-          <Link prefetch={false} href="/bench">
+          <Link prefetch={false} href={LIVE_HREF}>
             Try it live
           </Link>
           {project.map((l) => (

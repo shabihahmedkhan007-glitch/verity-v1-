@@ -83,10 +83,10 @@ class ToolInfraError(VerityError):
 
 # ---------- API-facing ----------
 class AdmissionDenied(VerityError):
-    """POST /runs refused. HTTP 429 {reason}."""
+    """POST /runs refused. HTTP 429 {reason}, or 503 for sandbox_down (message: the plain sentence to show)."""
 
     def __init__(self, reason: str, message: str = ""):
-        self.reason = reason  # busy | budget_exhausted | maintenance | rate_limited
+        self.reason = reason  # busy | budget_exhausted | session_budget_exhausted | maintenance | rate_limited | sandbox_down
         super().__init__(message or reason)
 
 
@@ -104,3 +104,11 @@ class Conflict(VerityError):
 
 class UnknownPreset(VerityError):
     """HTTP 422."""
+
+
+class StoreUnavailable(VerityError):
+    """The Supabase store for chats and run lists could not be reached or refused a call. HTTP 502. The message is
+    fixed text for the user; the cause is logged without keys by the store."""
+
+    def __init__(self, message: str = "Saved chats are unreachable right now."):
+        super().__init__(message)

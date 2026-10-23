@@ -47,6 +47,7 @@ html:has(.vs) body { background: var(--rk-ground); }
 .vs .rkq.run::after { content: ""; position: absolute; inset: 2px; background: var(--rk-run); animation: vs-blink 1.2s steps(2, jump-none) infinite; }
 .vs .rkq.wait { border: 1px solid var(--rk-grey); }
 .vs .rkq.drop { background: var(--rk-grey); }
+.vs .rkq.done { background: var(--rk-ink-2); }
 
 /* ---------- Transport ---------- */
 .vs .transport { flex: none; padding-bottom: 12px; }
@@ -79,8 +80,6 @@ html:has(.vs) body { background: var(--rk-ground); }
 .vs .tlb-q { font-size: 13px; color: var(--rk-ink); }
 .vs .tlb-err { grid-column: 1 / -1; margin: 0; font-size: 14px; color: var(--rk-ink); }
 .vs .tlb-credits { display: inline-flex; align-items: center; gap: 10px; }
-.vs .tlb-meter { display: inline-block; width: 90px; height: 3px; background: var(--rk-seg-off-b); }
-.vs .tlb-meter span { display: block; height: 100%; background: var(--rk-ink-2); transform-origin: 0 50%; }
 
 /* Scrubber with one tick per chapter */
 .vs .tlb-scrub { grid-column: 1 / -1; margin-top: 2px; }

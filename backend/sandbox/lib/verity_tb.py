@@ -209,6 +209,9 @@ async def run_cases(
     """
     expected_count = env_int("VERITY_TEST_COUNT", len(cases))
     assert len(cases) == expected_count, f"pack defines {len(cases)} cases, task.toml test_count is {expected_count}"
+    if os.environ.get("VERITY_WAVE_TRACE"):
+        await _run_wave(cases, run_one)
+        return
     for case in cases:
         try:
             outcome = await run_one(case)
@@ -217,3 +220,53 @@ async def run_cases(
         rec.record(case.name, outcome.ok, inputs=outcome.inputs or case.inputs, expected=outcome.expected, got=outcome.got, cycle=outcome.cycle)
     all_ok = rec.finish()
     assert all_ok, f"{rec.total - rec.passed} of {rec.total} cases failed"
+
+
+# ---------- waveform mode (/verity/bin/wave only) ----------
+def _sim_time_ns() -> float:
+    from cocotb.utils import get_sim_time
+
+    try:
+        return float(get_sim_time(units="ns"))  # cocotb 1.x
+    except TypeError:
+        return float(get_sim_time(unit="ns"))  # cocotb 2.x
+
+
+async def _run_wave(cases: Sequence[Any], run_one: Callable[[Any], Awaitable[Outcome]]) -> None:
+    """Set by /verity/bin/wave through VERITY_WAVE_TRACE. Runs the cases in order (so every earlier case consumes the
+    random generator exactly as in a normal run) and stops after the target case (VERITY_WAVE_CASE, default the first
+    case). For a clocked design it then lets VERITY_WAVE_AFTER more falling edges pass with the last inputs held. It
+    writes when each case started and ended, and its verdict, to the trace file. No result file, no assertion."""
+    target = os.environ.get("VERITY_WAVE_CASE", "") or (cases[0].name if cases else "")
+    clock_name = os.environ.get("VERITY_WAVE_CLOCK", "")
+    after = env_int("VERITY_WAVE_AFTER", 4)
+    trace: dict[str, Any] = {"target": target, "found": False, "cases": []}
+    for case in cases:
+        start = _sim_time_ns()
+        try:
+            outcome = await run_one(case)
+        except Exception as exc:  # noqa: BLE001  (same rule as run_cases: an exception is a failed case)
+            outcome = Outcome(False, "case runs to completion", f"testbench exception: {type(exc).__name__}: {exc}"[:200])
+        end = _sim_time_ns()
+        trace["cases"].append(
+            {
+                "name": case.name,
+                "start_ns": start,
+                "end_ns": end,
+                "ok": outcome.ok,
+                "expected": outcome.expected,
+                "got": outcome.got,
+                "cycle": outcome.cycle,
+            }
+        )
+        if case.name == target:
+            trace["found"] = True
+            clk = getattr(cocotb.top, clock_name, None) if clock_name else None
+            if clk is not None:
+                for _ in range(max(0, after)):
+                    await FallingEdge(clk)
+            break
+    trace["stop_ns"] = _sim_time_ns()
+    path = Path(os.environ["VERITY_WAVE_TRACE"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trace, separators=(",", ":")), encoding="utf-8")

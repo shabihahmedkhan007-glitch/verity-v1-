@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import type { Candidate, RunEvent, RunLog, RunState } from "@/lib/contracts/types";
 import { useVerityStore } from "@/lib/store";
 
-const HONESTY_NOTE = "Relative to our own v1, open-source tools (Yosys, OpenROAD, Nangate45). Not signoff.";
+const HONESTY_NOTE = "Relative to our own v1, open-source tools (Yosys and OpenSTA on Nangate45, post-synthesis estimate, no wires). Not signoff.";
 const SAMPLE_NOTICE = "SAMPLE DATA: placeholder files for UI development.";
 
 /** `verity-<runId>.zip` (UI_UX_SPEC 7.3). The run id is reduced to safe file name characters. */

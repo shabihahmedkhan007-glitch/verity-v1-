@@ -1360,7 +1360,7 @@
           "powerMw": 1.92,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -2318,7 +2318,7 @@
           "powerMw": 1.84,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -2388,7 +2388,7 @@
           "powerMw": 2.05,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -2491,7 +2491,7 @@
           "powerMw": 1.76,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -2607,7 +2607,7 @@
           "powerMw": 1.76,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -2677,7 +2677,7 @@
           "powerMw": 1.84,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -3463,7 +3463,7 @@
           "powerMw": 1.66,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -3576,7 +3576,7 @@
           "powerMw": 1.66,
           "tools": [
             "Yosys",
-            "OpenROAD"
+            "OpenSTA"
           ],
           "pdk": "Nangate45"
         },
@@ -3660,7 +3660,7 @@
       "tMs": 86000,
       "t": "artifact",
       "path": "reports/synth_v5.txt",
-      "content": "SAMPLE REPORT for UI development. Placeholder numbers, not results.\ndesign: mac4 (v5)   pdk: Nangate45   tools: Yosys, OpenROAD\narea:          1520 um^2\ncells:         334\nclock period:  3.38 ns\npower:         1.66 mW\n"
+      "content": "SAMPLE REPORT for UI development. Placeholder numbers, not results.\ndesign: mac4 (v5)   pdk: Nangate45   tools: Yosys, OpenSTA\narea:          1520 um^2\ncells:         334\nclock period:  3.38 ns\npower:         1.66 mW\n"
     },
     {
       "seq": 138,

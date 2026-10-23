@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field
 
 from ..config import RoleName
-from ..contracts import PlanBlock, WireModel
+from ..contracts import PPA, PlanBlock, WireModel
 
 ResponseFormat = Literal["text", "json"]
 
@@ -25,8 +25,14 @@ class LLMRequest:
     # Non-prompt metadata: task_id, strategy, attempt, prompt_version. Used by FakeProvider cassettes and logs.
     # Never sent to the model.
     tags: dict[str, str] = field(default_factory=dict)
-    # None: the model default. False: ask the endpoint not to reason (chat_template_kwargs.enable_thinking).
+    # None: the model default. False: ask the endpoint not to reason (chat_template_kwargs.enable_thinking). The
+    # provider sends it only to models that take the switch (llm.thinking_switch_prefixes).
     thinking: bool | None = None
+    # None: not sent. "low" | "medium" | "high": sent as reasoning_effort (GLM 5.3 always reasons; low keeps it short).
+    reasoning_effort: str | None = None
+    # Seconds this whole call may take, fallback models included (the thread agent passes the time left in its turn). A
+    # fallback attempt gets at most what is left and is skipped with under 5 s left. None: no limit beyond timeout_s.
+    deadline_s: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +40,7 @@ class LLMResponse:
     text: str
     input_tokens: int
     output_tokens: int  # includes reasoning tokens when the API reports them separately
-    model: str
+    model: str  # the model id the endpoint says it served (may differ from the requested id)
     request_id: str
     latency_ms: int
     reasoning_tokens: int = 0
@@ -76,6 +82,17 @@ class PlanResult:
     plan: PlanOut
     meta: CallMeta
     raw: str  # full model text, stored as an artifact for debugging only
+
+
+@dataclass(frozen=True, slots=True)
+class TriedVersion:
+    """An earlier version of the same run, for the optimizer's "already tried" list. `ppa` is None when it was
+    rejected. `reason` is the version's own one-line reason (our code writes "Same result as v3" for a copy)."""
+
+    label: str
+    strategy: str
+    reason: str
+    ppa: PPA | None
 
 
 @dataclass(frozen=True, slots=True)

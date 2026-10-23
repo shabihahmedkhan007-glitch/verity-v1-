@@ -1,0 +1,25 @@
+{
+  "preferredWordmark": "12-register-cut",
+  "selectedArtwork": [
+    {
+      "id": "13-circuit-moth",
+      "file": "frontend/public/brand/artwork/circuit-moth.png",
+      "use": "website artwork"
+    },
+    {
+      "id": "16-lithography-bloom",
+      "file": "frontend/public/brand/artwork/lithography-bloom.png",
+      "use": "website artwork"
+    },
+    {
+      "id": "17-bond-weaver",
+      "file": "frontend/public/brand/artwork/bond-weaver.png",
+      "use": "website artwork"
+    },
+    {
+      "id": "18-silicon-strata",
+      "file": "frontend/public/brand/artwork/silicon-strata.png",
+      "use": "website artwork"
+    }
+  ]
+}

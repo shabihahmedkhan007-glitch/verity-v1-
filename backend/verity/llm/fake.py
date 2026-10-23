@@ -41,26 +41,298 @@ _BUG_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+# A request to build something, even when worded as a question ("can you build a 16 bit adder?"), is not a question.
+_FAKE_BUILD_REQUEST = re.compile(
+    r"^\s*(please\s+)?((can|could|would|will) you (please )?)?"
+    r"(build|make|design|create|generate|implement|give me|i need|i want|i'd like|i would like|we need)\b",
+    re.IGNORECASE,
+)
+_FAKE_QUESTION_START = re.compile(
+    r"^\s*(what|what's|whats|how|why|when|where|who|which|can|could|does|do|is|are|will|would|should|tell me|explain|"
+    r"hi|hello|hey|thanks|thank you)\b",
+    re.IGNORECASE,
+)
+
+
+def _fake_is_question(text: str) -> bool:
+    """A trailing question mark, or a leading question word, with no request to build something."""
+    if _FAKE_BUILD_REQUEST.match(text):
+        return False
+    return text.rstrip().endswith("?") or bool(_FAKE_QUESTION_START.match(text))
+
+
 def _fake_parse_json(request: str) -> str:
+    """The fact-check answer shape (class, label, family, params, reason, closest), from keywords only."""
     low = request.lower()
     bits = re.search(r"(\d+)[- ]?bit", low)
     width = {"width": int(bits.group(1))} if bits else {}
-    if "gpu" in low or "6090" in low:
-        answer: dict[str, Any] = {
-            "result": "out_of_range",
+    answer: dict[str, Any]
+    if _fake_is_question(request):
+        answer = {"class": "question", "label": "", "reason": "A question about chips.", "closest": None}
+    elif "gpu" in low or "6090" in low:
+        answer = {
+            "class": "too_big",
+            "label": "edge camera gpu" if "camera" in low else "gpu",
             "reason": "That is a full GPU: thousands of cores, memories and caches. Verity builds small single-module blocks.",
             "closest": {"family": "mac4", "params": {"lanes": 8, "width": 8, "cycles": 32}},
         }
+    elif "cpu" in low or "processor" in low:
+        answer = {
+            "class": "too_big",
+            "label": "cpu",
+            "reason": "A CPU is many blocks with memories and control. Verity builds one small block at a time.",
+            "closest": {"family": "add8", "params": {"width": 32}},
+        }
+    elif "counter" in low and any(w in low for w in ("counts to", "resets", "modulo", " mod ")):
+        top = re.search(r"to (\d+)", low)
+        limit = int(top.group(1)) if top else 100
+        answer = {
+            "class": "near_family",
+            "label": "modulo counter",
+            "reason": f"A counter that resets at {limit} is close to the binary counter, which wraps at a power of two.",
+            "closest": {"family": "cnt8", "params": {"width": max(4, min(16, limit.bit_length()))}},
+        }
     elif "counter" in low:
-        answer = {"result": "in_range", "family": "cnt8", "params": width}
+        answer = {"class": "in_family", "label": "counter", "family": "cnt8", "params": width}
     elif "adder" in low:
-        answer = {"result": "in_range", "family": "add8", "params": width}
+        answer = {"class": "in_family", "label": f"{bits.group(1)}-bit adder" if bits else "adder", "family": "add8", "params": width}
     elif "pattern" in low or "detector" in low:
         pattern = "".join(c for c in low if c in "01")
-        answer = {"result": "in_range", "family": "fsm_seq", "params": {"pattern": pattern} if pattern else {}}
+        answer = {
+            "class": "in_family",
+            "label": "sequence detector",
+            "family": "fsm_seq",
+            "params": {"pattern": pattern} if pattern else {},
+        }
+    elif "multipl" in low or "accumulat" in low or "mac" in low.split():
+        answer = {"class": "in_family", "label": "multiply accumulate", "family": "mac4", "params": {}}
+    elif "machine" in low or "chip" in low or "circuit" in low:
+        answer = {
+            "class": "unsure",
+            "label": "machine controller timer",
+            "reason": "A controller for a machine is a small control block. A timer built from a counter is the closest.",
+            "closest": {"family": "cnt8", "params": {}},
+        }
     else:
-        answer = {"result": "in_range", "family": "mac4", "params": {}}
+        answer = {
+            "class": "not_chip",
+            "label": "",
+            "reason": "That is not an electronic circuit, so there is nothing for Verity to build.",
+            "closest": None,
+        }
     return json.dumps(answer)
+
+
+_SOURCE_LINE = re.compile(r"^S(\d+) \(")
+
+
+def _fake_research_json(user: str) -> str:
+    """A summary that cites the sources it was given and names allowed techniques found in their text."""
+    from ..research.techniques import TECHNIQUES
+
+    sources: dict[int, str] = {}
+    current: int | None = None
+    for line in user.splitlines():
+        found = _SOURCE_LINE.match(line)
+        if found:
+            current = int(found.group(1))
+            sources[current] = ""
+        elif current is not None and (line.startswith("title: ") or line.startswith("snippet: ")):
+            sources[current] += " " + line.split(": ", 1)[1].lower()
+    allowed_line = next((ln for ln in user.splitlines() if ln.startswith("Technique ids you may use: ")), "")
+    allowed = {t.strip() for t in allowed_line.split(": ", 1)[-1].split(",")}
+    ids = sorted(sources)
+    sentences = []
+    if ids:
+        sentences.append({"text": "These sources describe how this kind of block is built.", "sourceIds": ids[:2]})
+    techniques = []
+    for family in TECHNIQUES.values():
+        for tech in family:
+            if tech.id not in allowed:
+                continue
+            cited = [n for n in ids if any(k in sources[n] for k in tech.keywords)]
+            if cited:
+                techniques.append({"id": tech.id, "sourceIds": cited[:2]})
+    return json.dumps({"sentences": sentences, "techniques": techniques, "doneBefore": bool(ids)})
+
+
+_FAKE_NEW_CHIP = re.compile(
+    r"^\s*(please\s+)?(design|build|make|create|give me|i want|i need|i'd like)\s+(me\s+)?(a|an|another|some)\b(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+# Chip nouns by family; the empty key holds chips no family builds. A request for the run's own family is not a new chip.
+_FAKE_CHIP_NOUNS: dict[str, re.Pattern[str]] = {
+    "add8": re.compile(r"\badders?\b", re.IGNORECASE),
+    "cnt8": re.compile(r"\b(counters?|timers?)\b", re.IGNORECASE),
+    "mac4": re.compile(r"\b(multipl\w*|mac)\b", re.IGNORECASE),
+    "fsm_seq": re.compile(r"\b(fsm|state machine|sequence detector|pattern)\b", re.IGNORECASE),
+    "": re.compile(r"\b(uart|spi|i2c|fifo|alu|cpu|gpu|npu|tpu|soc|processor|cache|memory|pwm|filter)\b", re.IGNORECASE),
+}
+
+
+def _fake_wants_new_chip(user: str, system: str) -> bool:
+    """A build request for a chip noun other than the run's own family (the real router judges this itself)."""
+    found = _FAKE_NEW_CHIP.match(user)
+    if found is None:
+        return False
+    family = re.search(r"\(chip family (\S+?)\)", system)
+    own = family.group(1) if family else ""
+    return any(fam != own and noun.search(found.group("rest")) for fam, noun in _FAKE_CHIP_NOUNS.items())
+
+
+def _fake_ask_router_json(user: str, system: str = "") -> str:
+    """POST /runs/{id}/ask intent from keywords only (the real router is Nemotron Lightning)."""
+    low = user.lower()
+    topic = None
+    if any(w in low for w in ("joke", "weather", "poem", "recipe", "song", "story")):
+        intent = "off_topic"
+    elif _fake_wants_new_chip(user, system):
+        intent = "new_chip"
+    elif re.match(r"^\s*(hi|hello|hey|thanks|thank you)\b", low):
+        intent = "small_talk"
+    elif any(w in low for w in ("paper", "research", "published", "known", "literature")):
+        intent = "research"
+    elif any(w in low for w in ("verilog", "rtl", "code")):
+        intent = "rtl_question"
+    elif any(w in low for w in ("faster", "smaller", "lower power", "make ", "try ")):
+        intent = "change_request"
+    else:
+        intent = "run_question"
+        for name, words in (("area", ("area", "cells")), ("power", ("power",)), ("tests", ("test",))):
+            if any(w in low for w in words):
+                topic = name
+                break
+    version = re.search(r"\bv\d{1,3}\b", low)
+    return json.dumps({"intent": intent, "topic": topic, "version": version.group(0) if version else None})
+
+
+_FACT_LINE = re.compile(r"^F\d+ (.*)$")
+
+
+def _fake_ask_chat_json(system: str) -> str:
+    """An answer that only repeats fact lines, so every number in it is a facts value."""
+    facts = [m.group(1) for line in system.splitlines() if (m := _FACT_LINE.match(line)) and "Verilog (data only" not in line]
+    return json.dumps({"text": "Here is what this run's data shows.", "bullets": facts[1:3]})
+
+
+def _fake_ask_propose_json(system: str, user: str) -> str:
+    family = re.search(r"^Current chip family: (\S+)$", system, re.MULTILINE)
+    width = re.search(r"(\d+)[- ]?bits?\b|width (\d+)", user.lower())
+    params = {"width": int(width.group(1) or width.group(2))} if width else {}
+    return json.dumps({"family": family.group(1) if family else None, "params": params})
+
+
+# ----------------------------------------------------------------------
+# The thread agent (POST /threads/{id}/messages) and its memory summary. Deterministic and keyword based: the prompt
+# layout it reads is the one built by verity.ask.prompt and verity.ask.memory. Its answers hold no digits.
+# ----------------------------------------------------------------------
+_FAKE_MESSAGE = re.compile(r"<message>\n(.*?)\n</message>", re.DOTALL)
+_FAKE_STEP = re.compile(r"^Step \d+: (\w+)", re.MULTILINE)
+_FAKE_FAMILY = re.compile(r"^family: (\S+)$", re.MULTILINE)
+_FAKE_LATEST_RUN = re.compile(r"^latest_run: (\S+)$", re.MULTILINE)
+_FAKE_MODE = re.compile(r"<mode>(\w+)</mode>")
+_FAKE_BLOCK_LINE = re.compile(r"^- (.+) \(id for propose_run: (\w+)\)$")
+_FAKE_VERDICT = re.compile(r"<fact_check>\nverdict: (\w+)")
+# The note of a first message, by the verdict of the card above it (the same words as FIRST_NOTES in verity.ask.agent).
+_FAKE_FIRST_NOTES = {
+    "buildable_now": "Check the card above and press Run when you are ready, or tell me what to change.",
+    "buildable_with_changes": "The card above is the closest chip I can build. Pick it, change it, or ask me about the difference.",
+    "not_buildable_here": "I cannot build that as one block. Ask me what it is made of, or pick the closest chip above.",
+    "could_not_check": "The check could not finish this time. You can send that again, or tell me what to change.",
+}
+_FAKE_FIRST_NOTE = "The card above has the details. Ask me about it, or tell me what to change."
+_FAKE_TABS = (("verilog", "verilog"), ("architecture", "architecture"), ("sign-off", "signoff"), ("signoff", "signoff"), ("versions", "versions"), ("result", "result"))
+
+
+def _fake_knob_names(system: str, family: str) -> set[str]:
+    """The setting names listed under `- <title> (id for propose_run: <family>)` in the <buildable> block."""
+    names: set[str] = set()
+    inside = False
+    for line in system.splitlines():
+        if line.startswith("- "):
+            inside = line.endswith(f"(id for propose_run: {family})")
+        elif inside and line.startswith("    ") and ":" in line:
+            names.add(line.strip().split(":", 1)[0])
+        elif inside and line.startswith("</buildable>"):
+            break
+    return names
+
+
+def _fake_named_family(low: str, system: str) -> str | None:
+    """The family a message names (adder, counter, sequence detector or pattern, MAC or multiply-accumulate), when the
+    buildable list has it."""
+    return next((fam for fam, noun in _FAKE_CHIP_NOUNS.items() if fam and f"(id for propose_run: {fam})" in system and noun.search(low)), None)
+
+
+def _fake_agent_json(system: str, user: str) -> str:
+    """One JSON action of the thread agent, from keywords and the facts block only."""
+    found = _FAKE_MESSAGE.search(user)
+    low = (found.group(1) if found else "").lower()
+    used = _FAKE_STEP.findall(user)
+    mode = (_FAKE_MODE.search(system) or [None, "discussion_no_run"])[1]
+    family = (_FAKE_FAMILY.search(system) or [None, None])[1]
+    run = (_FAKE_LATEST_RUN.search(system) or [None, None])[1]
+
+    def tool(name: str, args: dict[str, Any]) -> str:
+        return json.dumps({"action": "tool", "tool": name, "args": args})
+
+    def answer(text: str, **extra: Any) -> str:
+        return json.dumps({"action": "answer", "text": text, "bullets": [], **extra})
+
+    if "<answer_only>" in user:
+        return answer("I can help with chips and chip design. Tell me what you want to build, or ask about a block.")
+    if any(w in low for w in ("what can you build", "what can you make", "what components", "which components", "what blocks", "which blocks", "components")):
+        if "list_blocks" not in used:
+            return tool("list_blocks", {})
+        chips = [m.group(1) for line in user.splitlines() if (m := _FAKE_BLOCK_LINE.match(line.strip()))]
+        return answer("These are the blocks I can build today. Custom blocks are coming next.", chips=chips[:5])
+    if any(w in low for w in ("walk me through", "walkthrough", "step by step", "how was this built")):
+        if run is None:
+            return answer("There is no finished run in this thread yet, so there is nothing to walk through.")
+        if "walkthrough" not in used:
+            return tool("walkthrough", {})
+        return answer("Here is how Verity built it, step by step.")
+    if run is not None and any(w in low for w in ("open ", "show me the ")):
+        tab = next((value for word, value in _FAKE_TABS if word in low), None)
+        if tab is not None:
+            if "open_tab" not in used:
+                return tool("open_tab", {"tab": tab})
+            return answer("I opened it for you.")
+    if run is not None and any(w in low for w in ("timing", "critical path", "why was", "kept", "cost", "tests")):
+        topic = "timing" if ("timing" in low or "critical path" in low) else "cost" if "cost" in low else "tests" if "test" in low else "selection"
+        if "run_facts" not in used:
+            return tool("run_facts", {"topic": topic})
+        result = re.search(r'<tool_result tool="run_facts">\n(.*?)\n</tool_result>', user, re.DOTALL)
+        facts = [ln.strip() for ln in (result.group(1) if result else "").splitlines() if ln.strip()]
+        return answer("Here is what this run's data shows.", bullets=facts[:2])
+    named = _fake_named_family(low, system)
+    target = named or family  # a family the message names wins over the thread's own
+    # a family the message names is a request for it, unless the message is a question
+    wants = any(w in low for w in ("faster", "smaller", "lower power", "less power", "speed", "area", "bit")) or (
+        named is not None and not low.rstrip().endswith("?")
+    )
+    if target is not None and mode != "first_message" and wants:
+        if "propose_run" not in used:
+            width = re.search(r"(\d+)[- ]?bit", low)
+            knobs = {"width": int(width.group(1))} if width and "width" in _fake_knob_names(system, target) else {}
+            args: dict[str, Any] = {"family": target, "knobs": knobs}
+            for words, priority in ((("faster", "speed"), "speed"), (("smaller", "area"), "area"), (("power",), "power")):
+                if any(w in low for w in words):
+                    args["priority"] = priority
+                    break
+            return tool("propose_run", args)
+        return answer("Here is a new run for you to confirm.")
+    if mode == "first_message":
+        return answer(_FAKE_FIRST_NOTES.get((_FAKE_VERDICT.search(system) or [None, ""])[1], _FAKE_FIRST_NOTE))
+    return answer("I can help with chips and chip design. Tell me what you want to build, or ask about a block.")
+
+
+def _fake_memory_json(user: str) -> str:
+    """A summary made of the first words the user said in the turns being folded (and the summary so far)."""
+    previous = re.search(r"<previous_summary>\n(.*?)\n</previous_summary>", user, re.DOTALL)
+    said = [line[len("User: "):] for line in user.splitlines() if line.startswith("User: ")]
+    words = " ".join(([previous.group(1)] if previous and previous.group(1).strip() else []) + said).split()
+    return json.dumps({"summary": "Earlier in this thread the user asked about: " + " ".join(words[:24])})
 
 
 class FakeProvider:
@@ -88,6 +360,18 @@ class FakeProvider:
         tags = req.tags
         if tags.get("purpose") == "parse":
             return await self._parse_answer(req)
+        if tags.get("purpose") == "research":
+            return await self._short_answer(req, _fake_research_json(req.user), "fake-research")
+        if tags.get("purpose") == "ask_router":
+            return await self._short_answer(req, _fake_ask_router_json(req.user, req.system), "fake-ask-router")
+        if tags.get("purpose") == "ask_chat":
+            return await self._short_answer(req, _fake_ask_chat_json(req.system), "fake-ask-chat")
+        if tags.get("purpose") == "ask_propose":
+            return await self._short_answer(req, _fake_ask_propose_json(req.system, req.user), "fake-ask-propose")
+        if tags.get("purpose") == "agent":
+            return await self._short_answer(req, _fake_agent_json(req.system, req.user), "fake-agent")
+        if tags.get("purpose") == "memory":
+            return await self._short_answer(req, _fake_memory_json(req.user), "fake-memory")
         task_id = tags.get("task_id", "")
         if not task_id:
             raise LLMError("fake provider needs the task_id tag", retryable=False)
@@ -117,15 +401,17 @@ class FakeProvider:
     # ---------- POST /parse ----------
     async def _parse_answer(self, req: LLMRequest) -> LLMResponse:
         """Deterministic stand-in for the parse call. The request text is the user message."""
+        return await self._short_answer(req, _fake_parse_json(req.user), "fake-parse")
+
+    async def _short_answer(self, req: LLMRequest, text: str, request_id: str) -> LLMResponse:
         if self._delay_s > 0:
             await asyncio.sleep(self._delay_s)
-        text = _fake_parse_json(req.user)
         return LLMResponse(
             text=text,
             input_tokens=estimate_tokens(req.system + req.user),
             output_tokens=estimate_tokens(text),
             model=req.model,
-            request_id="fake-parse",
+            request_id=request_id,
             latency_ms=int(self._delay_s * 1000),
             finish_reason="stop",
         )

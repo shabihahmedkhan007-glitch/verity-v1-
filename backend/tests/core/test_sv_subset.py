@@ -50,14 +50,17 @@ def test_brief_states_the_subset_rules(mac4: TaskPack) -> None:
         assert needle in brief
 
 
-PROMPT_FILES = ["rtl_gen.v2.md", "planner.v2.md", "repair.v2.md", "optimize.v2.md"]
+PROMPT_FILES = [
+    "rtl_gen.v2.md", "planner.v2.md", "repair.v2.md", "optimize.v2.md", "repair.v3.md", "optimize.v3.md",
+    "rtl_gen.v3.md", "repair.v4.md", "optimize.v4.md",
+]
 
 
-def test_roles_point_at_v2_prompts() -> None:
-    assert rtl_gen.TEMPLATE_FILE == "rtl_gen.v2.md"
+def test_roles_point_at_current_prompts() -> None:
+    assert rtl_gen.TEMPLATE_FILE == "rtl_gen.v3.md"  # v3: prevention rules, ASCII hyphens, sized constants
     assert planner.TEMPLATE_FILE == "planner.v2.md"
-    assert repair.TEMPLATE_FILE == "repair.v2.md"
-    assert optimizer.TEMPLATE_FILE == "optimize.v2.md"
+    assert repair.TEMPLATE_FILE == "repair.v4.md"  # v4: self-check, the passing parent of a failing child
+    assert optimizer.TEMPLATE_FILE == "optimize.v4.md"  # v4: keep control registers, what was already tried
 
 
 @pytest.mark.parametrize("name", PROMPT_FILES)
@@ -74,6 +77,19 @@ def test_rtl_gen_v2_rules() -> None:
     assert "helper modules" in system and "You may add small helper modules" not in system
     for needle in ("`logic`", "always_ff", "always_comb", "`generate`", "`*` and `+`", "Never use `wire` or `reg`"):
         assert needle in system
+
+
+def test_rtl_gen_v3_adds_prevention_rules_and_ascii_hyphens() -> None:
+    system = load_template("rtl_gen.v3.md").system
+    for needle in (
+        "Declare every signal at module level before the first always block",
+        "Start every always_comb with a default for each signal it assigns and give every case a default",
+        "type every hyphen as '-'",
+        "Size every constant to its target width",
+        "`*` and `+`",
+    ):
+        assert needle in system
+    assert "Do not print the table" not in system, "no self-check in first drafts yet"
 
 
 def test_planner_v2_says_blocks_are_sections_of_one_module() -> None:

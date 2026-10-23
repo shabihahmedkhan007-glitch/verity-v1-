@@ -1,13 +1,16 @@
 """Shared helpers for the four roles: the call-parse-retry loop, call metadata, small prompt formatters."""
 
-from collections.abc import Callable, Mapping
+import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from ..contracts import PPA, Priority
+from ..core.captions import clean
 from ..core.errors import RoleOutputError
-from ..core.llm_types import CallMeta, LLMResponse, PlanOut, ResponseFormat
+from ..core.llm_types import CallMeta, LLMResponse, PlanOut, ResponseFormat, TriedVersion
 from ..core.protocols import LLMGateway
+from ..core.results import CriticalPath, MeasureResult
 from .parsing import ParseError
 from .prompts import PromptTemplate
 
@@ -165,3 +168,112 @@ def relative_note(parent: PPA, baseline: PPA) -> str:
         change = 100.0 * (now - base) / base
         parts.append(f"{label} {change:+.1f}% vs v1")
     return ", ".join(parts)
+
+
+NOTHING_TRIED = "- Nothing yet: no other version of this run has finished."
+
+
+def tried_block(tried: Sequence[TriedVersion], baseline: PPA) -> str:
+    """One bullet per earlier version of this run: its strategy, its own reason and what it measured against v1 (or
+    that it was rejected). The numbers come from the measurements; the reason is that version's own text, cleaned."""
+    if not tried:
+        return NOTHING_TRIED
+    lines = []
+    for item in tried:
+        reason = clean(item.reason, 140).rstrip(". ")
+        note = relative_note(item.ppa, baseline) if item.ppa is not None else ""
+        result = f"measured {note}" if note else ("measured, no comparison" if item.ppa is not None else "rejected")
+        lines.append(f"- {item.label} ({item.strategy}): {reason}. Result: {result}.")
+    return "\n".join(lines)
+
+
+# ---------- optimizer evidence: where the area and the delay are ----------
+EVIDENCE_TOP_CELLS = 6
+_SEQUENTIAL_CELL = re.compile(r"^(S?DFF|DL[HL]|TLAT)", re.IGNORECASE)
+_STAT_ROW = re.compile(r"^\s+(\d+)\s+([0-9][0-9.]*(?:[eE][-+]?\d+)?)\s+([A-Za-z_][\w$.]*)\s*$", re.MULTILINE)
+_STA_POINT = re.compile(r"^(Startpoint|Endpoint):\s+(\S+)\s+\((.*?)\)\s*$", re.MULTILINE)
+_STA_ROW = re.compile(r"^\s*-?[\d.]+\s+-?[\d.]+\s+[\^v]\s+\S+?/\w+\s+\((\w+)\)\s*$", re.MULTILINE)
+_STA_ARRIVAL = re.compile(r"^\s*(-?[\d.]+)\s+data arrival time", re.MULTILINE)
+_GENERATED_NAME = re.compile(r"^_\d+_$")
+
+
+def _cell_areas(measure: MeasureResult) -> dict[str, float]:
+    """Area per cell type: from the sandbox (newer images), else from the `stat -liberty` table in the synth log."""
+    synth = measure.synth
+    if synth is None:
+        return {}
+    if synth.cell_area:
+        return dict(synth.cell_area)
+    return {name: float(area) for _n, area, name in _STAT_ROW.findall(synth.log) if name != "cells"}
+
+
+def _log_path(log: str) -> CriticalPath | None:
+    """The worst path from an OpenSTA log when the sandbox did not send one (older images). Flip-flop instance names
+    cannot be mapped to register names here, so generated names are left out."""
+    points = {kind: (name, desc) for kind, name, desc in _STA_POINT.findall(log)}
+    if "Startpoint" not in points or "Endpoint" not in points:
+        return None
+    body = log[log.find("Startpoint:") :]
+    arrival = _STA_ARRIVAL.search(body)
+    if arrival:
+        body = body[: arrival.start()]
+
+    def kind(desc: str) -> str:
+        return "register" if "flip-flop" in desc else "input" if "input port" in desc else "output" if "output port" in desc else "other"
+
+    def name(raw: str) -> str:
+        return "" if _GENERATED_NAME.match(raw) else raw
+
+    return CriticalPath(
+        startpoint=name(points["Startpoint"][0]),
+        endpoint=name(points["Endpoint"][0]),
+        start_kind=kind(points["Startpoint"][1]),
+        end_kind=kind(points["Endpoint"][1]),
+        depth=sum(1 for cell in _STA_ROW.findall(body) if not _SEQUENTIAL_CELL.match(cell)),
+        delay_ns=float(arrival.group(1)) if arrival else None,
+    )
+
+
+def _point(kind: str, name: str) -> str:
+    noun = {"register": "register", "input": "input", "output": "output"}.get(kind, "point")
+    return f"{noun} {name}".strip() if name else f"a {noun}"
+
+
+def measure_evidence(measure: MeasureResult | None) -> str:
+    """Markdown bullets for the optimize prompt: the largest cell types by area, the flip-flops, the critical path.
+    Numbers come straight from the parent's Yosys and OpenSTA results."""
+    if measure is None or measure.synth is None or not measure.synth.ok:
+        return "- Not measured."
+    synth = measure.synth
+    lines: list[str] = []
+    areas = _cell_areas(measure)
+    total = synth.area_um2 or sum(areas.values())
+    if areas:
+        top = sorted(areas.items(), key=lambda kv: (-kv[1], kv[0]))[:EVIDENCE_TOP_CELLS]
+        parts = []
+        for name, area in top:
+            share = f", {100.0 * area / total:.0f}%" if total else ""
+            parts.append(f"{name} ({synth.cells.get(name, 0)} cells, {area:.1f} um2{share})")
+        lines.append("- Largest cell types by area: " + "; ".join(parts))
+    elif synth.cells:
+        top_counts = sorted(synth.cells.items(), key=lambda kv: (-kv[1], kv[0]))[:EVIDENCE_TOP_CELLS]
+        lines.append("- Most used cell types: " + "; ".join(f"{name} ({count} cells)" for name, count in top_counts))
+    flops = {name: count for name, count in synth.cells.items() if _SEQUENTIAL_CELL.match(name)}
+    flop_area = sum(areas.get(name, 0.0) for name in flops)
+    flop_line = f"- Flip-flops: {sum(flops.values())}"
+    if flops and flop_area:
+        flop_line += f" ({flop_area:.1f} um2" + (f", {100.0 * flop_area / total:.0f}% of the area)" if total else ")")
+    lines.append(flop_line)
+    sta = measure.sta
+    path = None
+    if sta is not None and sta.ok:
+        path = sta.path or _log_path(sta.log)
+    if path is not None:
+        delay = f", {path.delay_ns:.3f} ns" if path.delay_ns is not None else ""
+        lines.append(
+            f"- Critical path: from {_point(path.start_kind, path.startpoint)} to {_point(path.end_kind, path.endpoint)}, "
+            f"{path.depth} logic stage{'s' if path.depth != 1 else ''}{delay}"
+        )
+    else:
+        lines.append("- Critical path: not measured.")
+    return "\n".join(lines)

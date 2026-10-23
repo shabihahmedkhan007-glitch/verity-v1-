@@ -53,6 +53,14 @@ def test_worst_case_dollars_are_checked() -> None:
     assert err.value.limit == "max_usd"
 
 
+def test_a_reservation_prices_the_dearest_model_of_the_models_fallback_chain() -> None:
+    r = make_ledger().reserve(role="parser", model="zai-org/GLM-5.3", max_input_tokens=40_000, max_output_tokens=40_000)
+    # GLM 5.3 is 1.40 in and 4.40 out, DeepSeek V4 Pro in its chain is 1.75 in and 3.50 out: 1.75 in and 4.40 out are held
+    assert r.max_usd == pytest.approx((40_000 * 1.75 + 40_000 * 4.40) / 1e6)
+    plain = make_ledger().reserve(role="planner", model=ULTRA, max_input_tokens=40_000, max_output_tokens=40_000)
+    assert plain.max_usd == pytest.approx((40_000 * 1.00 + 40_000 * 3.00) / 1e6)  # no chain: its own price
+
+
 def test_exhausted_reports_the_first_used_up_limit() -> None:
     ledger = make_ledger(max_llm_calls=1)
     assert ledger.exhausted() is None

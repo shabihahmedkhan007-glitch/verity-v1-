@@ -4,19 +4,23 @@ A scripted runner replaces `_execute`, so every branch of CONTRACTS 3.4 is exerc
 exit 3 and other codes retry then fail, outer timeout becomes a result, unparseable output is an infrastructure error.
 """
 
+import asyncio
 import json
+import time
 from pathlib import Path
 
 import pytest
 
+from verity.core import captions as cap
 from verity.core.errors import ToolInfraError
 from verity.core.pack import TaskPack
 from verity.core.results import EquivalenceResult, VerifyResult
-from verity.tools import base
+from verity.tools import base, local_docker
 from verity.tools.base import FatalToolError, RawOutput, SandboxCall, SandboxRunner
 from verity.tools.local_docker import LocalDockerRunner
 from verity.tools.parse import SandboxOutputError, parse_stdout_json
 from verity.tools.parsers import parse_eqy, parse_measure, parse_verify
+from verity.tools.process import ProcessResult
 
 VERIFY_PASS = {
     "schema": "verity.verify/1",
@@ -266,3 +270,89 @@ def test_docker_user_can_be_switched_off_for_docker_desktop(settings, mac4, tmp_
     call = SandboxCall(script="verify", work_files={}, pack=mac4, env=runner._env, timeout_s=10)
     cmd = runner._command("n", tmp_path / "work", tmp_path / "pack", call)
     assert "--user" not in cmd and "--cap-drop" in cmd  # every other hardening flag stays
+
+
+# ---------- sandbox check behind GET /health and POST /runs (no Docker: run_process is replaced) ----------
+class FakeDocker:
+    def __init__(self, *results) -> None:
+        self.results = list(results)
+        self.calls: list[list[str]] = []
+
+    async def __call__(self, cmd, *, timeout_s, cap):  # noqa: ANN001, ANN204
+        self.calls.append(list(cmd))
+        item = self.results.pop(0) if len(self.results) > 1 else self.results[0]
+        if isinstance(item, BaseException):
+            raise item
+        if item == "hang":
+            await asyncio.sleep(60)
+        return item
+
+
+def proc(exit_code: int | None, stderr: str = "", timed_out: bool = False) -> ProcessResult:
+    return ProcessResult(exit_code=exit_code, stdout=b"sha256:abc\n" if exit_code == 0 else b"", stderr=stderr.encode(), timed_out=timed_out)
+
+
+NO_IMAGE = "Error response from daemon: No such image: verity-tools:0.1"
+NO_DAEMON = (
+    "failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct "
+    "and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified."
+)
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        (proc(0), None),
+        (proc(1, NO_IMAGE), cap.IMAGE_MISSING),
+        (proc(1, NO_DAEMON), cap.DOCKER_DOWN),
+        (proc(1, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"), cap.DOCKER_DOWN),
+        (proc(None, timed_out=True), cap.DOCKER_DOWN),
+        (FileNotFoundError("docker"), cap.DOCKER_DOWN),
+    ],
+)
+async def test_sandbox_check_reads_docker_and_the_configured_image(settings, monkeypatch, result, expected) -> None:
+    docker = FakeDocker(result)
+    monkeypatch.setattr(local_docker, "run_process", docker)
+    runner = LocalDockerRunner(settings)
+    assert await runner.sandbox_problem() == expected
+    assert docker.calls == [["docker", "image", "inspect", "--format", "{{.Id}}", settings.tools.image]]
+
+
+async def test_sandbox_check_is_cached_then_refreshed(settings, monkeypatch) -> None:
+    docker = FakeDocker(proc(1, NO_DAEMON), proc(0))
+    monkeypatch.setattr(local_docker, "run_process", docker)
+    runner = LocalDockerRunner(settings)
+    results = await asyncio.gather(*(runner.sandbox_problem() for _ in range(5)))
+    assert results == [cap.DOCKER_DOWN] * 5 and len(docker.calls) == 1  # one docker call answers them all
+
+    monkeypatch.setattr(local_docker, "PROBE_TTL_S", 0.0)  # the cache has aged out: Docker is back
+    assert await runner.sandbox_problem() is None and len(docker.calls) == 2
+
+
+@pytest.mark.usefixtures("fast_retries")
+async def test_a_failed_sandbox_call_makes_the_next_check_look_at_docker_again(settings, mac4, rtl, monkeypatch) -> None:
+    docker = FakeDocker(proc(0), proc(1, NO_IMAGE))
+    monkeypatch.setattr(local_docker, "run_process", docker)
+    runner = LocalDockerRunner(settings)
+    assert await runner.sandbox_problem() is None  # cached as fine
+
+    async def broken(call: SandboxCall) -> RawOutput:
+        raise ToolInfraError("docker call failed", script=call.script)
+
+    monkeypatch.setattr(runner, "_execute", broken)
+    with pytest.raises(ToolInfraError):
+        await runner.verify(rtl, mac4)
+    assert await runner.sandbox_problem() == cap.IMAGE_MISSING and len(docker.calls) == 2
+
+
+async def test_a_hung_docker_counts_as_down_within_the_time_limit(settings, monkeypatch) -> None:
+    monkeypatch.setattr(local_docker, "run_process", FakeDocker("hang"))
+    monkeypatch.setattr(local_docker, "PROBE_TIMEOUT_S", 0.05)
+    runner = LocalDockerRunner(settings)
+    started = time.monotonic()
+    assert await runner.sandbox_problem() == cap.DOCKER_DOWN
+    assert time.monotonic() - started < 3
+
+
+async def test_backends_without_a_cheap_check_report_no_problem(settings) -> None:
+    assert await ScriptedRunner(settings, [out(VERIFY_PASS)]).sandbox_problem() is None

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { Logo } from "./Logo";
 import "./rack-bar.css";
 
 export type RackPage = "home" | "studio" | "bench" | "results" | "other";
@@ -25,11 +26,7 @@ export function RackBar({ current = "other", context, actions }: RackBarProps) {
   return (
     <header className="rkbar">
       <Link prefetch={false} href="/" className="rkbar-brand" aria-label="Verity home">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="2.75" y="2.75" width="18.5" height="18.5" />
-          <path d="M7 12.5l3.5 3.5L17 8.5" />
-        </svg>
-        VERITY
+        <Logo />
       </Link>
       <nav aria-label="Primary" className="rkbar-nav">
         <ul>

@@ -13,6 +13,7 @@ from verity.api import sse
 from verity.api.app import create_app
 from verity.config import AuthConfig, Settings, load_settings
 from verity.contracts import CaptionEvent, EventBase, HealthResponse, RunPhaseEvent, parse_event_json
+from verity.core import captions as cap
 from verity.core.budget import BudgetLimits
 from verity.core.errors import AdmissionDenied, Conflict, NotFound
 from verity.core.family import render_pack
@@ -175,13 +176,16 @@ def code_hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
-def make_client(tmp_path, packs, *, required: bool) -> tuple[TestClient, StubService]:
+def make_client(
+    tmp_path, packs, *, required: bool, stream_ttl_s: int = 1_800, secret: SecretStr | None = SecretStr("k" * 40)
+) -> tuple[TestClient, StubService]:
     base = load_settings(provider="fake")
     settings = base.model_copy(
         update={
+            "env": "development",
             "data_dir": tmp_path / "data",
-            "auth": AuthConfig(required=required),
-            "signing_secret": SecretStr("k" * 40),
+            "auth": AuthConfig(required=required, stream_ttl_s=stream_ttl_s),
+            "signing_secret": secret,
             "access_code_hashes": SecretStr(f"team:{code_hash('letmein')}"),
         }
     )
@@ -281,6 +285,15 @@ def test_events_of_a_finished_run_with_nothing_left_answer_204(tmp_path, packs) 
         service.runs[run_id] = service.runs[run_id].model_copy(update={"status": "done"})
         res = client.get(f"/runs/{run_id}/events", headers={"Last-Event-ID": "4"})
     assert res.status_code == 204
+
+
+def test_replay_of_a_finished_run_asks_the_browser_to_reconnect_at_once(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=False)
+    with client:
+        run_id = client.post("/runs", json={"presetId": "mac4", "priority": "area"}).json()["runId"]
+        service.runs[run_id] = service.runs[run_id].model_copy(update={"status": "done"})
+        res = client.get(f"/runs/{run_id}/events")
+    assert res.status_code == 200 and res.text.startswith("retry: 250")
 
 
 def test_stream_token_rules_when_auth_is_required(tmp_path, packs) -> None:
@@ -392,3 +405,48 @@ def test_list_runs_endpoint(tmp_path, packs) -> None:
         assert item["params"] == {"lanes": 6, "width": 6, "cycles": 20}
         assert item["status"] == "running"
         assert item["winner"] is None
+
+
+# ---------- reconnect after a restart, expired stream tokens, sandbox down ----------
+def test_stream_token_survives_a_backend_restart_without_a_configured_secret(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=True, secret=None)
+    with client:
+        created = client.post("/runs", json={"presetId": "mac4", "priority": "area"}, headers=login(client)).json()
+    run_id, token = created["runId"], created["streamToken"]
+
+    # Restart: a new app (new AuthService) over the same data dir and the same runs. The run is still running.
+    restarted = TestClient(create_app(service.settings, service))  # type: ignore[arg-type]
+    with restarted:
+        res = restarted.get(f"/runs/{run_id}/events?st={token}")
+    assert res.status_code == 200 and "id: 4" in res.text
+
+
+def test_expired_stream_token_replays_a_finished_run_but_never_opens_a_running_one(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=True, stream_ttl_s=-1)
+    with client:
+        created = client.post("/runs", json={"presetId": "mac4", "priority": "area"}, headers=login(client)).json()
+        run_id, token = created["runId"], created["streamToken"]
+
+        assert client.get(f"/runs/{run_id}/events?st={token}").status_code == 401  # running: expired is refused
+        assert client.get(f"/runs/{run_id}/events").status_code == 401
+
+        service.runs[run_id] = service.runs[run_id].model_copy(update={"status": "error"})
+        expired = client.get(f"/runs/{run_id}/events?st={token}")
+        assert expired.status_code == 200 and "Done. 1 versions." in expired.text
+        # Same public rule as GET /runs/{id}/log: no token and a junk token both replay a finished run.
+        assert client.get(f"/runs/{run_id}/events").status_code == 200
+        assert client.get(f"/runs/{run_id}/events?st=garbage").status_code == 200
+        assert client.get(f"/runs/{run_id}/events?st={token}", headers={"Last-Event-ID": "4"}).status_code == 204
+        assert client.get(f"/runs/r_9999/events?st={token}").status_code == 401  # unknown run: still no stream
+
+
+def test_sandbox_down_refuses_new_runs_with_503_and_refunds_the_run_budget(tmp_path, packs) -> None:
+    client, service = make_client(tmp_path, packs, required=False)
+    service.deny = "sandbox_down"
+    with client:
+        for _ in range(5):  # more than runs_per_session_per_hour: a refusal never uses up the hourly run budget
+            res = client.post("/runs", json={"presetId": "mac4", "priority": "area"})
+            assert res.status_code == 503
+            assert res.json() == {"error": cap.DOCKER_DOWN, "reason": "sandbox_down"}
+        service.deny = None
+        assert client.post("/runs", json={"presetId": "mac4", "priority": "area"}).status_code == 201

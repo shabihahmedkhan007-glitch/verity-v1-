@@ -58,9 +58,10 @@ class RunLLM:
         )
 
         self._call_seq += 1
+        seq = self._call_seq  # captured now: parallel calls finish in any order and must keep their own number
         request_tags = dict(tags or {})
         request_tags.setdefault("prompt_version", prompt_version)
-        request_tags["call_seq"] = str(self._call_seq)  # lets the fake provider keep parallel children distinct
+        request_tags["call_seq"] = str(seq)  # lets the fake provider keep parallel children distinct
         request = LLMRequest(
             role=role,
             model=model,
@@ -72,22 +73,26 @@ class RunLLM:
             response_format=response_format,
             timeout_s=float(settings.llm_timeout_for(role)),
             tags=request_tags,
+            thinking=settings.thinking_for(role),
+            reasoning_effort=settings.reasoning_effort_for(role),
         )
 
         committed = False
         try:
             response = await self._complete_with_retries(request)
-            usd = price_usd(settings.price_for(model), response.input_tokens, response.output_tokens)
+            served = response.model or model  # priced on the model that answered, which a fallback chain can change
+            usd = price_usd(settings.price_for(served), response.input_tokens, response.output_tokens)
             self.ledger.commit(
                 reservation,
-                Usage(model=model, input_tokens=response.input_tokens, output_tokens=response.output_tokens, usd=usd),
+                Usage(model=served, input_tokens=response.input_tokens, output_tokens=response.output_tokens, usd=usd),
             )
             committed = True
             self.calls.append(
                 {
-                    "seq": self._call_seq,
+                    "seq": seq,
                     "role": role,
                     "model": model,
+                    "servedModel": served,
                     "temperature": request.temperature,
                     "topP": request.top_p,
                     "inputTokens": response.input_tokens,

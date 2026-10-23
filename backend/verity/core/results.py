@@ -1,8 +1,9 @@
 """Parsed sandbox results and their mapping onto the wire contract.
 
-The JSON shapes below are the EXACT stdout contract of /verity/bin/verify, /verity/bin/measure and
-/verity/bin/eqy (CONTRACTS.md section 3). The sandbox scripts cannot import this package, so any change here
-must be made in CONTRACTS.md and the scripts in the same change. Keys are snake_case, except the embedded
+The JSON shapes below are the EXACT stdout contract of /verity/bin/verify, /verity/bin/measure,
+/verity/bin/eqy, and the sign-off and waveform scripts /verity/bin/seeds, strength and wave (CONTRACTS.md section
+3). The sandbox scripts cannot import this package, so any change here must be made in CONTRACTS.md and the scripts
+in the same change. Keys are snake_case, except the embedded
 `circuit` object and test cases, which already use the wire format.
 """
 
@@ -50,6 +51,8 @@ class LintResult(_Result):
     ok: bool
     errors: int = 0
     warnings: int = 0
+    by_tag: dict[str, int] = Field(default_factory=dict)  # warnings per Verilator tag; empty from older images
+    latches: int | None = None  # LATCH warnings; None from older images
     log: str = ""
     tool: str = "Verilator"
 
@@ -195,8 +198,20 @@ class SynthResult(_Result):
     area_um2: float | None = None
     cell_count: int | None = None
     cells: dict[str, int] = Field(default_factory=dict)  # liberty cell name -> count
+    cell_area: dict[str, float] = Field(default_factory=dict)  # liberty cell name -> total area (um2); empty from older images
     log: str = ""
     tool: str = "Yosys"
+
+
+class CriticalPath(_Result):
+    """The worst setup path of `report_checks`. A register end is named by the net on its flip-flop's Q pin."""
+
+    startpoint: str
+    endpoint: str
+    start_kind: str = ""  # register | input | output | other
+    end_kind: str = ""
+    depth: int = 0  # combinational cells on the path
+    delay_ns: float | None = None  # data arrival time
 
 
 class TimingResult(_Result):
@@ -205,8 +220,18 @@ class TimingResult(_Result):
     wns_ns: float | None = None
     target_period_ns: float | None = None
     clocked: bool = True  # false: combinational design measured against a virtual clock
+    path: CriticalPath | None = None  # absent from older images
     log: str = ""
     tool: str = "OpenSTA"
+
+    @field_validator("path", mode="wrap")
+    @classmethod
+    def _lenient_path(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> CriticalPath | None:
+        """A malformed path never invalidates the timing numbers: it becomes None."""
+        try:
+            return handler(value)
+        except ValidationError:
+            return None
 
 
 class PowerResult(_Result):
@@ -308,3 +333,78 @@ class EquivalenceResult(_Result):
 
 def not_run_equivalence(against_id: str, reason: str) -> Equivalence:
     return Equivalence(status="not_run", against_id=against_id, log=reason)
+
+
+# ---------- sign-off: more seeds (verity.seeds/1) ----------
+SeedsStatus = Literal["pass", "sim_fail", "lint_fail", "sim_error", "timeout", "input_error", "internal_error"]
+
+
+class SeedRun(_Result):
+    seed: int
+    ok: bool
+    total: int = 0
+    passed: int = 0
+    failure_count: int = 0
+    failures: list[SimCase] = Field(default_factory=list)  # the first failing case only
+    timed_out: bool = False
+    message: str = ""
+
+
+class SeedsResult(_Result):
+    schema_: Literal["verity.seeds/1"] = Field(default="verity.seeds/1", alias="schema")
+    status: SeedsStatus
+    lint: LintResult | None = None
+    seeds: list[SeedRun] = Field(default_factory=list)
+    duration_ms: int = 0
+    message: str = ""
+    tool_versions: dict[str, str] = Field(default_factory=dict)
+
+
+# ---------- sign-off: test strength (verity.strength/1) ----------
+MutantStatus = Literal["caught", "survived", "invalid", "not_run"]
+
+
+class MutantRun(_Result):
+    id: str
+    status: MutantStatus
+    detail: str = ""
+    passed: int = 0
+    total: int = 0
+    duration_ms: int = 0
+
+
+class StrengthResult(_Result):
+    schema_: Literal["verity.strength/1"] = Field(default="verity.strength/1", alias="schema")
+    status: Literal["ok", "timeout", "input_error", "internal_error"]
+    mutants: list[MutantRun] = Field(default_factory=list)
+    duration_ms: int = 0
+    message: str = ""
+    tool_versions: dict[str, str] = Field(default_factory=dict)
+
+
+# ---------- waveform of one test case (verity.wave/1) ----------
+WaveStatus = Literal["ok", "no_case", "compile_error", "sim_error", "timeout", "input_error", "internal_error"]
+
+
+class WaveSignal(_Result):
+    name: str
+    width: int
+    got: list[str]
+    expected: list[str] | None = None  # same length as got; "" where nothing is expected
+
+
+class WaveTrace(_Result):
+    case: str
+    fail_cycle: int | None = None  # None: the case passed (the wave shows its start)
+    start_cycle: int = 0
+    signals: list[WaveSignal] = Field(default_factory=list)
+    note: str = ""
+
+
+class WaveResult(_Result):
+    schema_: Literal["verity.wave/1"] = Field(default="verity.wave/1", alias="schema")
+    status: WaveStatus
+    wave: WaveTrace | None = None
+    duration_ms: int = 0
+    message: str = ""
+    tool_versions: dict[str, str] = Field(default_factory=dict)

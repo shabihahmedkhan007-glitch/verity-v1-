@@ -7,6 +7,7 @@ pack's reference.v (a leading `// verity-fake:` header line is ignored, which is
 
 import asyncio
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -15,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from verity.config import AGENT_ROOT, Settings, load_settings
-from verity.contracts import EventBase
+from verity.contracts import EventBase, parse_event
 from verity.core.budget import BudgetLimits
 from verity.core.context import RunContext, RunOutcome
 from verity.core.pack import TaskPack
@@ -25,11 +26,18 @@ from verity.core.results import (
     EquivalenceResult,
     LintResult,
     MeasureResult,
+    MutantRun,
+    SeedRun,
+    SeedsResult,
     SimCase,
     SimResult,
+    StrengthResult,
     SynthResult,
     TimingResult,
     VerifyResult,
+    WaveResult,
+    WaveSignal,
+    WaveTrace,
 )
 from verity.core.rtl import Rtl, normalize_rtl_text
 from verity.llm.fake import FakeProvider
@@ -49,9 +57,11 @@ FAKE_HEADER = "// verity-fake:"
 def make_settings(data_dir: Path, *, gate_ms: int = 0, **top_level: Any) -> Settings:
     base = load_settings(provider="fake")
     plan = base.plan.model_copy(update={"gate_auto_continue_ms": gate_ms, "gate_after_replan_ms": 0})
+    # Never a developer's Supabase keys: tests keep SQLite, and sign-in tokens are checked only where a test asks for it.
+    local = {"supabase": type(base.supabase)(), "threads": base.threads.model_copy(update={"store": "sqlite"})}
     # One baseline sample by default so call counts stay simple; tests of R4 pass baseline=... themselves.
     one_sample = base.baseline.model_copy(update={"samples": 1})
-    return base.model_copy(update={"data_dir": data_dir, "plan": plan, "baseline": one_sample, **top_level})
+    return base.model_copy(update={"data_dir": data_dir, "plan": plan, "baseline": one_sample, **local, **top_level})
 
 
 def tmp_cassettes(settings: Settings) -> Path:
@@ -66,16 +76,29 @@ def strip_fake_header(text: str) -> str:
 
 
 class FakeToolRunner:
-    def __init__(self, *, eqy_status: str = "proven", delay_s: float = 0.0) -> None:
+    """`survivors`: how many of the last planted bugs pass the tests in `test_strength` (default none, so the sign-off
+    makes no extra EQY call). `waves`: False makes `waveform` report a failure (no waveform)."""
+
+    def __init__(self, *, eqy_status: str = "proven", delay_s: float = 0.0, survivors: int = 0, waves: bool = True) -> None:
         self.eqy_status = eqy_status
         self.delay_s = delay_s
+        self.survivors = survivors
+        self.waves = waves
         self.verify_calls = 0
         self.measure_calls = 0
         self.eqy_calls = 0
+        self.seeds_calls = 0
+        self.strength_calls = 0
+        self.wave_calls: list[str | None] = []  # the case asked for, per call
+        self.mutants_seen: list[str] = []
         self._first_measure: str | None = None
+        self.sandbox_down: str | None = None  # a plain sentence makes /health report sandbox_down
 
     async def image_digest(self) -> str:
         return "sha256:fake-image"
+
+    async def sandbox_problem(self) -> str | None:
+        return self.sandbox_down
 
     async def verify(self, rtl: Rtl, pack: TaskPack) -> VerifyResult:
         self.verify_calls += 1
@@ -128,6 +151,44 @@ class FakeToolRunner:
     async def check_equivalence(self, gold: Rtl, gate: Rtl, pack: TaskPack) -> EquivalenceResult:
         self.eqy_calls += 1
         return EquivalenceResult(status=self.eqy_status, log="fake eqy log", duration_ms=11)  # type: ignore[arg-type]
+
+    def _passes(self, rtl: Rtl, pack: TaskPack) -> bool:
+        return normalize_rtl_text(strip_fake_header(rtl.text)) == normalize_rtl_text(pack.reference_rtl() or "")
+
+    async def verify_seeds(self, rtl: Rtl, pack: TaskPack, seeds) -> SeedsResult:
+        self.seeds_calls += 1
+        n = pack.test_count
+        ok = self._passes(rtl, pack)
+        runs = [SeedRun(seed=s, ok=ok, total=n, passed=n if ok else n - 1, failure_count=0 if ok else 1) for s in seeds]
+        lint = LintResult(ok=True, warnings=1, by_tag={"UNUSEDSIGNAL": 1}, latches=0, tool="fake lint")
+        return SeedsResult(status="pass" if ok else "sim_fail", lint=lint, seeds=runs, duration_ms=13)
+
+    async def test_strength(self, rtl: Rtl, pack: TaskPack, mutants) -> StrengthResult:
+        self.strength_calls += 1
+        self.mutants_seen = [m.id for m in mutants]
+        keep = len(mutants) - self.survivors
+        rows = [
+            MutantRun(id=m.id, status="caught" if i < keep else "survived", detail="fake", passed=0, total=pack.test_count)
+            for i, m in enumerate(mutants)
+        ]
+        return StrengthResult(status="ok", mutants=rows, duration_ms=17)
+
+    async def waveform(self, rtl: Rtl, pack: TaskPack, case: str | None = None) -> WaveResult:
+        self.wave_calls.append(case)
+        if not self.waves:
+            return WaveResult(status="sim_error", message="fake: no waveform")
+        failing = not self._passes(rtl, pack)
+        trace = WaveTrace(
+            case=case or "first_case",
+            fail_cycle=3 if failing else None,
+            start_cycle=1 if failing else 0,
+            signals=[
+                WaveSignal(name="rst_n", width=1, got=["1", "1", "1", "1"]),
+                WaveSignal(name="q", width=8, got=["0x01", "0x02", "0x04", "0x05"], expected=["0x01", "0x02", "0x03", ""]),
+            ],
+            note="Fake waveform.",
+        )
+        return WaveResult(status="ok", wave=trace, duration_ms=5)
 
 
 @dataclass(slots=True)
@@ -209,3 +270,25 @@ async def execute_fake_run(
     events = await store.events_after(run_id, 0)
     hub.close_run(run_id)
     return FakeRun(ctx=ctx, events=events, outcome=ctx.outcome, store=store, run_id=run_id, tools=tools, error=error)
+
+
+# ---------- the recorded real run the ask and thread tests talk about ----------
+FIXTURE_RUN_ID = "r_27fed084a749432ba42ca6981f3cc336"  # cnt8, 10 bits, goal speed; tests/fixtures/<id>/
+FIXTURE_RUN_DIR = Path(__file__).resolve().parent / "fixtures" / FIXTURE_RUN_ID
+
+
+async def seed_fixture_run(store: SqliteStore, *, session_id: str, status: str | None = None) -> RunRecord:
+    """The real run: its row, its stored events and the report files the ask tools read, owned by `session_id`."""
+    data = json.loads((FIXTURE_RUN_DIR / "run.json").read_text(encoding="utf-8"))
+    data["session_id"] = session_id
+    if status is not None:
+        data["status"] = status
+    run = RunRecord.model_validate(data)
+    await store.create_run(run)
+    for event in json.loads((FIXTURE_RUN_DIR / "runlog.json").read_text(encoding="utf-8"))["events"]:
+        await store.append_event(run.id, parse_event(event))
+    for path in sorted(FIXTURE_RUN_DIR.rglob("*")):
+        rel = path.relative_to(FIXTURE_RUN_DIR).as_posix()
+        if path.is_file() and rel.startswith(("candidates/", "final/")):
+            await store.write_run_file(run.id, rel, path.read_bytes(), "text/plain")
+    return run

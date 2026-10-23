@@ -1,4 +1,6 @@
-"""Log redaction (ARCHITECTURE 12.4): Authorization headers, bearer tokens and stream tokens never reach a log.
+"""Log redaction (ARCHITECTURE 12.4): Authorization headers (Tavily sends its key as a bearer token), bearer tokens,
+stream tokens, the Serper X-API-KEY header, the Supabase `apikey` header and any `tvly-` or `sb_secret_` key never reach
+a log.
 
 The uvicorn access log prints the full request path, which includes `?st=<stream token>`. `log_config()` returns
 a uvicorn logging config whose handlers scrub those values.
@@ -13,6 +15,15 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"([?&](?:st|token|access_?code)=)[^&\s\"']+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(\bBearer\s+)[A-Za-z0-9._~+/=-]+", re.IGNORECASE), r"\1[redacted]"),
     (re.compile(r"(\bAuthorization['\"]?\s*[:=]\s*)[^\r\n,}]+", re.IGNORECASE), r"\1[redacted]"),
+    # Serper's key header (research). Request headers are never logged, but a stray repr must not leak it either.
+    (re.compile(r"(\bX-API-KEY['\"]?\s*[:=]\s*['\"]?)[^\r\n,}'\"]+", re.IGNORECASE), r"\1[redacted]"),
+    # Tavily keys all start with "tvly-". The Authorization and Bearer rules above catch the header; this catches a
+    # key that shows up anywhere else (a repr, an exception message, a pasted URL).
+    (re.compile(r"\btvly-[A-Za-z0-9_-]+"), "tvly-[redacted]"),
+    # Supabase: the secret key is the `apikey` header of the Data API. The header value, and any sb_secret_ key that shows
+    # up elsewhere (a repr, an exception message), are scrubbed too.
+    (re.compile(r"(\bapikey['\"]?\s*[:=]\s*['\"]?)[^\r\n,}'\"&\s]+", re.IGNORECASE), r"\1[redacted]"),
+    (re.compile(r"\bsb_secret_[A-Za-z0-9_-]+"), "sb_secret_[redacted]"),
 )
 
 

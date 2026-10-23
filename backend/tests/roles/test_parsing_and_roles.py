@@ -100,7 +100,7 @@ def test_json_extraction() -> None:
 
 
 # ---------- prompts ----------
-@pytest.mark.parametrize("name", ["planner.v1.md", "rtl_gen.v1.md", "repair.v1.md", "optimize.v1.md", "planner.v2.md", "rtl_gen.v2.md", "repair.v2.md", "optimize.v2.md"])
+@pytest.mark.parametrize("name", ["planner.v1.md", "rtl_gen.v1.md", "repair.v1.md", "optimize.v1.md", "planner.v2.md", "rtl_gen.v2.md", "repair.v2.md", "optimize.v2.md", "repair.v3.md", "optimize.v3.md", "rtl_gen.v3.md", "repair.v4.md", "optimize.v4.md"])
 def test_templates_load_and_render(name: str) -> None:
     template = load_template(name)
     assert template.system and template.user

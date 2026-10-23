@@ -1,5 +1,7 @@
 # Verity: Canvas UI Research
 
+> **History, superseded by `docs/PRD.md`.** Research from 2026-10-04 for the co-planning canvas (D6). The studio dropped the canvas on 2026-10-15 (D11), and the live bench is a chat workspace (D15, D28) whose circuit view (D21) is the only canvas left. Read this for the evidence behind those choices.
+
 Research for the AI co-planning canvas idea (users and the in-app AI move boxes together). Compiled 2026-10-04 by three parallel research agents. The interactive journey map built from it is `.archify/workflow-verity-journey-20261004-011950/verity-journey.html`.
 
 **Caveats:** claims marked unconfirmed or "press release only" below were not verified hands-on. Nemotron structured JSON output on Nebius is unconfirmed; tool calling is documented.

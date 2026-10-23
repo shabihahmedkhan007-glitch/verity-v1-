@@ -4,12 +4,12 @@ so a real run can be dropped in as the replay fixture with no conversion."""
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from ..config import Settings
+from ..config import CHAT_ROLES, RUN_ROLES, Settings
 from ..contracts import CaptionEvent, Chapter, EventBase, RunLog, RunLogMeta, SpecEvent
 from ..core.captions import CHAPTER_ID_BY_LABEL, CHAPTERS
 from ..core.types import RunRecord
 
-ROLES = ("planner", "rtl_gen", "repair", "optimizer")
+ROLES = RUN_ROLES + CHAT_ROLES  # the chat roles are listed only for a run that used research (see build_run_log)
 
 
 def _iso_z(moment: datetime) -> str:
@@ -39,7 +39,8 @@ def build_run_log(run: RunRecord, events: Sequence[EventBase], settings: Setting
         if label in first_seen
     ]
 
-    models = ", ".join(f"{role}={run.models[role]}" for role in ROLES if role in run.models)
+    roles = ROLES if run.research_id else RUN_ROLES
+    models = ", ".join(f"{role}={run.models[role]}" for role in roles if role in run.models)
     note = "Recorded live run." + (f" Models: {models}." if models else "")
 
     return RunLog(

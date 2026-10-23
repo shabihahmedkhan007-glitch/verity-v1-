@@ -249,6 +249,29 @@ class TaskPack(BaseModel):
     def rules(self) -> list[str]:
         return [*CODING_RULES, *self.coding_rules]
 
+    def spec_rules(self) -> list[str]:
+        """The decisions this locked pack makes, in plain words, for the spec/rules.json artifact: the pack's own
+        coding and protocol rules first, then clock, reset, latency and lane layout. Never golden.py, test_dut.py or
+        reference.v (the same text the model already gets)."""
+        out = list(self.coding_rules)
+        if self.clock.name:
+            out.append(f"One clock, {self.clock.name}; registers change on its rising edge only.")
+        else:
+            out.append("No clock: the outputs follow the inputs directly (combinational).")
+        if self.reset.name:
+            polarity = "active low" if self.reset.active_low else "active high"
+            kind = "synchronous" if self.reset.synchronous else "asynchronous"
+            out.append(f"Reset {self.reset.name} is {polarity} and {kind}.")
+        if self.clock.name:
+            cycles = "cycle" if self.latency_cycles == 1 else "cycles"
+            out.append(f"Latency is {self.latency_cycles} {cycles}, fixed: every version must keep it.")
+        for port in self.ports:
+            if port.count > 1:
+                out.append(
+                    f"{port.name} carries {port.count} lanes of {port.width} bits; lane i is {port.name}[i*{port.width} +: {port.width}]."
+                )
+        return out
+
     def public_brief(self) -> str:
         """Everything the LLM may see about the pack. Never golden.py, test_dut.py or reference.v."""
         clock = f"clock `{self.clock.name}` (rising edge)" if self.clock.name else "no clock (combinational)"

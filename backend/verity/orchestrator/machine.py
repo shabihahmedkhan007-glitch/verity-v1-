@@ -1,7 +1,9 @@
 """The orchestrator state machine (agent ARCHITECTURE section 5, CONTRACTS section 6).
 
     spec -> plan (+ gate, feasibility) -> lock -> rtl -> lint/sim/fix -> synth(v1)
-         -> evolve round 1 (-> round 2) -> winner -> prove (EQY) -> done
+         -> evolve round 1 (-> round 2) -> winner -> prove (EQY) -> human reference -> done -> sign-off
+
+The sign-off (signoff.py) starts after `run done` and the Done caption; its artifacts follow them.
 
 Contract with the run manager (core/context.py):
 - emits `run running` first and exactly one terminal event: done | error | cap_reached,
@@ -16,6 +18,7 @@ import logging
 
 from ..contracts import to_wire
 from ..core import captions as cap
+from ..research.outcomes import record_run_outcome
 from ..core.types import (
     BudgetExhausted,
     LLMError,
@@ -26,7 +29,7 @@ from ..core.types import (
     RunStopped,
     ToolInfraError,
 )
-from . import build, evolve, human_ref, judge
+from . import build, evolve, human_ref, judge, signoff
 from .candidates import FIRST_VERSION_REASON
 from .events import Emitter
 from .plan_stage import StageFailed, plan_stage, spec_stage
@@ -56,13 +59,14 @@ async def run_orchestrator(ctx: RunContext) -> None:
         await _end_error(st, "the task pack failed its integrity check")
     except LLMError as exc:
         log.warning("run %s: model call failed: %s", ctx.run_id, exc)
-        await _end_error(st, "the model call failed: " + cap.clean(str(exc), 160))
+        plain = cap.model_failed(str(exc), exc.status, exc.retryable)
+        await _end_error(st, plain or "the model call failed: " + cap.clean(str(exc), 160))
     except RoleOutputError as exc:
         log.warning("run %s: unusable model answer: %s", ctx.run_id, exc)
         await _end_error(st, "the model's answer could not be used: " + cap.clean(str(exc), 160))
     except ToolInfraError as exc:
-        log.warning("run %s: sandbox failure: %s", ctx.run_id, exc)
-        await _end_error(st, "the sandbox failed: " + cap.clean(str(exc), 160))
+        log.warning("run %s: sandbox failure: %s | %s", ctx.run_id, exc, exc.stderr_tail)
+        await _end_error(st, cap.sandbox_failed(f"{exc} {exc.stderr_tail}"))
 
 
 async def _run(st: RunState) -> None:
@@ -82,8 +86,20 @@ async def _run(st: RunState) -> None:
         winner = await evolve.choose_and_prove(st, prove=True)
 
     winner = await evolve.apply_winner_override(st, winner)
-    await human_ref.measure_human_ref(st, winner)
+    await _close(st, winner)
+
+
+async def _close(st: RunState, winner: str) -> None:
+    """The human reference proof, then the result (`run done` and the Done caption), then the sign-off. The sign-off's
+    sandbox calls start only once the result is out, so they never compete with the human reference proof that gates
+    `run done`; its artifacts and caption follow the result (CONTRACTS 6.3)."""
+    human_eqy = await human_ref.measure_human_ref(st, winner)
     await _finish(st, winner)
+    pending = signoff.start(st, winner)
+    try:
+        await signoff.finish(st, pending, human_eqy)
+    finally:
+        await signoff.cancel(pending)
 
 
 # ======================================================================
@@ -213,6 +229,8 @@ async def _publish_summary(st: RunState, status: str, winner: str | None) -> Non
         win = st.cands[winner]
         if win.rtl_obj is not None:
             await st.save("final/winner.v", win.rtl_obj.text, "text/x-verilog")
+    # One run_outcome row (plus strategy rows) for later runs to read; the run manager upserts it again at finalize.
+    await record_run_outcome(ctx.store, ctx, status=status, winner_id=winner)
 
 
 async def _finish(st: RunState, winner: str) -> None:
@@ -240,8 +258,7 @@ async def _end_budget(st: RunState, limit: str) -> None:
     st.note_budget(limit)
     winner = judge.winner(st.models())
     if winner is not None:
-        await human_ref.measure_human_ref(st, winner)
-        await _finish(st, winner)
+        await _close(st, winner)
         return
     em = st.em
     reason = f"budget limit reached: {limit}"

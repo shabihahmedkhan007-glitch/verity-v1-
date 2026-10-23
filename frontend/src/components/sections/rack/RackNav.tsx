@@ -1,3 +1,4 @@
+import { LIVE_HREF } from "@/lib/env";
 import { REAL } from "./real-run";
 import { RackBar, RackBarLink, RackRealBadge } from "@/components/sections/shared/RackBar";
 
@@ -9,7 +10,7 @@ export function RackNav() {
       actions={
         <>
           <RackRealBadge part={REAL.part} date={REAL.date} />
-          <RackBarLink href="/bench" kind="p">
+          <RackBarLink href={LIVE_HREF} kind="p">
             Build one live
           </RackBarLink>
         </>

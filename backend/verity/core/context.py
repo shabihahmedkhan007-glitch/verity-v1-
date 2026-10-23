@@ -17,7 +17,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from ..config import Settings
 from ..contracts import Priority
@@ -75,6 +75,13 @@ class RunContext:
     # Set by the orchestrator, read by RunService.steer() to answer 409 for steers that can no longer apply.
     gate_state: GateStateOrNone = "none"
     ai_winner_id: str | None = None
+    # Research and outcomes (plan claim 2), set by the run manager. `references` is a
+    # verity.research.service.RunReferences (technique ids, our own labels, code-written past outcome lines) or None.
+    # No web text, no summary text and no user text is ever put here.
+    references: Any = None
+    outcome_key: str = ""  # sha256 of the family plus its validated knobs (run_outcome.key)
+    params_full: dict[str, Any] = field(default_factory=dict)  # validated knobs with defaults filled in
+    techniques: dict[str, str] = field(default_factory=dict)  # candidate id -> technique id it was asked to use
     _busy: int = 0
 
     # ---------- clock ----------

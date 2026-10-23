@@ -32,14 +32,13 @@ export function RunSummaryPanel({ summary, winnerTests }: RunSummaryPanelProps) 
         <CreditsMeter
           mode={summary.mode}
           usedUsd={summary.credits.usedUsd}
-          capUsd={summary.credits.capUsd}
           recordedUsd={summary.recordedUsd ?? undefined}
         />
       ),
       hint: summary.mode === "replay" ? "Replays cost nothing. This shows what the original recorded run spent." : undefined,
     },
     { label: "Model", value: <PoweredBy layout="inline" /> },
-    { label: "Tools", value: "iverilog, cocotb, Yosys, OpenROAD, EQY" },
+    { label: "Tools", value: "iverilog, cocotb, Yosys and OpenSTA (post-synthesis estimate, no wires), EQY" },
   ];
   return (
     <section aria-labelledby="summary-heading" className="space-y-3 rounded-lg border bg-surface p-5">

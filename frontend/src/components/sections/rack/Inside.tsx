@@ -56,7 +56,7 @@ export function Inside() {
             </svg>
           </div>
           <h3>The answer key is locked</h3>
-          <p className="d">{REAL.testCount} tests come from the golden model before any Verilog exists. The agent can read them and cannot edit them.</p>
+          <p className="d">{REAL.testCount} tests come from the golden model before any Verilog exists. The agent never sees the golden model or the tests, only up to 5 failing cases.</p>
           <table className="kv push">
             <tbody>
               <tr>

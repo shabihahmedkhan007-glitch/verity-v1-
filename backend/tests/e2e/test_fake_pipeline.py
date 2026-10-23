@@ -85,9 +85,16 @@ async def test_full_run_end_to_end(settings, mac4: TaskPack) -> None:
         assert_canvas_is_consistent(events)
         assert_stages_settle(events)
 
-        # golden.json ends with a `done` caption AFTER `run done`.
+        # golden.json ends with a `done` caption AFTER `run done`. The sign-off follows them (CONTRACTS 6.3): the
+        # winner's waveform, signoff/<id>.json, then the sign-off caption, also in the Done chapter.
+        done_at = next(i for i, e in enumerate(events) if isinstance(e, RunPhaseEvent) and e.phase == "done")
+        assert isinstance(events[done_at + 1], CaptionEvent) and events[done_at + 1].text.startswith("Done.")
+        tail = events[done_at + 2 :]
+        paths = [e.path for e in tail if isinstance(e, ArtifactEvent)]
+        winner_id = [e for e in events if isinstance(e, WinnerEvent)][-1].candidate_id
+        assert paths == [f"waves/{winner_id}.json", f"signoff/{winner_id}.json"], paths
         assert isinstance(events[-1], CaptionEvent) and events[-1].chapter == "Done"
-        assert isinstance(events[-2], RunPhaseEvent) and events[-2].phase == "done"
+        assert events[-1].text.startswith("Sign-off for ")
 
         stage_order = [e.stage for e in events if isinstance(e, StageEvent) and e.status == "active"]
         for needed in ("plan", "lock", "rtl", "lint", "sim", "fix", "synth", "evolve"):

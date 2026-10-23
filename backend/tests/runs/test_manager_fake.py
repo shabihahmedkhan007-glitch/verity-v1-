@@ -8,7 +8,8 @@ import pytest
 from verity.contracts import CaptionEvent, HumanEvent, RunPhaseEvent
 from verity.contracts.view_types import PinSteer
 from verity.core.budget import BudgetLimits
-from verity.core.errors import AdmissionDenied, Conflict, Forbidden, NotFound, UnknownPreset
+from verity.core import captions as cap
+from verity.core.errors import AdmissionDenied, Conflict, Forbidden, LLMError, NotFound, ToolInfraError, UnknownPreset
 from verity.core.records import RunRecord
 from verity.llm.fake import FakeProvider
 from verity.runs.manager import RunManager
@@ -197,6 +198,8 @@ async def test_startup_recovery_ends_orphaned_runs_as_errors(tmp_path, packs) ->
         assert row is not None and row.status == "error" and row.error_reason == "server restarted"
         events = await drain(manager, "r_orphan")
         assert [e.phase for e in events if isinstance(e, RunPhaseEvent)] == ["error"]
+        # The user sees one plain sentence; the stored reason stays the short machine text.
+        assert [e.message for e in events if isinstance(e, RunPhaseEvent)] == ["The server restarted during this run. Try again."]
     finally:
         await close(manager, store)
 
@@ -211,7 +214,7 @@ async def test_params_render_the_pack_and_reach_the_spec_event(tmp_path, packs) 
         with pytest.raises(ParamsError) as bad:
             await manager.create_run(session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 9})
         assert "1 to 8" in str(bad.value)
-        assert (await manager.health()).features == ["params", "human_ref", "parse"]
+        assert (await manager.health()).features == ["params", "human_ref", "parse", "ask", "agent", "signoff"]
 
         run = await manager.create_run(
             session_id="s1", preset_id="mac4", priority="area", mode="fast", params={"lanes": 6, "width": 6, "cycles": 20}
@@ -245,5 +248,89 @@ async def test_fake_provider_follows_the_runs_knobs(tmp_path, packs, preset, par
         winner = [e for e in events if isinstance(e, WinnerEvent)][-1]
         cand = [e.candidate for e in events if isinstance(e, CandidateEvent) and e.candidate.id == winner.candidate_id][-1]
         assert cand.verification is not None and cand.verification.passed == cand.verification.total > 0
+    finally:
+        await close(manager, store)
+
+
+# ---------- sandbox down and plain infrastructure errors ----------
+async def make_manager_with(settings, packs, tools):
+    store = SqliteStore(settings)
+    await store.open()
+    provider = FakeProvider(settings, delay_s=0.0, cassette_dir=tmp_cassettes(settings))
+    manager = RunManager(settings, store, provider, tools, packs)
+    await manager.start()
+    return manager, store
+
+
+async def test_sandbox_down_is_reported_and_refuses_new_runs_on_the_fake_provider(tmp_path, packs) -> None:
+    tools = FakeToolRunner()
+    tools.sandbox_down = cap.IMAGE_MISSING
+    manager, store = await make_manager_with(make_settings(tmp_path / "data"), packs, tools)
+    try:
+        health = await manager.health()
+        assert health.live_enabled is False and health.reason == "sandbox_down" and health.provider == "fake"
+        with pytest.raises(AdmissionDenied) as err:
+            await manager.create_run(session_id="s1", preset_id="add8", priority="area", mode="fast")
+        assert err.value.reason == "sandbox_down" and str(err.value) == cap.IMAGE_MISSING
+        assert (await manager.list_runs()).runs == []
+
+        tools.sandbox_down = None  # Docker is back
+        assert (await manager.health()).live_enabled is True
+        run = await manager.create_run(session_id="s1", preset_id="add8", priority="area", mode="fast")
+        await asyncio.wait_for(drain(manager, run.id), timeout=60)
+    finally:
+        await close(manager, store)
+
+
+async def test_a_broken_sandbox_check_never_blocks_runs(tmp_path, packs) -> None:
+    class BrokenCheck(FakeToolRunner):
+        async def sandbox_problem(self) -> str | None:
+            raise RuntimeError("probe bug")
+
+    manager, store = await make_manager_with(make_settings(tmp_path / "data"), packs, BrokenCheck())
+    try:
+        assert (await manager.health()).live_enabled is True
+    finally:
+        await close(manager, store)
+
+
+DOCKER_GONE = (
+    "verify: sandbox exited with code 1: failed to connect to the docker API at "
+    "npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running"
+)
+
+
+async def test_docker_failing_mid_run_ends_with_one_plain_sentence(tmp_path, packs) -> None:
+    class DockerGone(FakeToolRunner):
+        async def verify(self, rtl, pack):  # noqa: ANN001, ANN201
+            raise ToolInfraError(DOCKER_GONE, script="verify", exit_code=1)
+
+    manager, store = await make_manager_with(make_settings(tmp_path / "data"), packs, DockerGone())
+    try:
+        run = await manager.create_run(session_id="s1", preset_id="add8", priority="area", mode="fast")
+        events = await asyncio.wait_for(drain(manager, run.id), timeout=60)
+        ends = [e for e in events if isinstance(e, RunPhaseEvent) and e.phase == "error"]
+        assert len(ends) == 1 and ends[0].message == cap.DOCKER_DOWN
+        assert f"Run ended: {cap.DOCKER_DOWN}" in [e.text for e in events if isinstance(e, CaptionEvent)]
+        assert all("npipe" not in e.model_dump_json() for e in events)  # the raw detail stays in the server log
+        row = await manager.get_run(run.id)
+        assert row is not None and row.status == "error" and row.error_reason == cap.DOCKER_DOWN
+    finally:
+        await close(manager, store)
+
+
+async def test_a_model_timeout_ends_with_one_plain_sentence(tmp_path, packs, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def timed_out(self, req):  # noqa: ANN001, ANN202
+        raise LLMError("model call timed out after 120 s", retryable=True)
+
+    monkeypatch.setattr(FakeProvider, "complete", timed_out)
+    base = make_settings(tmp_path / "data")
+    settings = base.model_copy(update={"llm": base.llm.model_copy(update={"retries": 0})})
+    manager, store = await make_manager_with(settings, packs, FakeToolRunner())
+    try:
+        run = await manager.create_run(session_id="s1", preset_id="add8", priority="area", mode="fast")
+        events = await asyncio.wait_for(drain(manager, run.id), timeout=60)
+        ends = [e for e in events if isinstance(e, RunPhaseEvent) and e.phase == "error"]
+        assert len(ends) == 1 and ends[0].message == cap.MODEL_TIMEOUT
     finally:
         await close(manager, store)

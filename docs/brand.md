@@ -10,9 +10,9 @@ Source of truth for color, type, spacing, motion, icons and voice. Read with `PR
 
 ### 1.1 Strategy
 
-- **Studio, Try, Results (product register): Restrained.** Warm near-black neutrals carry 90% of the surface. Amber is the single signal. Fail, warn and info appear only as state.
+- **Studio, Bench, Results (product register): Restrained.** Warm near-black neutrals carry 90% of the surface. Amber is the single signal. Fail, warn and info appear only as state.
 - **Landing (brand register): Restrained with an earned signal.** Same palette; the page's color comes from the live replay itself. As the recorded run passes tests, amber appears on screen. Nothing on the landing is amber unless it is verified or the primary action.
-- **Rule: amber is earned.** Amber means one of three things only: verified/pass, the one primary action on a screen, or keyboard focus. Never decoration, never a background wash, never gradient text. Running or in-progress states use pale amber (`--rk-run`). Fail is a hollow white square plus the word, never red. Known risk: amber reads as a warning on instruments; mitigated by shape plus word.
+- **Rule: amber is earned.** Amber means one of three things only: verified/pass, the one primary action on a screen, or keyboard focus. The one standing exception is the logo's V (D40). Never decoration, never a background wash, never gradient text. Running or in-progress states use pale amber (`--rk-run`). Fail is a hollow white square plus the word, never red. Known risk: amber reads as a warning on instruments; mitigated by shape plus word.
 
 Theme: dark only. Scene sentence for both registers: a judge on a 14-inch laptop late in a judging session, arriving from the dark navy Devpost thumbnail, watching an autonomous run for two or three minutes; a dark surface keeps that continuity and lets status color carry the meaning.
 
@@ -34,6 +34,26 @@ Theme: dark only. Scene sentence for both registers: a judge on a 14-inch laptop
 Type faces (loaded in `components/sections/shared/rack-fonts.ts`): display `--font-display` = Sofia Sans Extra Condensed (800, 900); body `--font-body` = Sofia Sans; data and labels `--font-data` = Martian Mono.
 
 The legacy token names (`--background`, `--surface`, `--primary`, `--pass`, `--ring`, `--chart-*`, and `--verity-green`) still exist and now resolve to these values. `--fail` and `--warn` are ivory (white); `--info` is `--rk-run`.
+
+### 1.2a Verdict shapes, status squares and source tiers (2026-10-23)
+
+State is always a shape plus a word, never colour alone. Amber stays earned: only a passed or verified result is amber.
+
+| Where | Shape | Word |
+|---|---|---|
+| First reply (verdict, ink only: a read on a request, not a result) | filled square | Buildable now |
+| | square with a dot | Buildable with changes |
+| | half-filled square | Not buildable here |
+| | hollow square | Not a chip |
+| | dashed square | Could not check |
+| Step rail, progress, sign-off | filled amber square | Passed, Clean, Proven, Signed off |
+| | filled ink-2 square | Done (the step ran to its end; no verdict) |
+| | hollow ink square | Failed, Differs, Not proven, See the sheet |
+| | pale-amber blinking square | Running |
+| | hollow grey square | Waiting |
+| | filled grey square | Skipped, Not reached, Not measured, Not run |
+
+Source tiers are shown as plain words (paper or standard, vendor, project or university, open source or wiki, patent), never as letters or colours. The server's letters behind the words: A papers, standards and preprints ("paper or standard"); B vendor, project and university pages ("vendor, project or university"); C open-edit pages such as Wikipedia and GitHub ("open source or wiki"); P Google Patents ("patent"). The words match the server's tiers (fixed 2026-10-23). A tier word is ink, never amber; a citation is a small bordered chip such as `S2` that links to the source. A waveform mismatch is an ink outline plus the word "differs" for a screen reader and the first failing cycle named in its column. In the circuit, each kind of part has its own outline (port arrow, register with a clock notch, adder and multiplier as pills, mux, compare, logic, dashed block); a dashed outline is the walkthrough's part and a solid one is the reader's pick; a feedback wire loops round the side of the parts it passes. The circuit library's own "React Flow" credit stays visible in `--rk-ink-3`.
 
 ### 1.3 Derived palette (Superseded by D12 (2026-10-16), kept as history)
 
@@ -435,9 +455,19 @@ Brand (Landing): fluid, ratio at least 1.25 between steps.
 
 Rules: body measure capped at 65ch (`max-w-[65ch]`). Weights: 400 body, 500 UI labels and buttons, 700 headings, 800 display and wordmark. Sentence case everywhere; uppercase only for the four operator names and PASS/FAIL inside badges (with `tracking-wider`). Measured numbers use `font-mono` so columns align.
 
-### 2.3 Wordmark (Superseded by D12 (2026-10-16), kept as history)
+### 2.3 Chosen identity (2026-10-23, D38)
 
-Current: the rack bar (`shared/RackBar.tsx`) shows an outlined square with a check mark and the word VERITY, linking to `/`. The text below describes the retired green-square wordmark.
+The selected logo is **Trace V** (concept 24), paired with the **Register cut** wordmark (concept 12). The symbol uses bold routed paths to form a V; the wordmark keeps its squared letterforms and cut details. Keep this pairing intact when refining the identity.
+
+Canonical selected PNGs: `frontend/public/brand/verity-symbol.png` and `frontend/public/brand/verity-wordmark.png`. `frontend/public/brand/identity.json` records the selection and source concepts. These are the approved generated raster images with opaque warm-black backgrounds. Vector masters, traced from them (2026-10-23) with straightened edges and a transparent background, are `verity-symbol.svg` (viewBox 710 x 725) and `verity-wordmark.svg` (1611.8 x 272.9) in the same folder: the symbol filled amber `#FFB000`, the wordmark ivory `#F3EEE6`. The selected pairing is pinned in `docs/logo-explorations.html`.
+
+The D12 palette and typography remain in force. On warm black, the logo's V is amber `#FFB000` (`--rk-a`) and the wordmark is ivory `--rk-ink` (D40); amber otherwise keeps its status, action and focus meanings. Circuit moth (13), Lithography bloom (16), Bond weaver (17) and Silicon strata (18) are retained website illustrations in `frontend/public/brand/artwork/`, reviewed separately in `docs/website-artwork.html`.
+
+In the app (2026-10-23): `shared/Logo.tsx` draws both marks inline in `currentColor`, used by the rack bar (`RackBar.tsx`: symbol 26 px, wordmark 17 px tall) and the bench and workspace sidebar (`Sidebar.tsx`: 22 px and 14 px). The wordmark sits at about 0.65 of the symbol's height, as in the pinned pairing. The symbol is amber (`--rk-a`) and the wordmark ivory (`--rk-ink`), D40. `app/favicon.ico` is the Trace V in amber on a warm black rounded square, at 16, 32, 48 and 256 px.
+
+### 2.3a Earlier wordmark (Superseded by D12 (2026-10-16), kept as history)
+
+Until 2026-10-23 the rack bar and the sidebar showed an amber outlined square with a check mark and the word VERITY; section 2.3 replaced it. The text below describes the retired green-square wordmark.
 
 "Verity" in Atkinson Hyperlegible Next 800, tracking -0.02em, `--foreground`, with the dot of the i replaced by a Verity Green square (about 0.2em, radius 0). Build it as text: `Ver` + dotless `ı` (U+0131) with an absolutely positioned green square above it + `ty`. Wrap in an element with `aria-label="Verity"` and hide the inner spans from assistive tech. Tune the square's offset visually at each size. The green square is the brand motif: status indicators are squares too.
 

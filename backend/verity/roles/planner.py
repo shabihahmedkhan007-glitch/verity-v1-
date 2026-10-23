@@ -25,19 +25,23 @@ async def plan(
     *,
     previous: PlanOut | None = None,
     steering: Sequence[PinInput | ToggleInput] = (),
+    references: str = "",
 ) -> PlanResult:
     """Revision 1 when `previous` is None, otherwise a replan that honors every pin and toggle in `steering`.
 
+    `references` is the "Known approaches" section built by code (verity.research.service.RunReferences): technique
+    labels from the fixed list and code-written past outcome lines only, never web, summary or user text.
     Retries once on invalid JSON (plan.json_retries), then raises RoleOutputError.
     """
     template = load_template(TEMPLATE_FILE)
+    revision = _revision_section(previous, steering)
     system, user = template.render(
         task_brief=pack.public_brief(),
         priority=f"{priority}: {priority_text(priority)}",
         latency_cycles=str(pack.latency_cycles),
         max_lines=str(pack.max_lines),
         max_blocks=str(pack.max_plan_blocks),
-        revision_section=_revision_section(previous, steering),
+        revision_section=f"{references.strip()}\n\n{revision}" if references.strip() else revision,
     )
     tags = {
         "task_id": pack.id,

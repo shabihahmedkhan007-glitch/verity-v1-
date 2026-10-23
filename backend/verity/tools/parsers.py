@@ -12,7 +12,17 @@ import math
 from typing import Any
 
 from ..contracts import CircuitGraph
-from ..core.results import EquivalenceResult, MeasureResult, PowerResult, SynthResult, TimingResult, VerifyResult
+from ..core.results import (
+    EquivalenceResult,
+    MeasureResult,
+    PowerResult,
+    SeedsResult,
+    StrengthResult,
+    SynthResult,
+    TimingResult,
+    VerifyResult,
+    WaveResult,
+)
 
 
 def parse_verify(payload: dict[str, Any], *, expected_total: int) -> VerifyResult:
@@ -99,3 +109,29 @@ def parse_measure(payload: dict[str, Any]) -> MeasureResult:
 
 def parse_eqy(payload: dict[str, Any]) -> EquivalenceResult:
     return EquivalenceResult.model_validate(payload)
+
+
+def parse_seeds(payload: dict[str, Any], *, expected_total: int) -> SeedsResult:
+    """A seed counts as passed only when it ran the full case count from task.toml (same rule as verify)."""
+    result = SeedsResult.model_validate(payload)
+    seeds = [
+        run.model_copy(update={"ok": run.ok and run.total == expected_total and run.passed == expected_total})
+        for run in result.seeds
+    ]
+    return result.model_copy(update={"seeds": seeds})
+
+
+def parse_strength(payload: dict[str, Any]) -> StrengthResult:
+    return StrengthResult.model_validate(payload)
+
+
+def parse_wave(payload: dict[str, Any]) -> WaveResult:
+    """A wave whose rows disagree in length is dropped (status sim_error), never shown misaligned."""
+    result = WaveResult.model_validate(payload)
+    wave = result.wave
+    if wave is None or not wave.signals:
+        return result
+    lengths = {len(s.got) for s in wave.signals} | {len(s.expected) for s in wave.signals if s.expected is not None}
+    if len(lengths) != 1 or 0 in lengths:
+        return result.model_copy(update={"status": "sim_error", "wave": None, "message": "the waveform rows have different lengths"})
+    return result

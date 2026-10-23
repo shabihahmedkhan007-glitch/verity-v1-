@@ -9,7 +9,12 @@ import { useVerityStore } from "@/lib/store";
 const RECONNECT_WINDOW_MS = 30_000;
 const MAX_FAILED_RECONNECTS = 3;
 const CLOCK_STEP_MS = 250;
-const TRAILING_EVENTS_MS = 1000;
+/**
+ * After the run ends the stream stays open for events that follow the end (the sign-off checks run after the result shows,
+ * about 20 to 90 s). The server ends the stream 5 s after the last event, so the browser reconnects until the server answers
+ * 204 (nothing left); this is only the upper bound.
+ */
+const TRAILING_EVENTS_MS = 180_000;
 const TERMINAL = new Set(["done", "error", "cap_reached", "stopped"]);
 
 /**
@@ -32,10 +37,17 @@ export function useLiveRun(runId: string | null): void {
     let clockBaseT = useVerityStore.getState().snapshot.run.tMs;
     let clockBaseAt = performance.now();
     let finished = false;
+    let tail: number | undefined;
+    const endTail = () => {
+      window.clearTimeout(tail);
+      close();
+      useVerityStore.getState().setTailOpen(false);
+    };
 
     const close = openEventStream(runId, {
       onOpen() {
         failures = [];
+        if (finished) return; // a reconnect for the trailing events: the run itself has ended
         useVerityStore.getState().setConnection("open", null);
       },
       onEvent(e) {
@@ -44,18 +56,25 @@ export function useLiveRun(runId: string | null): void {
         clockBaseT = e.tMs;
         clockBaseAt = performance.now();
         st.ingestLive(e);
-        if (e.t === "run" && TERMINAL.has(e.phase)) {
+        if (e.t === "run" && TERMINAL.has(e.phase) && !finished) {
           finished = true;
-          // Trailing events at the same instant (a closing caption) may still be in flight; close shortly after.
-          window.setTimeout(close, TRAILING_EVENTS_MS);
+          // Events after the end (a closing caption, the sign-off sheet) may still come; the server ends the stream after them.
+          tail = window.setTimeout(endTail, TRAILING_EVENTS_MS);
           const after = useVerityStore.getState();
+          after.setTailOpen(true);
           after.setConnection("closed");
           after.setStatus("ended");
           after.setClock(e.tMs);
         }
       },
       onError(closed) {
-        if (finished) return;
+        // After the end the server may close the stream while the sign-off is still running (it waits only a few seconds
+        // after the last event). EventSource then reconnects with Last-Event-ID and receives the rest; the server answers
+        // 204 when nothing is left, and only that (or the TRAILING_EVENTS_MS bound) ends the tail.
+        if (finished) {
+          if (closed) endTail();
+          return;
+        }
         const now = Date.now();
         failures = failures.filter((t) => now - t < RECONNECT_WINDOW_MS).concat(now);
         if (closed || failures.length >= MAX_FAILED_RECONNECTS) {
@@ -77,7 +96,9 @@ export function useLiveRun(runId: string | null): void {
 
     return () => {
       window.clearInterval(clock);
+      window.clearTimeout(tail);
       close();
+      useVerityStore.getState().setTailOpen(false);
       const st = useVerityStore.getState();
       if (!finished && st.source === "live" && st.runId === runId) st.setConnection("closed");
     };
