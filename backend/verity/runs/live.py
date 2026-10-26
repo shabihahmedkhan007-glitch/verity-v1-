@@ -16,6 +16,7 @@ class LiveRun:
     timeout_reason: str | None = None
     shutting_down: bool = False
     finishing: bool = field(default=False)
+    resume: bool = False
 
     @property
     def run_id(self) -> str:

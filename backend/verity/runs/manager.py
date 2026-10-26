@@ -23,6 +23,7 @@ import uuid
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from ..ask import AgentService, AskService
 from ..config import AGENT_ROOT, Settings
@@ -53,6 +54,7 @@ from ..contracts import (
 )
 from ..core import captions as cap
 from ..core.budget import estimate_tokens, spend_owner
+from ..core.errors import StoreUnavailable
 from ..core.family import render_pack, validate_params
 from ..core.parse import ParsedIntent, build_system_prompt, final_verdict, live_families, parse_intent
 from ..core.types import (
@@ -240,7 +242,15 @@ class RunManager:
     async def list_my_runs(self, session_id: str, limit: int = 50) -> MyRunsResponse:
         """The runs this session started, newest first, each with its status here (None: the run is not on this server).
         A store that cannot be reached raises StoreUnavailable (the route answers 502)."""
-        rows = await self._threads.list_user_runs(spend_owner(session_id), max(1, min(limit, 50)))
+        runs = await self._runs_for_owner(spend_owner(session_id), limit)
+        return MyRunsResponse(runs=runs)
+
+    async def list_runs_for_owner(self, owner: str, limit: int = 50) -> list[MyRun]:
+        """Same as list_my_runs but for any owner string directly (admin use: looking at another user's runs)."""
+        return await self._runs_for_owner(owner, limit)
+
+    async def _runs_for_owner(self, owner: str, limit: int) -> list[MyRun]:
+        rows = await self._threads.list_user_runs(owner, max(1, min(limit, 50)))
         runs: list[MyRun] = []
         for row in rows:
             record = await self._store.get_run(row.run_id)
@@ -253,7 +263,106 @@ class RunManager:
                     status=record.status if record is not None else None,
                 )
             )
-        return MyRunsResponse(runs=runs)
+        return runs
+
+    async def get_credits(self, session_id: str) -> int:
+        try:
+            return await self._threads.get_credits(spend_owner(session_id), default=self._settings.auth.initial_credits)
+        except StoreUnavailable:
+            return await self._store.get_credits(spend_owner(session_id), default=self._settings.auth.initial_credits)
+
+    async def set_credits(
+        self, session_id: str, credits: int, email: str | None = None, role: str | None = None
+    ) -> None:
+        owner = session_id if (session_id.startswith("u:") or session_id.startswith("s:")) else spend_owner(session_id)
+        try:
+            await self._threads.set_credits(owner, credits, email=email, role=role)
+        except StoreUnavailable:
+            pass
+        await self._store.set_credits(owner, credits, email=email, role=role)
+
+    async def list_user_credits(self) -> list[dict[str, Any]]:
+        try:
+            return await self._threads.list_user_credits()
+        except StoreUnavailable:
+            return await self._store.list_user_credits()
+
+    async def resume_run(self, run_id: str, *, session_id: str) -> RunRecord:
+        run = await self._store.get_run(run_id)
+        if run is None:
+            raise NotFound(run_id)
+        if run.session_id != session_id:
+            raise Forbidden("this run belongs to another session")
+        if run.status in ACTIVE_STATUSES or run_id in self._live:
+            raise Conflict("The run is still active.")
+        if run.status != "stopped":
+            raise Conflict(f"Run cannot be resumed from status '{run.status}'.")
+
+        owner = spend_owner(session_id)
+        try:
+            credits = await self._threads.get_credits(owner, default=self._settings.auth.initial_credits)
+        except StoreUnavailable:
+            credits = await self._store.get_credits(owner, default=self._settings.auth.initial_credits)
+        if credits <= 0:
+            raise AdmissionDenied("credits_exhausted", "You have used all your run credits. Contact an admin to add more.")
+
+        per_session = sum(1 for live in self._live.values() if live.session_id == session_id)
+        if per_session >= self._settings.limits.concurrent_per_session:
+            raise AdmissionDenied("busy", "you already have a run in progress")
+        if self._sem.locked():
+            raise AdmissionDenied("busy", "all run slots are taken")
+        await self._sem.acquire()
+
+        try:
+            await self._threads.deduct_credit(owner, default=self._settings.auth.initial_credits)
+        except StoreUnavailable:
+            await self._store.deduct_credit(owner, default=self._settings.auth.initial_credits)
+
+        pack = self._packs.get(run.preset_id)
+        if pack is None:
+            raise NotFound(f"Preset {run.preset_id} not found")
+        limits = run.budget
+        ledger = RunLedger(limits, self._settings)
+        ctx = RunContext(
+            run_id=run_id,
+            session_id=session_id,
+            pack=pack,
+            priority=run.priority,
+            mode=run.mode,
+            settings=self._settings,
+            llm=RunLLM(self._provider, self._settings, ledger),
+            roles=self._roles,
+            tools=self._tools,
+            ledger=ledger,
+            sink=self._hub,
+            store=self._store,
+            outcome_key=run.preset_id,
+        )
+        live = LiveRun(ctx=ctx, resume=True)
+        self._live[run_id] = live
+
+        events = await self._store.events_after(run_id, 0)
+        last_seq = events[-1].seq if events else 0
+        last_t_ms = events[-1].t_ms if events else 0
+        started = time.monotonic() - (last_t_ms / 1000)
+        self._hub.open_run(
+            run_id,
+            started_monotonic=started,
+            ledger=ledger,
+            ctx=ctx,
+            last_seq=last_seq,
+            last_t_ms=last_t_ms,
+        )
+
+        await self._store.update_run(run_id, RunPatch(status="queued", error_reason=None))
+
+        live.task = asyncio.create_task(self._drive(live), name=f"verity-run-{run_id}")
+        live.ticker = asyncio.create_task(self._tick(live), name=f"verity-heartbeat-{run_id}")
+
+        updated = await self._store.get_run(run_id)
+        return updated or run
+
+
 
     async def stream(self, run_id: str, after_seq: int = 0) -> AsyncIterator[EventBase]:
         """Stored events with seq > after_seq, then live ones, no gap and no duplicate.
@@ -463,6 +572,12 @@ class RunManager:
         session = await self._session_spend(session_id)
         if session.exhausted or not session.can_admit(self._admission_cap(limits.max_usd)):
             raise AdmissionDenied("session_budget_exhausted", "this session's daily spend limit is used up")
+        try:
+            credits = await self._threads.get_credits(spend_owner(session_id), default=self._settings.auth.initial_credits)
+        except StoreUnavailable:
+            credits = await self._store.get_credits(spend_owner(session_id), default=self._settings.auth.initial_credits)
+        if credits <= 0:
+            raise AdmissionDenied("credits_exhausted", "You have used all your run credits. Contact an admin to add more.")
         references = await self._references(
             preset_id, params_full, priority, research_id, session_id, pack.sha256
         )
@@ -476,6 +591,12 @@ class RunManager:
         await self._sem.acquire()  # does not suspend: the semaphore is not locked
 
         run_id = "r_" + uuid.uuid4().hex
+        try:
+            await self._threads.deduct_credit(spend_owner(session_id), default=self._settings.auth.initial_credits)
+        except StoreUnavailable:
+            await self._store.deduct_credit(spend_owner(session_id), default=self._settings.auth.initial_credits)
+
+
         ledger = RunLedger(limits, self._settings)
         ctx = RunContext(
             run_id=run_id,
@@ -703,7 +824,7 @@ class RunManager:
             now = _utcnow()
             await self._store.update_run(ctx.run_id, RunPatch(status="running", started_at=now, heartbeat_at=now))
             ctx.beat()
-            await run_orchestrator(ctx)
+            await run_orchestrator(ctx, resume=live.resume)
             outcome = ctx.outcome
             if outcome is None:
                 reason = "the run ended without a result"

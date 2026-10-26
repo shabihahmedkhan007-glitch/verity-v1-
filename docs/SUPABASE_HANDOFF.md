@@ -2,7 +2,7 @@
 
 For the teammate who switches Supabase on. Read this top to bottom once, then follow "Setup steps".
 
-Status on 2026-10-23: **built, tested against mocks only, never run against a real Supabase project.** On this machine the settings loader reports no Supabase URL and no secret key (checked with the loader, booleans only), so the backend still uses SQLite and the access code. Decisions: D47 and D48 in `docs/DECISIONS.md`. Requirements: `docs/PRD.md` section 5.7 (SB1 to SB4). Exact interfaces: `backend/CONTRACTS.md` sections 9 to 11. Short version of the steps: `backend/README.md`, "Accounts and saved chats (Supabase)".
+Status on 2026-10-26: **live.** Project "verity" is created and reachable; `backend/.env` has `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY`; `frontend/.env.local` has the public URL and publishable key. `supadmin@verity.com` exists (role `super_admin`); the chats and run-list store picked Supabase (`chats: supabase` in the startup log). Decisions: D47, D48, D50, D51 in `docs/DECISIONS.md`. Requirements: `docs/PRD.md` section 5.7 (SB1 to SB4). Exact interfaces: `backend/CONTRACTS.md` sections 9 to 11. Short version of the steps: `backend/README.md`, "Accounts and saved chats (Supabase)".
 
 ## What Supabase does here
 
@@ -30,7 +30,12 @@ Status on 2026-10-23: **built, tested against mocks only, never run against a re
   - `GET /runs/mine`: the caller's own runs, newest first, at most 50: `{id, title, threadId, createdAt, status}`.
   - `POST /runs/{id}/stream-token`: a fresh stream token for a run this account started, so a second device can watch a run that is still going.
 - **Health.** `GET /health` lists `accounts` in `features` when `SUPABASE_URL` is set.
-- **Schema.** `backend/supabase/schema.sql`: tables `threads`, `thread_turns` and `user_runs`, row level security on, no policies, no grants for `anon` or `authenticated`, full grants for `service_role`. Safe to run again.
+- **Credits and Admin Onboarding.** (D50)
+  - `user_credits` table tracks credits per owner (`owner TEXT PRIMARY KEY, credits INTEGER DEFAULT 3`).
+  - Every account starts with 3 run credits. Each run deducts 1 credit.
+  - Onboarding is restricted to admins (default `admin@verity.com`, configured via `admin_emails`).
+  - Admins can add users directly from the bench sidebar modal dialog (`POST /admin/users`), which creates auto-confirmed accounts in Supabase GoTrue Auth and seeds their starting credits.
+- **Schema.** `backend/supabase/schema.sql`: tables `threads`, `thread_turns`, `user_runs`, and `user_credits`, row level security on, no policies, no grants for `anon` or `authenticated`, full grants for `service_role`. Safe to run again.
 - **Production guard.** With `VERITY_ENV=production`, `SUPABASE_URL` must be https and its host must end with `.supabase.co`. Production accepts Supabase sign-in or access code hashes (either is enough). `VERITY_THREADS__STORE=supabase` without the URL and the secret key is refused.
 
 ### Frontend

@@ -63,3 +63,54 @@ class Cand:
         self.status = "rejected"
         self.fitness = None
         self.is_elite = False
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "round": self.round,
+            "parent_id": self.parent_id,
+            "created_by": self.created_by,
+            "reason": self.reason,
+            "rtl": self.rtl,
+            "attempts": [a.model_dump(mode="json") for a in self.attempts],
+            "verification": self.verification.model_dump(mode="json") if self.verification else None,
+            "ppa": self.ppa.model_dump(mode="json") if self.ppa else None,
+            "fitness": self.fitness.model_dump(mode="json") if self.fitness else None,
+            "status": self.status,
+            "fix_count": self.fix_count,
+            "is_baseline": self.is_baseline,
+            "is_elite": self.is_elite,
+            "eqy": self.eqy.model_dump(mode="json") if self.eqy else None,
+            "auto_fixes": self.auto_fixes,
+            "copy_of": self.copy_of,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Cand":
+        cand = cls(
+            id=d["id"],
+            label=d["label"],
+            round=d["round"],
+            parent_id=d.get("parent_id"),
+            created_by=d["created_by"],
+            reason=d.get("reason", ""),
+            rtl=d.get("rtl", ""),
+            attempts=[Attempt.model_validate(a) for a in d.get("attempts", [])],
+            verification=Verification.model_validate(d["verification"]) if d.get("verification") else None,
+            ppa=PPA.model_validate(d["ppa"]) if d.get("ppa") else None,
+            fitness=Fitness.model_validate(d["fitness"]) if d.get("fitness") else None,
+            status=d.get("status", "drafting"),
+            fix_count=d.get("fix_count", 0),
+            is_baseline=d.get("is_baseline", False),
+            is_elite=d.get("is_elite", False),
+            eqy=Equivalence.model_validate(d["eqy"]) if d.get("eqy") else None,
+            auto_fixes=d.get("auto_fixes", 0),
+            copy_of=d.get("copy_of"),
+        )
+        if cand.rtl:
+            try:
+                cand.rtl_obj = Rtl(cand.rtl)
+            except Exception:
+                pass
+        return cand

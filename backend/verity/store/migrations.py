@@ -324,4 +324,30 @@ MIGRATIONS: tuple[str, ...] = (
     PRAGMA user_version = 7;
     COMMIT;
     """,
+    # ---- 8: user credits (runs allowed per account, default 3) ----
+    # Tracks remaining run credits for an owner (u:<user id> or session id).
+    """
+    BEGIN;
+
+    CREATE TABLE IF NOT EXISTS user_credits (
+        owner       TEXT NOT NULL PRIMARY KEY,
+        credits     INTEGER NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+
+    PRAGMA user_version = 8;
+    COMMIT;
+    """,
+    # ---- 9: user credits email and role (super admin tracking) ----
+    """
+    BEGIN;
+
+    ALTER TABLE user_credits ADD COLUMN email TEXT;
+    ALTER TABLE user_credits ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
+
+    PRAGMA user_version = 9;
+    COMMIT;
+    """,
 )
+

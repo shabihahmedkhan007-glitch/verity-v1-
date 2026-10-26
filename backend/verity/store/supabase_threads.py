@@ -368,3 +368,97 @@ class SupabaseThreadStore:
         except (KeyError, TypeError, ValueError):
             log.warning("Supabase user_runs answered a row of an unexpected shape")
             raise StoreUnavailable from None
+
+    # ---------- user credits ----------
+    async def get_credits(self, owner: str, default: int = 3) -> int:
+        rows = await self._call(
+            "GET",
+            "user_credits",
+            params={"owner": _eq(owner), "select": "credits"},
+        )
+        dicts = _dicts(rows)
+        if dicts:
+            try:
+                return int(dicts[0]["credits"])
+            except (KeyError, TypeError, ValueError):
+                pass
+        now = _now()
+        await self._call(
+            "POST",
+            "user_credits",
+            params={"on_conflict": "owner"},
+            body={"owner": owner, "credits": default, "created_at": now, "updated_at": now},
+            prefer="resolution=ignore-duplicates,return=minimal",
+        )
+        rows2 = await self._call(
+            "GET",
+            "user_credits",
+            params={"owner": _eq(owner), "select": "credits"},
+        )
+        dicts2 = _dicts(rows2)
+        if dicts2:
+            try:
+                return int(dicts2[0]["credits"])
+            except (KeyError, TypeError, ValueError):
+                pass
+        return default
+
+    async def deduct_credit(self, owner: str, default: int = 3) -> int:
+        cur = await self.get_credits(owner, default)
+        if cur <= 0:
+            return -1
+        new_credits = cur - 1
+        now = _now()
+        await self._call(
+            "PATCH",
+            "user_credits",
+            params={"owner": _eq(owner)},
+            body={"credits": new_credits, "updated_at": now},
+            prefer="return=minimal",
+        )
+        return new_credits
+
+    async def set_credits(
+        self, owner: str, credits: int, email: str | None = None, role: str | None = None
+    ) -> None:
+        now = _now()
+        body: dict[str, Any] = {
+            "owner": owner,
+            "credits": credits,
+            "created_at": now,
+            "updated_at": now,
+            "role": role or "user",
+        }
+        if email is not None:
+            body["email"] = email
+        await self._call(
+            "POST",
+            "user_credits",
+            params={"on_conflict": "owner"},
+            body=body,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+
+    async def list_user_credits(self) -> list[dict[str, Any]]:
+        rows = await self._call(
+            "GET",
+            "user_credits",
+            params={"select": "owner,credits,email,role,created_at,updated_at", "order": "created_at.desc"},
+        )
+        dicts = _dicts(rows)
+        out: list[dict[str, Any]] = []
+        for d in dicts:
+            out.append(
+                {
+                    "owner": str(d.get("owner", "")),
+                    "credits": int(d.get("credits", 0)),
+                    "email": d.get("email"),
+                    "role": str(d.get("role") or "user"),
+                    "runs_count": 0,
+                    "total_spent_usd": 0.0,
+                    "created_at": d.get("created_at"),
+                    "updated_at": d.get("updated_at"),
+                }
+            )
+        return out
+

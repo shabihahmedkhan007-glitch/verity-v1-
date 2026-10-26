@@ -13,6 +13,7 @@ from ..core import captions as cap
 from ..core.fitness import result_key
 from ..core.llm_types import TriedVersion
 from ..core.rtl import Rtl
+from ..core.errors import CreditsExhausted
 from ..core.types import (
     RunContext,
     BudgetExhausted,
@@ -45,6 +46,9 @@ async def evolve_stage(st: RunState) -> None:
         await _skip_evolve(st, "budget reached")
         return
 
+    await st.check_credits()
+    await st.save_checkpoint("evolve", 1)
+
     strategies = list(ev.round1_strategies)[: ev.round1_children]
     ran = await _round(st, 1, [(base.id, s) for s in strategies], from_elites=False)
     if not ran:
@@ -64,6 +68,9 @@ async def evolve_stage(st: RunState) -> None:
         return
     if not ctx.ledger.can_count("round") or not ctx.ledger.can_count("candidate"):
         return
+
+    await st.check_credits()
+    await st.save_checkpoint("evolve", 2)
 
     elites = st.current_elites()
     if not elites:

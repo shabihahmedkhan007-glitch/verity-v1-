@@ -1,4 +1,4 @@
-import type { Candidate, Chapter, CandidateStatus, CreatedBy, Credits, NodeKind, PlanBlock, PlanDiff,
+import type { Candidate, CandidateStatus, CreatedBy, Credits, NodeKind, PlanBlock, PlanDiff,
   PPA, Priority, RunMode, RunPhase, Spec, StageId, StageStatus } from "./types";
 
 export type VisualStatus = "idle" | "queued" | "running" | "pass" | "fail" | "warn" | "rejected" | "locked" | "done";

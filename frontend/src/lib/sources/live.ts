@@ -21,6 +21,7 @@ export type StartFailureReason =
   | "busy"
   | "budget_exhausted"
   | "session_budget_exhausted"
+  | "credits_exhausted"
   | "maintenance"
   | "rate_limited"
   | "unauthorized"
@@ -36,12 +37,20 @@ const HEALTH_TIMEOUT_MS = 3000;
 /** Said when this session's spend for the UTC day is used up (429 session_budget_exhausted). No figure: the UI never shows a limit. */
 const SESSION_SPENT = "You have reached today's spend limit for this session. Try again tomorrow.";
 const DAY_SPENT = "Today's live budget is used up.";
+const CREDITS_SPENT = "You have used all your run credits. Contact an admin to add more.";
 
 /** The spend-limit sentence for a 429 body's reason, or null for any other reason. */
 function spendLimitMessage(body: unknown): string | null {
   const reason = typeof body === "object" && body !== null ? (body as { reason?: unknown }).reason : undefined;
-  return reason === "budget_exhausted" ? DAY_SPENT : reason === "session_budget_exhausted" ? SESSION_SPENT : null;
+  return reason === "budget_exhausted"
+    ? DAY_SPENT
+    : reason === "session_budget_exhausted"
+    ? SESSION_SPENT
+    : reason === "credits_exhausted"
+    ? CREDITS_SPENT
+    : null;
 }
+
 
 // ---------- session (access code) ----------
 // The session token and the per-run stream token live in sessionStorage only: gone when the tab closes, never in the bundle.
@@ -221,6 +230,67 @@ export async function createSession(accessCode: string): Promise<SessionResult> 
   }
 }
 
+export interface AccountProfile {
+  email: string | null;
+  role: string;
+  credits: number;
+  isAdmin: boolean;
+  anonymous: boolean;
+}
+
+export const PROFILE_EVENT = "verity:profile";
+
+export function dispatchProfileChange(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PROFILE_EVENT));
+  }
+}
+
+/** GET /auth/me. Fetches the current session's profile, credits, and admin role. */
+export async function getAccountProfile(): Promise<AccountProfile | null> {
+  const url = liveUrl("/auth/me");
+  if (!url) return null;
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(url, { headers: { ...headers, Accept: "application/json" } });
+    if (!res.ok) return null;
+    return (await res.json()) as AccountProfile;
+  } catch {
+    return null;
+  }
+}
+
+export type AdminCreateUserResult =
+  | { ok: true; email: string; credits: number; userId: string }
+  | { ok: false; error: string };
+
+/** POST /admin/users. Admin creates a new user account with initial credits. */
+export async function createAdminUser(email: string, password: string, credits: number = 3): Promise<AdminCreateUserResult> {
+  const url = liveUrl("/admin/users");
+  if (!url) return { ok: false, error: "The agent is offline." };
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email, password, credits }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; email?: string; credits?: number; userId?: string };
+    if (!res.ok) {
+      return { ok: false, error: typeof body.error === "string" ? body.error : "Could not create user." };
+    }
+    return {
+      ok: true,
+      email: body.email ?? email,
+      credits: typeof body.credits === "number" ? body.credits : credits,
+      userId: body.userId ?? "",
+    };
+  } catch {
+    return { ok: false, error: "Could not reach the server." };
+  }
+}
+
+
 // ---------- health, runs, steering ----------
 
 /** GET /health (no auth). Never throws: any failure is reported as the "error" availability state. */
@@ -279,7 +349,9 @@ export async function postRun(
       if (typeof body.runId === "string" && body.runId) {
         const streamToken = typeof body.streamToken === "string" && body.streamToken ? body.streamToken : null;
         if (streamToken) storage()?.setItem(STREAM_KEY_PREFIX + body.runId, streamToken);
+        dispatchProfileChange();
         return { runId: body.runId, capUsd: typeof body.capUsd === "number" ? body.capUsd : null, streamToken };
+
       }
       return { error: "The agent did not respond." };
     }
@@ -292,6 +364,7 @@ export async function postRun(
       const reason: StartFailureReason =
         body.reason === "budget_exhausted" ||
         body.reason === "session_budget_exhausted" ||
+        body.reason === "credits_exhausted" ||
         body.reason === "maintenance" ||
         body.reason === "busy" ||
         body.reason === "rate_limited"
@@ -321,6 +394,48 @@ export async function postRun(
     return { error: "The agent did not respond." };
   } catch {
     return { error: "The agent did not respond." };
+  }
+}
+
+export type ResumeRunResult = { runId: string; status: string } | { error: string; reason?: StartFailureReason };
+
+/**
+ * POST /runs/{id}/resume (owner only): continues a run stopped at a checkpoint (credits exhausted, a network
+ * problem, or a sandbox problem). Stores the fresh stream token like `postRun`, so navigating to
+ * `/bench?run=<id>` right after picks the live stream back up.
+ */
+export async function resumeRun(runId: string): Promise<ResumeRunResult> {
+  const url = liveUrl(`/runs/${encodeURIComponent(runId)}/resume`);
+  if (!url) return { error: "Live runs are offline right now." };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json", ...(await authHeaders()) },
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { runId?: string; status?: string; streamToken?: string };
+      const streamToken = typeof body.streamToken === "string" && body.streamToken ? body.streamToken : null;
+      if (streamToken) storage()?.setItem(STREAM_KEY_PREFIX + runId, streamToken);
+      dispatchProfileChange();
+      return { runId: typeof body.runId === "string" && body.runId ? body.runId : runId, status: body.status ?? "queued" };
+    }
+    if (res.status === 401) {
+      clearSession();
+      return { error: "Sign in to resume this run.", reason: "unauthorized" };
+    }
+    if (res.status === 403) return { error: "This run belongs to another account." };
+    if (res.status === 404) return { error: "This run is no longer on the server." };
+    if (res.status === 409) return { error: "This run cannot be resumed right now." };
+    if (res.status === 429) {
+      const body = (await res.json().catch(() => ({}))) as { reason?: string };
+      if (body.reason === "credits_exhausted") {
+        return { error: "You have used all your run credits. Contact an admin to add more.", reason: "credits_exhausted" };
+      }
+      return { error: "Another live run is in progress.", reason: "busy" };
+    }
+    return { error: "The agent did not respond." };
+  } catch {
+    return { error: "Could not reach the server." };
   }
 }
 

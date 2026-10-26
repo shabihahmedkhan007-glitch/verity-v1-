@@ -91,12 +91,17 @@ class ArtifactFiles:
             raise ValueError("artifact path escapes the run directory")
         return target
 
-    def write_run_file(self, run_id: str, relpath: str, data: bytes) -> tuple[str, Path]:
-        """Create data/runs/<run_id>/<relpath>. An existing path with different content raises FileExistsError;
-        identical content is accepted (idempotent retry)."""
+    def write_run_file(self, run_id: str, relpath: str, data: bytes, *, overwrite: bool = False) -> tuple[str, Path]:
+        """Create data/runs/<run_id>/<relpath>. An existing path with different content raises FileExistsError
+        unless overwrite is True; identical content is accepted (idempotent retry)."""
         target = self._run_path(run_id, relpath)
         sha, blob = self.put_blob(data)
         target.parent.mkdir(parents=True, exist_ok=True)
+        if overwrite and target.exists():
+            tmp = target.with_suffix(".tmp")
+            tmp.write_bytes(data)
+            tmp.replace(target)
+            return sha, target
         if target.exists():
             self._require_same(target, sha, run_id, relpath)
             return sha, target

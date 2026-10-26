@@ -17,7 +17,19 @@ function startedAt(ms: number): string {
  * card's bottom so footers line up across a row). Everything past the name comes from the server's
  * run data; a run the server did not return says so instead of leaving gaps.
  */
-export function RunCard({ run, loading }: { run: WorkRun; loading: boolean }) {
+export function RunCard({
+  run,
+  loading,
+  resuming = false,
+  onResume,
+}: {
+  run: WorkRun;
+  loading: boolean;
+  /** True while this card's own resume call is in flight. */
+  resuming?: boolean;
+  /** Present only when the run can be resumed (status "stopped"): continues it from its checkpoint. */
+  onResume?: (id: string) => void;
+}) {
   const outcome = run.server?.outcome;
   const won = winnerWords(run);
   const keptV1 = run.server?.winner?.label === "v1";
@@ -44,6 +56,16 @@ export function RunCard({ run, loading }: { run: WorkRun; loading: boolean }) {
           </span>
         </p>
       </div>
+      {run.server?.status === "stopped" && onResume ? (
+        <button
+          type="button"
+          className="btn sm"
+          disabled={resuming}
+          onClick={() => onResume(run.id)}
+        >
+          {resuming ? "Resuming..." : "Resume"}
+        </button>
+      ) : null}
       {loading ? (
         <p className="w-card-d" role="status">
           Loading results

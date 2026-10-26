@@ -335,9 +335,9 @@ class Store(Protocol):
         """data/blobs/<sha[0:2]>/<sha>. Idempotent for identical content."""
         ...
 
-    async def write_run_file(self, run_id: str, relpath: str, data: bytes, mime: str) -> ArtifactRef:
+    async def write_run_file(self, run_id: str, relpath: str, data: bytes, mime: str, *, overwrite: bool = False) -> ArtifactRef:
         """data/runs/<run_id>/<relpath>. relpath must match ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ with no '..'.
-        Writing an existing path with different content raises FileExistsError."""
+        Writing an existing path with different content raises FileExistsError unless overwrite is True."""
         ...
 
     async def read_run_file(self, run_id: str, relpath: str) -> bytes | None: ...
@@ -456,6 +456,23 @@ class ThreadStore(Protocol):
         """The runs this owner started, newest first."""
         ...
 
+    # ---- user credits ----
+    async def get_credits(self, owner: str, default: int = 3) -> int:
+        """Remaining run credits for this owner (auto-seeded with default if not found)."""
+        ...
+
+    async def deduct_credit(self, owner: str, default: int = 3) -> int:
+        """Deduct 1 credit for this owner. Returns remaining credits. Returns -1 if 0 credits."""
+        ...
+
+    async def set_credits(self, owner: str, credits: int, email: str | None = None, role: str | None = None) -> None:
+        """Set credits for this owner."""
+        ...
+
+    async def list_user_credits(self) -> list[dict[str, Any]]:
+        """List all user credits with usage info."""
+        ...
+
 
 # ======================================================================
 # Run service: what the API layer (E) calls on the run manager (D)
@@ -553,6 +570,22 @@ class RunService(Protocol):
 
     async def list_my_runs(self, session_id: str, limit: int = 50) -> MyRunsResponse:
         """GET /runs/mine: the runs this session started (a signed-in user's, on any device), newest first."""
+        ...
+
+    async def resume_run(self, run_id: str, *, session_id: str) -> RunRecord:
+        """POST /runs/{id}/resume: Resume an active run that stopped at a checkpoint (e.g. credits exhausted)."""
+        ...
+
+    async def get_credits(self, session_id: str) -> int:
+        """Remaining run credits for this session (owner)."""
+        ...
+
+    async def set_credits(self, session_id: str, credits: int, email: str | None = None, role: str | None = None) -> None:
+        """Set run credits for this session (owner)."""
+        ...
+
+    async def list_user_credits(self) -> list[dict[str, Any]]:
+        """List all user credits and usage info for admin review."""
         ...
 
 

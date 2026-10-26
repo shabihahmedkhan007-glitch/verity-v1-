@@ -22,6 +22,7 @@ _ADMISSION_TEXT = {
     "budget_exhausted": "Live runs are paused: the daily budget is used up.",
     # No dollar figure in the text: the UI shows what was spent, never the limit.
     "session_budget_exhausted": "You have reached today's spend limit for this session. Try again tomorrow.",
+    "credits_exhausted": "You have used all your run credits. Contact an admin to add more.",
     "maintenance": "Live runs are offline for maintenance.",
     "rate_limited": "Too many requests. Try again shortly.",
     "sandbox_down": cap.DOCKER_DOWN,

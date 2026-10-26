@@ -40,6 +40,10 @@ class RunStopped(VerityError):
     """Raised by RunContext.check_stop() when the user pressed Stop."""
 
 
+class CreditsExhausted(VerityError):
+    """Raised when an active run detects that user credits are exhausted."""
+
+
 class FeasibilityRejected(VerityError):
     """The deterministic feasibility gate rejected the plan (ARCHITECTURE 10.2)."""
 

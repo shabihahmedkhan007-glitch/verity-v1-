@@ -78,7 +78,7 @@ async def test_a_version_2_database_migrates_to_3_and_keeps_its_runs(tmp_path) -
         await store.add_serper_credits("2026-10-01", 3)
         assert await store.serper_credits("2026-10-01") == 3 and await store.daily_spend("2026-10-01") == 1.5
         row = await store._fetchone("PRAGMA user_version")
-        assert row is not None and row[0] == len(MIGRATIONS) == 7  # 3 added research, 4 the Tavily credit columns, 5 the per-session daily spend, 6 the threads, 7 the run list
+        assert row is not None and row[0] == len(MIGRATIONS) == 9  # 3 research, 4 Tavily, 5 per-session spend, 6 threads, 7 run list, 8 user_credits, 9 email/role
         tables = {r[0] for r in await store._fetchall("SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert {"research", "source", "research_source", "research_grant", "run_outcome", "strategy_outcome"} <= tables
         columns = {r[1] for r in await store._fetchall("PRAGMA table_info(research)")}

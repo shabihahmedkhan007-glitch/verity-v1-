@@ -564,8 +564,8 @@ class SqliteStore:
         )
         return ArtifactRef(sha256=sha, path=str(path), size_bytes=len(data), mime=mime)
 
-    async def write_run_file(self, run_id: str, relpath: str, data: bytes, mime: str) -> ArtifactRef:
-        sha, path = await asyncio.to_thread(self._files.write_run_file, run_id, relpath, data)
+    async def write_run_file(self, run_id: str, relpath: str, data: bytes, mime: str, *, overwrite: bool = False) -> ArtifactRef:
+        sha, path = await asyncio.to_thread(self._files.write_run_file, run_id, relpath, data, overwrite=overwrite)
         await self._write(
             "INSERT OR IGNORE INTO artifacts (sha256, path, bytes, mime, created_at) VALUES (?, ?, ?, ?, ?)",
             (sha, str(self._files.blob_path(sha)), len(data), mime, _now_iso()),
@@ -1068,3 +1068,128 @@ class SqliteStore:
             UserRunRow(run_id=r["run_id"], title=r["title"], thread_id=r["thread_id"], created_at=_dt(r["created_at"]))
             for r in rows
         ]
+
+    # ---------- user credits (migration 8; core.protocols.ThreadStore) ----------
+    async def get_credits(self, owner: str, default: int = 3) -> int:
+        row = await self._fetchone("SELECT credits FROM user_credits WHERE owner = ?", (owner,))
+        if row is not None:
+            return int(row["credits"])
+        now = _now_iso()
+        await self._write(
+            "INSERT OR IGNORE INTO user_credits (owner, credits, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (owner, default, now, now),
+        )
+        row = await self._fetchone("SELECT credits FROM user_credits WHERE owner = ?", (owner,))
+        return int(row["credits"]) if row is not None else default
+
+    async def deduct_credit(self, owner: str, default: int = 3) -> int:
+        now = _now_iso()
+        db = self._conn()
+        async with self._lock:
+            try:
+                async with db.execute("SELECT credits FROM user_credits WHERE owner = ?", (owner,)) as cur:
+                    row = await cur.fetchone()
+                if row is None:
+                    await db.execute(
+                        "INSERT INTO user_credits (owner, credits, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                        (owner, default, now, now),
+                    )
+                    credits = default
+                else:
+                    credits = int(row[0])
+                if credits <= 0:
+                    await db.commit()
+                    return -1
+                new_credits = credits - 1
+                await db.execute(
+                    "UPDATE user_credits SET credits = ?, updated_at = ? WHERE owner = ?",
+                    (new_credits, now, owner),
+                )
+                await db.commit()
+                return new_credits
+            except BaseException:
+                await db.rollback()
+                raise
+
+    async def set_credits(
+        self, owner: str, credits: int, email: str | None = None, role: str | None = None
+    ) -> None:
+        now = _now_iso()
+        db = self._conn()
+        async with self._lock:
+            try:
+                async with db.execute("SELECT owner, email, role FROM user_credits WHERE owner = ?", (owner,)) as cur:
+                    row = await cur.fetchone()
+                if row is None:
+                    await db.execute(
+                        """
+                        INSERT INTO user_credits (owner, credits, email, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (owner, credits, email, role or "user", now, now),
+                    )
+                else:
+                    new_email = email if email is not None else row[1]
+                    new_role = role if role is not None else (row[2] or "user")
+                    await db.execute(
+                        """
+                        UPDATE user_credits
+                        SET credits = ?, email = ?, role = ?, updated_at = ?
+                        WHERE owner = ?
+                        """,
+                        (credits, new_email, new_role, now, owner),
+                    )
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    async def list_user_credits(self) -> list[dict[str, Any]]:
+        rows = await self._fetchall(
+            """
+            SELECT owner, credits, email, role, created_at, updated_at
+            FROM user_credits
+            ORDER BY created_at DESC
+            """
+        )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            owner = r["owner"]
+            run_count_row = await self._fetchone(
+                """
+                SELECT COUNT(DISTINCT run_id) AS cnt FROM (
+                    SELECT run_id FROM user_runs WHERE owner = ?
+                    UNION
+                    SELECT id AS run_id FROM runs WHERE session_id = ?
+                )
+                """,
+                (owner, owner),
+            )
+            runs_count = int(run_count_row["cnt"]) if run_count_row is not None else 0
+
+            spend_row = await self._fetchone(
+                """
+                SELECT COALESCE(SUM(cost_usd), 0.0) AS total_spend FROM run_outcome WHERE run_id IN (
+                    SELECT run_id FROM user_runs WHERE owner = ?
+                    UNION
+                    SELECT id AS run_id FROM runs WHERE session_id = ?
+                )
+                """,
+                (owner, owner),
+            )
+            total_spent_usd = float(spend_row["total_spend"]) if spend_row is not None else 0.0
+
+            out.append(
+                {
+                    "owner": owner,
+                    "credits": int(r["credits"]),
+                    "email": r["email"],
+                    "role": r["role"] or "user",
+                    "runs_count": runs_count,
+                    "total_spent_usd": round(total_spent_usd, 4),
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                }
+            )
+        return out
+

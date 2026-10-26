@@ -91,6 +91,16 @@ class _KeysUnavailable(Exception):
     """The project's signing keys could not be read (network error, bad status or body)."""
 
 
+class AdminCreateUserError(Exception):
+    """Raised when admin creation of a user fails."""
+
+    def __init__(self, status: int, message: str) -> None:
+        self.status = status
+        self.message = message
+        super().__init__(message)
+
+
+
 def _jwk_algorithm(jwk: dict[str, Any]) -> str | None:
     """ES256 for an EC P-256 key, RS256 for an RSA key; None for anything else (or a key that names another algorithm)."""
     if jwk.get("kty") == "EC" and jwk.get("crv") == "P-256":
@@ -315,6 +325,51 @@ class AuthService:
                     self._legacy.clear()
             self._legacy[digest] = (now + LEGACY_TTL_S, principal)
         return principal
+
+    # ---------- Admin user management ----------
+    async def admin_create_user(self, email: str, password: str) -> str:
+        """Create a user in Supabase auth with email and password, auto-confirmed (no verification email).
+        Returns the user uuid string."""
+        if not self.supabase_enabled or not self._settings.has_supabase_secret():
+            # In development or without Supabase, return a deterministic UUID
+            uid = hashlib.sha256(f"local:{email}".encode("utf-8")).hexdigest()[:32]
+            return f"{uid[:8]}-{uid[8:12]}-{uid[12:16]}-{uid[16:20]}-{uid[20:32]}"
+
+        secret = self._settings.supabase.secret_key.get_secret_value()  # type: ignore[union-attr]
+        try:
+            response = await self._client().post(
+                self._supabase_url("/auth/v1/admin/users"),
+                headers={
+                    "apikey": secret,
+                    "Authorization": f"Bearer {secret}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "email": email,
+                    "password": password,
+                    "email_confirm": True,
+                },
+            )
+        except httpx.HTTPError as exc:
+            log.warning("Supabase admin user creation network failure: %s", type(exc).__name__)
+            raise AdminCreateUserError(502, "The sign-in service could not be reached. Try again shortly.") from None
+
+        if response.status_code in (200, 201):
+            try:
+                body = response.json()
+            except ValueError:
+                raise AdminCreateUserError(502, "Invalid response from the sign-in service.") from None
+            uid = body.get("id") if isinstance(body, dict) else None
+            if not isinstance(uid, str) or not uid:
+                raise AdminCreateUserError(502, "Sign-in service returned no user id.")
+            return uid
+
+        if response.status_code == 422:
+            raise AdminCreateUserError(422, "An account with that email already exists.")
+
+        log.warning("Supabase admin user creation returned status %s", response.status_code)
+        raise AdminCreateUserError(response.status_code, "Could not create user account.")
+
 
     # ---------- stream tokens ----------
     def issue_stream_token(self, run_id: str, sid: str) -> str:

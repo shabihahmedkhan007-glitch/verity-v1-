@@ -40,9 +40,9 @@ async def test_a_version_5_database_migrates_to_the_latest_and_keeps_its_data(tm
     store = SqliteStore(settings)
     await store.open()
     try:
-        assert len(MIGRATIONS) == 7  # 6 added the threads, 7 the run list and the stored reply
+        assert len(MIGRATIONS) == 9  # 6 threads, 7 run list, 8 user_credits, 9 user_credits email/role
         row = await store._fetchone("PRAGMA user_version")
-        assert row is not None and row[0] == 7
+        assert row is not None and row[0] == 9
         assert await store.session_spend("s1", "2026-10-01") == 0.5
         tables = {r[0] for r in await store._fetchall("SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert {"threads", "thread_turns"} <= tables
@@ -169,7 +169,7 @@ async def test_a_version_6_database_migrates_to_7_and_keeps_its_threads(tmp_path
     await store.open()
     try:
         row = await store._fetchone("PRAGMA user_version")
-        assert row is not None and row[0] == 7
+        assert row is not None and row[0] == 8
         columns = {r[1]: r for r in await store._fetchall("PRAGMA table_info(user_runs)")}
         assert list(columns) == ["owner", "run_id", "thread_id", "title", "created_at"]
         assert [r[1] for r in await store._fetchall("PRAGMA table_info(thread_turns)")][-2:] == ["created_at", "reply_json"]
@@ -177,6 +177,31 @@ async def test_a_version_6_database_migrates_to_7_and_keeps_its_threads(tmp_path
         assert old is not None and [(t.seq, t.text, t.reply) for t in old.turns] == [(2, "old", None)]  # an older row has no reply
         await store.add_user_run("o1", "r_1", TID, "Adder")
         assert [r.run_id for r in await store.list_user_runs("o1")] == ["r_1"]
+    finally:
+        await store.close()
+
+
+async def test_a_version_7_database_migrates_to_8_and_gets_user_credits(tmp_path) -> None:
+    settings = make_settings(tmp_path / "data")
+    settings.data_dir.mkdir(parents=True)
+    db = sqlite3.connect(settings.data_dir / "verity.db")
+    for script in MIGRATIONS[:7]:
+        db.executescript(script)
+    db.commit()
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+    db.close()
+
+    store = SqliteStore(settings)
+    await store.open()
+    try:
+        row = await store._fetchone("PRAGMA user_version")
+        assert row is not None and row[0] == 8
+        columns = {r[1]: r for r in await store._fetchall("PRAGMA table_info(user_credits)")}
+        assert list(columns) == ["owner", "credits", "created_at", "updated_at"]
+        assert await store.get_credits("user_a") == 3
+        assert await store.deduct_credit("user_a") == 2
+        await store.set_credits("user_a", 10)
+        assert await store.get_credits("user_a") == 10
     finally:
         await store.close()
     again = SqliteStore(settings)  # re-opening runs nothing new

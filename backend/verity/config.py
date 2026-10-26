@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -210,6 +210,27 @@ class AuthConfig(BaseModel):
     required: bool = False
     session_ttl_s: int = 43_200
     stream_ttl_s: int = 1_800
+    admin_emails: list[str] = Field(default_factory=lambda: ["admin@verity.com"])
+    super_admin_emails: list[str] = Field(default_factory=lambda: ["supadmin@verity.com"])
+    initial_credits: int = 3
+
+    @field_validator("admin_emails", mode="before")
+    @classmethod
+    def _parse_admin_emails(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [x.strip().lower() for x in value.split(",") if x.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(x).strip().lower() for x in value if str(x).strip()]
+        return ["admin@verity.com"]
+
+    @field_validator("super_admin_emails", mode="before")
+    @classmethod
+    def _parse_super_admin_emails(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [x.strip().lower() for x in value.split(",") if x.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(x).strip().lower() for x in value if str(x).strip()]
+        return ["supadmin@verity.com"]
 
 
 class SSEConfig(BaseModel):
@@ -591,6 +612,27 @@ class Settings(BaseSettings):
         if mode == "auto":
             return "supabase" if self.supabase_auth_enabled() and self.has_supabase_secret() else "sqlite"
         return mode
+
+    def is_super_admin(self, email: str | None, role: str) -> bool:
+        """True if the principal is a super administrator (role == 'super_admin' or email in super_admin_emails)."""
+        if role == "super_admin":
+            return True
+        if not email:
+            return False
+        clean = email.strip().lower()
+        return clean in [e.strip().lower() for e in self.auth.super_admin_emails]
+
+    def is_admin(self, email: str | None, role: str) -> bool:
+        """True if the principal is an administrator (super_admin, role in team/admin, or email in admin/super_admin_emails)."""
+        if self.is_super_admin(email, role):
+            return True
+        if role in ("admin", "team"):
+            return True
+        if not email:
+            return False
+        clean = email.strip().lower()
+        return clean in [e.strip().lower() for e in self.auth.admin_emails]
+
 
     def production_problems(self) -> list[str]:
         """Submission guard (ARCHITECTURE 21). main() refuses to start if this is non-empty in production."""

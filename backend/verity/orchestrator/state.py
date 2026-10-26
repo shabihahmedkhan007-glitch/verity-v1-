@@ -5,6 +5,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 
 from ..contracts import Candidate
+from ..core.errors import CreditsExhausted
 from ..core.types import CallMeta, PlanOut, RunContext, RunPatch
 from . import judge
 from .candidates import Cand
@@ -107,6 +108,46 @@ class RunState:
 
     async def save_json(self, relpath: str, payload: object) -> None:
         await self.save(relpath, json.dumps(payload, indent=2, default=str), "application/json")
+
+    # ---------- credit gating and checkpoints ----------
+    async def check_credits(self) -> int:
+        """Check user credits; raises CreditsExhausted if credits <= 0."""
+        from ..core.budget import spend_owner
+        owner = spend_owner(self.ctx.session_id)
+        credits = await self.ctx.store.get_credits(owner)
+        if credits <= 0:
+            raise CreditsExhausted("User credits exhausted.")
+        return credits
+
+    async def save_checkpoint(self, stage: str, round_n: int = 0) -> None:
+        """Save run checkpoint so execution can resume later when credits are refilled."""
+        payload = {
+            "stage": stage,
+            "round_n": round_n,
+            "next_n": self.next_n,
+            "evolve_started": self.evolve_started,
+            "plan_revision": self.plan_revision,
+            "plan": self.plan.model_dump(mode="json") if self.plan else None,
+            "sha_owner": dict(self.sha_owner),
+            "cands": {k: cand.to_dict() for k, cand in self.cands.items()},
+        }
+        raw = json.dumps(payload, indent=2, default=str).encode("utf-8")
+        try:
+            await self.ctx.store.write_run_file(self.ctx.run_id, "checkpoint.json", raw, "application/json", overwrite=True)
+        except Exception:
+            log.exception("run %s: could not write checkpoint.json", self.ctx.run_id)
+
+    async def load_checkpoint_data(self, data: dict) -> None:
+        """Restore RunState from checkpoint data."""
+        self.next_n = data.get("next_n", self.next_n)
+        self.evolve_started = data.get("evolve_started", self.evolve_started)
+        self.plan_revision = data.get("plan_revision", self.plan_revision)
+        if data.get("plan"):
+            self.plan = PlanOut.model_validate(data["plan"])
+        if data.get("sha_owner"):
+            self.sha_owner = dict(data["sha_owner"])
+        if data.get("cands"):
+            self.cands = {k: Cand.from_dict(v) for k, v in data["cands"].items()}
 
 
 def meta_dict(meta: CallMeta) -> dict:

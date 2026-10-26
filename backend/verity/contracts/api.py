@@ -22,7 +22,7 @@ def normalize_thread_id(value: str) -> str | None:
 # "busy". session_budget_exhausted: this session's spend for the UTC day is used up ([limits] session_usd).
 # sandbox_down is the one 503 reason: Docker is not reachable or the tool image is missing.
 AdmissionReason = Literal[
-    "busy", "budget_exhausted", "session_budget_exhausted", "maintenance", "rate_limited", "sandbox_down"
+    "busy", "budget_exhausted", "session_budget_exhausted", "credits_exhausted", "maintenance", "rate_limited", "sandbox_down"
 ]
 HealthReason = Literal["budget_exhausted", "busy", "maintenance", "sandbox_down"]
 
@@ -44,6 +44,58 @@ class SessionRequest(WireModel):
 class SessionResponse(WireModel):
     token: str
     expires_at: str  # ISO 8601 UTC
+
+
+class AuthMeResponse(WireModel):
+    email: str | None = opt()
+    role: str
+    credits: int
+    is_admin: bool
+    is_super_admin: bool = False
+    anonymous: bool = False
+
+
+class AdminCreateUserRequest(WireModel):
+    email: str
+    password: str
+    credits: int | None = opt()
+
+
+class AdminCreateUserResponse(WireModel):
+    ok: bool = True
+    email: str
+    credits: int
+    user_id: str
+
+
+class AdminSetCreditsRequest(WireModel):
+    owner: str | None = opt()
+    email: str | None = opt()
+    credits: int | None = opt()
+    add_credits: int | None = opt()
+
+
+class AdminUserUsage(WireModel):
+    owner: str
+    credits: int
+    email: str | None = opt()
+    role: str = "user"
+    runs_count: int = 0
+    total_spent_usd: float = 0.0
+    created_at: str | None = opt()
+    updated_at: str | None = opt()
+
+
+class AdminListUsersResponse(WireModel):
+    users: list[AdminUserUsage]
+
+
+class ResumeRunResponse(WireModel):
+    ok: bool = True
+    run_id: str
+    status: str
+    stream_token: str | None = opt()
+
 
 
 class CreateRunRequest(WireModel):
@@ -370,6 +422,14 @@ class MyRun(WireModel):
 
 
 class MyRunsResponse(WireModel):
+    runs: list[MyRun]  # newest first, at most 50
+
+
+class AdminRunsResponse(WireModel):
+    """GET /admin/runs?owner=<owner or email>. Same shape as GET /runs/mine, for an admin looking at one user."""
+
+    owner: str
+    email: str | None = opt()
     runs: list[MyRun]  # newest first, at most 50
 
 

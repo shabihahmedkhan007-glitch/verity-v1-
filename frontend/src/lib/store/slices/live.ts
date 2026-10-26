@@ -2,12 +2,13 @@ import type { StateCreator } from "zustand";
 import { PRESETS, type KnobValue } from "@/lib/contracts/presets";
 import type { Priority, RunEvent } from "@/lib/contracts/types";
 import type { LiveConnection, SteerRequest } from "@/lib/contracts/view-types";
+import type { StartFailureReason } from "@/lib/sources/live";
 import type { Store } from "../types";
 
 /** Compatible with the contract type; `reason` lets the Try page pick the busy or budget message. */
 export type StartLiveResult =
   | { runId: string }
-  | { error: string; reason?: "busy" | "budget_exhausted" | "session_budget_exhausted" | "maintenance" | "rate_limited" | "unauthorized" | "sandbox_down" };
+  | { error: string; reason?: StartFailureReason };
 
 const SESSION_EXPIRED = "Your session expired. Open the Try page and enter the access code again.";
 

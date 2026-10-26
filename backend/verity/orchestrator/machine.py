@@ -18,6 +18,7 @@ import logging
 
 from ..contracts import to_wire
 from ..core import captions as cap
+from ..core.errors import CreditsExhausted
 from ..research.outcomes import record_run_outcome
 from ..core.types import (
     BudgetExhausted,
@@ -26,6 +27,7 @@ from ..core.types import (
     RoleOutputError,
     RunContext,
     RunOutcome,
+    RunPatch,
     RunStopped,
     ToolInfraError,
 )
@@ -38,7 +40,7 @@ from .state import BASELINE_ID, RunState
 log = logging.getLogger("verity.orchestrator")
 
 
-async def run_orchestrator(ctx: RunContext) -> None:
+async def run_orchestrator(ctx: RunContext, *, resume: bool = False) -> None:
     st = RunState(ctx=ctx, em=Emitter(ctx))
     try:
         record = await ctx.store.get_run(ctx.run_id)
@@ -47,9 +49,12 @@ async def run_orchestrator(ctx: RunContext) -> None:
         log.exception("run %s: could not read the run record", ctx.run_id)
 
     try:
-        await _run(st)
+        await _run(st, resume=resume)
     except (asyncio.CancelledError, RunStopped):
         raise
+    except CreditsExhausted:
+        log.info("run %s: credits exhausted mid-run, saving checkpoint", ctx.run_id)
+        await _checkpoint_stopped(st, "credits_exhausted", "Run paused at checkpoint: run credits exhausted. Refill credits to continue.")
     except StageFailed as exc:
         await _end_error(st, exc.reason, announced=exc.announced)
     except BudgetExhausted as exc:
@@ -59,23 +64,57 @@ async def run_orchestrator(ctx: RunContext) -> None:
         await _end_error(st, "the task pack failed its integrity check")
     except LLMError as exc:
         log.warning("run %s: model call failed: %s", ctx.run_id, exc)
-        plain = cap.model_failed(str(exc), exc.status, exc.retryable)
-        await _end_error(st, plain or "the model call failed: " + cap.clean(str(exc), 160))
+        if exc.retryable and st.evolve_started:
+            log.info("run %s: network problem mid-run, saving checkpoint", ctx.run_id)
+            await _checkpoint_stopped(st, "network_error", "Run paused at checkpoint: a network problem interrupted a model call. Resume to continue.")
+        else:
+            plain = cap.model_failed(str(exc), exc.status, exc.retryable)
+            await _end_error(st, plain or "the model call failed: " + cap.clean(str(exc), 160))
     except RoleOutputError as exc:
         log.warning("run %s: unusable model answer: %s", ctx.run_id, exc)
         await _end_error(st, "the model's answer could not be used: " + cap.clean(str(exc), 160))
     except ToolInfraError as exc:
         log.warning("run %s: sandbox failure: %s | %s", ctx.run_id, exc, exc.stderr_tail)
-        await _end_error(st, cap.sandbox_failed(f"{exc} {exc.stderr_tail}"))
+        if st.evolve_started:
+            log.info("run %s: sandbox problem mid-run, saving checkpoint", ctx.run_id)
+            await _checkpoint_stopped(st, "sandbox_error", "Run paused at checkpoint: the test machine had a problem. Resume to continue.")
+        else:
+            await _end_error(st, cap.sandbox_failed(f"{exc} {exc.stderr_tail}"))
 
 
-async def _run(st: RunState) -> None:
+async def _checkpoint_stopped(st: RunState, reason: str, message: str) -> None:
+    """Save a checkpoint and end the run as `stopped` with `reason`, so POST /runs/{id}/resume can continue it
+    from here instead of the run being lost (credits exhausted, a network problem, or a sandbox problem)."""
+    ctx = st.ctx
+    await st.save_checkpoint("evolve")
+    await st.em.caption(message)
+    await st.em.phase("stopped", reason)
+    await ctx.store.update_run(ctx.run_id, RunPatch(status="stopped", error_reason=reason))
+
+
+async def _run(st: RunState, *, resume: bool = False) -> None:
     ctx, em = st.ctx, st.em
 
-    await spec_stage(st)
-    await plan_stage(st)
-    await _lock_stage(st)
-    await _baseline_stage(st)
+    if resume:
+        raw_chk = await ctx.store.read_run_file(ctx.run_id, "checkpoint.json")
+        if raw_chk:
+            chk_data = json.loads(raw_chk.decode("utf-8"))
+            await st.load_checkpoint_data(chk_data)
+            for cand in st.cands.values():
+                await em.candidate(cand)
+            await em.caption("Resumed run from checkpoint.")
+            if st.plan:
+                await em.stage("plan", "done")
+            await em.stage("lock", "done")
+            await em.stage("baseline", "done")
+
+    if not resume:
+        await spec_stage(st)
+        await plan_stage(st)
+        await _lock_stage(st)
+        await _baseline_stage(st)
+
+    await st.check_credits()
 
     if ctx.mode == "fast":
         await em.stage("evolve", "skipped")

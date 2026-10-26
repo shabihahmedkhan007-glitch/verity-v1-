@@ -12,11 +12,19 @@ from pydantic import BaseModel, ValidationError
 
 from ..config import Settings
 from ..contracts import (
+    AdminCreateUserRequest,
+    AdminCreateUserResponse,
+    AdminListUsersResponse,
+    AdminRunsResponse,
+    AdminSetCreditsRequest,
+    AdminUserUsage,
     AskRequest,
+    AuthMeResponse,
     CreateRunRequest,
     CreateRunResponse,
     HealthResponse,
     ParseRequest,
+    ResumeRunResponse,
     SessionRequest,
     SessionResponse,
     ThreadMessageRequest,
@@ -25,11 +33,11 @@ from ..contracts import (
     to_wire,
 )
 from ..contracts.view_types import STEER_ADAPTER
-from ..core.errors import AdmissionDenied, LLMError, NotFound
+from ..core.errors import AdmissionDenied, Conflict, Forbidden, LLMError, NotFound
 from ..core.family import ParamsError
 from ..core.protocols import RunService
 from ..core.records import ACTIVE_STATUSES, RunRecord
-from .auth import AuthService, Principal, anonymous_sid, iso_z
+from .auth import AdminCreateUserError, AuthService, Principal, anonymous_sid, iso_z
 from .errors import ApiError, rate_limited, unauthorized, validation_summary
 from .ratelimit import TokenBucketLimiter
 from .sse import FINISHED_RETRY_MS, RETRY_MS, close_stream, sse_body
@@ -201,6 +209,129 @@ async def create_session(request: Request) -> JSONResponse:
     return _json(SessionResponse(token=token, expires_at=iso_z(expires)))
 
 
+@router.get("/auth/me")
+async def auth_me(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    state = _state(request)
+    credits = await state.service.get_credits(principal.sid)
+    is_super_admin = state.settings.is_super_admin(principal.email, principal.role)
+    is_admin = state.settings.is_admin(principal.email, principal.role)
+    return _json(
+        AuthMeResponse(
+            email=principal.email,
+            role=principal.role,
+            credits=credits,
+            is_admin=is_admin,
+            is_super_admin=is_super_admin,
+            anonymous=principal.anonymous,
+        )
+    )
+
+
+@router.get("/admin/users")
+async def admin_list_users_route(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    state = _state(request)
+    if not state.settings.is_admin(principal.email, principal.role):
+        raise ApiError(403, "Admin privileges required.")
+    raw_users = await state.service.list_user_credits()
+    users: list[AdminUserUsage] = []
+    for u in raw_users:
+        users.append(
+            AdminUserUsage(
+                owner=u["owner"],
+                credits=u["credits"],
+                email=u.get("email"),
+                role=u.get("role", "user"),
+                runs_count=u.get("runs_count", 0),
+                total_spent_usd=u.get("total_spent_usd", 0.0),
+                created_at=u.get("created_at"),
+                updated_at=u.get("updated_at"),
+            )
+        )
+    return _json(AdminListUsersResponse(users=users))
+
+
+@router.post("/admin/users")
+async def admin_create_user_route(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    state = _state(request)
+    if not state.settings.is_admin(principal.email, principal.role):
+        raise ApiError(403, "Admin privileges required.")
+    body = await _read_json(request, AdminCreateUserRequest)
+    email = body.email.strip().lower()
+    if "@" not in email or len(email) > 254:
+        raise ApiError(422, "Please enter a valid email address.")
+    if len(body.password) < 6:
+        raise ApiError(422, "Password must be at least 6 characters.")
+    credits = body.credits if body.credits is not None else state.settings.auth.initial_credits
+    try:
+        user_id = await state.auth.admin_create_user(email, body.password)
+    except AdminCreateUserError as exc:
+        raise ApiError(exc.status, exc.message) from None
+    owner = f"u:{user_id}"
+    await state.service.set_credits(owner, credits, email=email, role="user")
+    return _json(
+        AdminCreateUserResponse(ok=True, email=email, credits=credits, user_id=user_id),
+        status=201,
+    )
+
+
+@router.get("/admin/runs")
+async def admin_list_runs_route(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """Every run of one user, newest first, at most 50 (admin only). `owner` is the stored owner string
+    (`u:<id>`); `email` is looked up instead when `owner` is absent."""
+    state = _state(request)
+    if not state.settings.is_admin(principal.email, principal.role):
+        raise ApiError(403, "Admin privileges required.")
+    owner = request.query_params.get("owner")
+    email = request.query_params.get("email")
+    if not owner and email:
+        clean_email = email.strip().lower()
+        all_users = await state.service.list_user_credits()
+        for u in all_users:
+            if u.get("email") and u["email"].strip().lower() == clean_email:
+                owner = u["owner"]
+                break
+        if not owner:
+            owner = f"u:{clean_email}"
+    if not owner:
+        raise ApiError(422, "Either owner or email must be provided.")
+    runs = await state.service.list_runs_for_owner(owner, 50)
+    return _json(AdminRunsResponse(owner=owner, email=email, runs=runs))
+
+
+@router.post("/admin/credits")
+async def admin_set_credits_route(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    state = _state(request)
+    if not state.settings.is_admin(principal.email, principal.role):
+        raise ApiError(403, "Admin privileges required.")
+    body = await _read_json(request, AdminSetCreditsRequest)
+    target_owner = body.owner
+    if not target_owner and body.email:
+        clean_email = body.email.strip().lower()
+        all_users = await state.service.list_user_credits()
+        for u in all_users:
+            if u.get("email") and u["email"].strip().lower() == clean_email:
+                target_owner = u["owner"]
+                break
+        if not target_owner:
+            target_owner = f"u:{clean_email}"
+    if not target_owner:
+        raise ApiError(422, "Either owner or email must be provided.")
+
+    current_credits = await state.service.get_credits(target_owner)
+    new_credits = body.credits
+    if body.add_credits is not None:
+        new_credits = current_credits + body.add_credits
+    elif new_credits is None:
+        raise ApiError(422, "Either credits or add_credits must be specified.")
+
+    await state.service.set_credits(target_owner, new_credits, email=body.email)
+    return JSONResponse(
+        {"ok": True, "owner": target_owner, "credits": new_credits},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+
 @router.post("/runs")
 async def create_run(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
     state = _state(request)
@@ -255,6 +386,19 @@ async def run_stream_token(run_id: str, request: Request, principal: Principal =
     return JSONResponse(
         {"streamToken": state.auth.issue_stream_token(run.id, principal.sid)}, headers={"Cache-Control": "no-store"}
     )
+
+
+@router.post("/runs/{run_id}/resume")
+async def resume_run_route(run_id: str, request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """Resume an active run stopped at a checkpoint (e.g. credits exhausted)."""
+    state = _state(request)
+    rid = _valid_run_id(run_id)
+    try:
+        record = await state.service.resume_run(rid, session_id=principal.sid)
+    except (NotFound, Forbidden, Conflict, AdmissionDenied):
+        raise
+    token = state.auth.issue_stream_token(record.id, principal.sid)
+    return _json(ResumeRunResponse(ok=True, run_id=record.id, status=record.status, stream_token=token))
 
 
 @router.get("/runs")

@@ -38,24 +38,33 @@ TID = "11111111-2222-4333-8444-555555555555"
 T2 = "22222222-2222-4333-8444-555555555555"
 SCHEMA = Path(__file__).resolve().parents[2] / "supabase" / "schema.sql"
 
-PRIMARY_KEYS = {"threads": ("owner", "id"), "thread_turns": ("owner", "thread_id", "seq"), "user_runs": ("owner", "run_id")}
+PRIMARY_KEYS = {
+    "threads": ("owner", "id"),
+    "thread_turns": ("owner", "thread_id", "seq"),
+    "user_runs": ("owner", "run_id"),
+    "user_credits": ("owner",),
+}
 COLUMNS = {
     "threads": {"owner", "id", "title", "facts", "summary", "summarized_through", "created_at", "updated_at"},
     "thread_turns": {"owner", "thread_id", "seq", "role", "text", "tool_steps", "reply", "created_at"},
     "user_runs": {"owner", "run_id", "thread_id", "title", "created_at"},
+    "user_credits": {"owner", "credits", "created_at", "updated_at"},
 }
 NOT_NULL = {
     "threads": {"owner", "id", "facts", "summary", "summarized_through", "created_at", "updated_at"},
     "thread_turns": {"owner", "thread_id", "seq", "role", "text", "created_at"},
     "user_runs": {"owner", "run_id", "title", "created_at"},
+    "user_credits": {"owner", "credits", "created_at", "updated_at"},
 }
 DEFAULTS = {
     "threads": {"title": None, "facts": {}, "summary": "", "summarized_through": 0},
     "thread_turns": {"tool_steps": None, "reply": None},
     "user_runs": {"thread_id": None},
+    "user_credits": {"credits": 3},
 }
-UUID_COLUMNS = {"threads": {"id"}, "thread_turns": {"thread_id"}, "user_runs": {"thread_id"}}
+UUID_COLUMNS = {"threads": {"id"}, "thread_turns": {"thread_id"}, "user_runs": {"thread_id"}, "user_credits": set()}
 RESERVED = {"select", "order", "limit", "on_conflict"}
+
 
 
 def pg_error(status: int, code: str) -> httpx.Response:
@@ -423,8 +432,9 @@ def test_schema_sql_has_the_tables_the_store_uses_and_no_policies() -> None:
             assert f"\n  {column} " in body, f"{table}.{column}"
         assert f"alter table public.{table} " in sql and "enable row level security" in sql
     assert "create policy" not in sql
-    assert "revoke all on public.threads, public.thread_turns, public.user_runs from anon, authenticated" in sql
-    assert "grant select, insert, update, delete on public.threads, public.thread_turns, public.user_runs to service_role" in sql
+    assert "revoke all on public.threads, public.thread_turns, public.user_runs, public.user_credits from anon, authenticated" in sql
+    assert "grant select, insert, update, delete on public.threads, public.thread_turns, public.user_runs, public.user_credits to service_role" in sql
+
     assert "role        text        not null check (role in ('user', 'verity'))".lower() in sql
     assert "on update cascade on delete cascade" in sql
     assert "primary key (owner, thread_id, seq)" in sql and "primary key (owner, run_id)" in sql and "primary key (owner, id)" in sql

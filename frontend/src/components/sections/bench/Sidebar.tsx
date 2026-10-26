@@ -1,8 +1,8 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import Link from "next/link";
-import { CirclePlay, House, PanelLeftClose, Plus, X } from "lucide-react";
+import { CirclePlay, House, PanelLeftClose, Plus, UserPlus, X } from "lucide-react";
 import type { LiveHealth } from "@/lib/contracts/view-types";
 import { useAccount } from "@/lib/hooks/use-account";
 import { useAccountLists } from "@/lib/hooks/use-account-lists";
@@ -12,6 +12,7 @@ import { setSidebarShut } from "@/lib/hooks/use-sidebar";
 import { clearThreads } from "@/lib/hooks/use-threads";
 import { signOut } from "@/lib/sources/live";
 import { Logo } from "../shared/Logo";
+import { AdminUserModal } from "./AdminUserModal";
 import { healthLine } from "./chat";
 
 /** How a run ended, as one plain word beside its time. */
@@ -78,6 +79,7 @@ export function Sidebar({
   const account = useAccount();
   const signedIn = account.status === "signed_in";
   const lists = useAccountLists(signedIn);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   // The chats and runs kept in this browser are the account's cache: they go with the sign-out, so the next person here does not find them.
   const leave = async () => {
     await signOut();
@@ -198,11 +200,45 @@ export function Sidebar({
       <div className="b-health">
         <p role="status">{healthLine(health)}</p>
         {signedIn ? (
-          <div className="b-acct">
-            <p title={account.email ?? undefined}>{account.email}</p>
-            <button type="button" className="b-link" onClick={() => void leave()}>
-              Sign out
-            </button>
+          <div className="b-acct" style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <p title={account.email ?? undefined} style={{ minWidth: 0, flex: 1 }}>{account.email}</p>
+              {account.credits !== null ? (
+                <span
+                  title={`${account.credits} runs left`}
+                  style={{
+                    fontFamily: "var(--font-data)",
+                    fontSize: "11px",
+                    color: "var(--rk-a)",
+                    background: "var(--rk-panel-2)",
+                    padding: "1px 6px",
+                    borderRadius: "4px",
+                    border: "1px solid var(--rk-rule)",
+                    whiteSpace: "nowrap",
+                    flex: "none",
+                  }}
+                >
+                  {account.credits} {account.credits === 1 ? "credit" : "credits"}
+                </span>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              {account.isAdmin ? (
+                <button
+                  type="button"
+                  className="b-link"
+                  onClick={() => setShowAdminModal(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--rk-a)" }}
+                >
+                  <UserPlus style={{ width: "12px", height: "12px" }} />
+                  Add user
+                </button>
+              ) : <span />}
+              <button type="button" className="b-link" onClick={() => void leave()}>
+                Sign out
+              </button>
+            </div>
+            <AdminUserModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} />
           </div>
         ) : null}
       </div>

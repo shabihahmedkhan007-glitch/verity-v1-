@@ -7,6 +7,7 @@ import { useLiveHealth } from "@/lib/hooks/use-live-health";
 import { useRecentRuns } from "@/lib/hooks/use-recent-runs";
 import { setOpenThread } from "@/lib/hooks/use-threads";
 import { useRunsList } from "@/lib/hooks/use-runs-list";
+import { resumeRun } from "@/lib/sources/live";
 import { AppShell } from "../bench/AppShell";
 import { Sidebar } from "../bench/Sidebar";
 import { formatSmallUsd } from "../bench/chat";
@@ -41,6 +42,20 @@ export function WorkspaceView() {
   const [family, setFamily] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerFirstRef = useRef<HTMLButtonElement>(null);
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+
+  const handleResume = async (id: string) => {
+    setResumingId(id);
+    setResumeError(null);
+    const res = await resumeRun(id);
+    setResumingId(null);
+    if ("error" in res) {
+      setResumeError(res.error);
+      return;
+    }
+    router.push(`/bench?run=${encodeURIComponent(res.runId)}`);
+  };
 
   const serverState: ServerState = list.status === "ready" ? "ready" : list.status === "loading" ? "loading" : "unavailable";
   const all = useMemo(() => joinRuns(recent, list.status === "ready" ? list.runs : null, serverState), [recent, list, serverState]);
@@ -125,9 +140,10 @@ export function WorkspaceView() {
           </h2>
           <ul className="w-cards">
             {runs.map((r) => (
-              <RunCard key={r.id} run={r} loading={loading} />
+              <RunCard key={r.id} run={r} loading={loading} resuming={resumingId === r.id} onResume={handleResume} />
             ))}
           </ul>
+          {resumeError ? <p className="w-status" role="alert">{resumeError}</p> : null}
         </section>
 
         {loading ? (

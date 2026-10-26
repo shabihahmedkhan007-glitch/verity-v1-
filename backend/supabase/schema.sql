@@ -44,13 +44,24 @@ create table if not exists public.user_runs (
   primary key (owner, run_id)
 );
 
+create table if not exists public.user_credits (
+  owner       text        not null primary key,
+  email       text,
+  role        text        not null default 'user',
+  credits     integer     not null default 3,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
 create index if not exists threads_owner_updated_idx on public.threads (owner, updated_at desc);
 create index if not exists user_runs_owner_created_idx on public.user_runs (owner, created_at desc);
 
 alter table public.threads      enable row level security;
 alter table public.thread_turns enable row level security;
 alter table public.user_runs    enable row level security;
+alter table public.user_credits enable row level security;
 -- No policies on purpose: with row level security on and no policy, anon and authenticated can read and write nothing.
 
-revoke all on public.threads, public.thread_turns, public.user_runs from anon, authenticated;
-grant select, insert, update, delete on public.threads, public.thread_turns, public.user_runs to service_role;
+revoke all on public.threads, public.thread_turns, public.user_runs, public.user_credits from anon, authenticated;
+grant select, insert, update, delete on public.threads, public.thread_turns, public.user_runs, public.user_credits to service_role;
+
