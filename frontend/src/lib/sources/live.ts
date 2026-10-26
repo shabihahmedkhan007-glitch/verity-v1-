@@ -291,6 +291,83 @@ export async function createAdminUser(email: string, password: string, credits: 
 }
 
 
+export interface AdminUserUsage {
+  owner: string;
+  credits: number;
+  email: string | null;
+  role: string;
+  runsCount: number;
+  totalSpentUsd: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export type AdminListUsersResult = { ok: true; users: AdminUserUsage[] } | { ok: false; error: string };
+
+/** GET /admin/users (admin only): every account, newest first. */
+export async function listAdminUsers(): Promise<AdminListUsersResult> {
+  const url = liveUrl("/admin/users");
+  if (!url) return { ok: false, error: "The agent is offline." };
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json", ...(await authHeaders()) } });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: typeof body.error === "string" ? body.error : "Could not load users." };
+    }
+    const body = (await res.json()) as { users?: AdminUserUsage[] };
+    return { ok: true, users: Array.isArray(body.users) ? body.users : [] };
+  } catch {
+    return { ok: false, error: "Could not reach the server." };
+  }
+}
+
+export type AdminSetCreditsResult = { ok: true; owner: string; credits: number } | { ok: false; error: string };
+
+/** POST /admin/credits (admin only). Pass either `credits` (set to this) or `addCredits` (add to the current balance). */
+export async function setAdminCredits(
+  target: { owner?: string; email?: string },
+  change: { credits?: number; addCredits?: number },
+): Promise<AdminSetCreditsResult> {
+  const url = liveUrl("/admin/credits");
+  if (!url) return { ok: false, error: "The agent is offline." };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ ...target, ...change }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; owner?: string; credits?: number };
+    if (!res.ok) {
+      return { ok: false, error: typeof body.error === "string" ? body.error : "Could not update credits." };
+    }
+    return { ok: true, owner: body.owner ?? target.owner ?? "", credits: typeof body.credits === "number" ? body.credits : 0 };
+  } catch {
+    return { ok: false, error: "Could not reach the server." };
+  }
+}
+
+export type AdminRunsResult = { ok: true; runs: MyRun[] } | { ok: false; error: string };
+
+/** GET /admin/runs?owner=|email= (admin only): one user's runs, same shape as GET /runs/mine. */
+export async function listAdminRuns(target: { owner?: string; email?: string }): Promise<AdminRunsResult> {
+  const qs = new URLSearchParams(
+    target.owner ? { owner: target.owner } : target.email ? { email: target.email } : {},
+  ).toString();
+  const url = liveUrl(`/admin/runs${qs ? `?${qs}` : ""}`);
+  if (!url) return { ok: false, error: "The agent is offline." };
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json", ...(await authHeaders()) } });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: typeof body.error === "string" ? body.error : "Could not load runs." };
+    }
+    const body = (await res.json()) as { runs?: MyRun[] };
+    return { ok: true, runs: Array.isArray(body.runs) ? body.runs : [] };
+  } catch {
+    return { ok: false, error: "Could not reach the server." };
+  }
+}
+
 // ---------- health, runs, steering ----------
 
 /** GET /health (no auth). Never throws: any failure is reported as the "error" availability state. */

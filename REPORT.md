@@ -654,6 +654,11 @@ Decisions from D16 on live in `docs/DECISIONS.md` (D1 to D15 are copied there un
 - **Verified:** Live smoke test of `SupabaseThreadStore` (write + read + delete a thread through backend code). Live HTTP smoke test against a running `verity-api` process: password-grant login, `/auth/me`, `/admin/users` (before and after the fix), `/admin/users` create, `/admin/runs` by owner and by email, all cleaned up after. `pytest -q`: 1004 passed, 27 skipped, same 4 pre-existing failures as before this session (caused by `backend/.env` now having real Supabase config, which the fixed test fixtures do not isolate against; unrelated to this session's code changes).
 - **Frontend Resume button:** `/workspace`'s Runs cards (`RunCard.tsx`) show a "Resume" button on any card whose server status is `stopped`; it calls the new `resumeRun()` in `live.ts` (`POST /runs/{id}/resume`), stores the fresh stream token the same way `postRun` does, and opens the run at `/bench?run=<id>` where the existing live-stream code reconnects. Errors (another account's run, already resumed, out of credits) show under the card list. `npm run typecheck`, `npm run lint`, `npm run build` all clean.
 
+### 2026-10-26: Admin accounts panel in the bench sidebar (D52)
+- **Why:** `GET /admin/users` and `GET /admin/runs` had no UI; an admin could only create a user, never see who exists, their credits or their runs, or top up credits, without calling the API by hand.
+- **What:** New `frontend/src/components/sections/bench/AdminUsersPanel.tsx`: every account (email, role, credits, run count), a row expands to that account's own runs, and a credit balance can be set in place. Wired into `Sidebar.tsx` as a second admin-only trigger, "Accounts", beside "Add user". New `live.ts` calls: `listAdminUsers`, `setAdminCredits`, `listAdminRuns`.
+- **Verified:** `npm run typecheck`, `npm run lint` (one `react-hooks/set-state-in-effect` fix: `load` restructured to set state from inside a `.then()` callback, not an async function body, matching the pattern already used by `use-account-lists.ts`), `npm run build`, all clean. The three admin routes themselves were exercised directly against the live Supabase project in the D51 work above; the panel has not yet been clicked through in a browser.
+
 ## 6. Key facts and links
 
 - Hackathon: https://nebiusglobalaihackathon.devpost.com/

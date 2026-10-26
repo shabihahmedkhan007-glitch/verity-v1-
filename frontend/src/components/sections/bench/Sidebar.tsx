@@ -2,7 +2,7 @@
 
 import { useState, type RefObject } from "react";
 import Link from "next/link";
-import { CirclePlay, House, PanelLeftClose, Plus, UserPlus, X } from "lucide-react";
+import { CirclePlay, House, PanelLeftClose, Plus, UserPlus, Users, X } from "lucide-react";
 import type { LiveHealth } from "@/lib/contracts/view-types";
 import { useAccount } from "@/lib/hooks/use-account";
 import { useAccountLists } from "@/lib/hooks/use-account-lists";
@@ -13,6 +13,7 @@ import { clearThreads } from "@/lib/hooks/use-threads";
 import { signOut } from "@/lib/sources/live";
 import { Logo } from "../shared/Logo";
 import { AdminUserModal } from "./AdminUserModal";
+import { AdminUsersPanel } from "./AdminUsersPanel";
 import { healthLine } from "./chat";
 
 /** How a run ended, as one plain word beside its time. */
@@ -80,6 +81,7 @@ export function Sidebar({
   const signedIn = account.status === "signed_in";
   const lists = useAccountLists(signedIn);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showAdminUsersPanel, setShowAdminUsersPanel] = useState(false);
   // The chats and runs kept in this browser are the account's cache: they go with the sign-out, so the next person here does not find them.
   const leave = async () => {
     await signOut();
@@ -224,21 +226,33 @@ export function Sidebar({
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
               {account.isAdmin ? (
-                <button
-                  type="button"
-                  className="b-link"
-                  onClick={() => setShowAdminModal(true)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--rk-a)" }}
-                >
-                  <UserPlus style={{ width: "12px", height: "12px" }} />
-                  Add user
-                </button>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="b-link"
+                    onClick={() => setShowAdminModal(true)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--rk-a)" }}
+                  >
+                    <UserPlus style={{ width: "12px", height: "12px" }} />
+                    Add user
+                  </button>
+                  <button
+                    type="button"
+                    className="b-link"
+                    onClick={() => setShowAdminUsersPanel(true)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--rk-a)" }}
+                  >
+                    <Users style={{ width: "12px", height: "12px" }} />
+                    Accounts
+                  </button>
+                </span>
               ) : <span />}
               <button type="button" className="b-link" onClick={() => void leave()}>
                 Sign out
               </button>
             </div>
             <AdminUserModal isOpen={showAdminModal} onClose={() => setShowAdminModal(false)} />
+            <AdminUsersPanel isOpen={showAdminUsersPanel} onClose={() => setShowAdminUsersPanel(false)} />
           </div>
         ) : null}
       </div>

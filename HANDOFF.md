@@ -1,6 +1,6 @@
 # Verity handoff
 
-Last updated 2026-10-26 (live Supabase project, admin run visibility, network/sandbox checkpoint-resume). Read this first in a new session, then `CLAUDE.md`, then only the doc your task needs. Requirements and status per claim: `docs/PRD.md`. Decisions: `docs/DECISIONS.md` (D1 to D51). History: the `REPORT.md` change log.
+Last updated 2026-10-26 (live Supabase project, admin run visibility, network/sandbox checkpoint-resume, Resume button and admin accounts panel in the UI). Read this first in a new session, then `CLAUDE.md`, then only the doc your task needs. Requirements and status per claim: `docs/PRD.md`. Decisions: `docs/DECISIONS.md` (D1 to D52). History: the `REPORT.md` change log.
 
 ## Dates and freeze scope
 
@@ -38,7 +38,7 @@ Last updated 2026-10-26 (live Supabase project, admin run visibility, network/sa
 ## Next steps, in order
 
 1. **Restart the live backend** when the user asks (copy the database first: migrations 6 and 7 run on start), then the user tests the chat.
-2. **Supabase live** (row above). The `/workspace` Runs cards now show a Resume button on a `stopped` run (D51); still open: no admin UI listing every run (the backend route is done, `GET /admin/runs`, but nothing in the bench sidebar calls it yet); sign in once on two browsers to see the Chats and Your runs lists follow the account.
+2. **Supabase live** (row above). The `/workspace` Runs cards show a Resume button on a `stopped` run (D51). The bench sidebar's "Accounts" button (admin only, next to "Add user") now lists every account with its credits and runs count, expands to that account's runs, and can set a new credit balance in place (`AdminUsersPanel.tsx`, D52). Still open: sign in once on two browsers to see the Chats and Your runs lists follow the account; a browser click-through of "Accounts" against the live project (verified by direct API call, not yet clicked through in a browser).
 3. **Custom blocks (phase B)** from `.planning/custom-blocks-design.md` and `.planning/golden-model-skill.md`, then the 5-block gate by 2026-10-26.
 4. **Hosting (blocks judging; the user decides):** Cloudflare Pages for `frontend/out/` plus a Linux VM with Docker (Nebius CPU VM or a GCP trial VM).
 5. **Production settings** on the host, then one real run on the host.
