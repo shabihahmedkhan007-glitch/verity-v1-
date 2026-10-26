@@ -408,3 +408,28 @@ class WaveResult(_Result):
     duration_ms: int = 0
     message: str = ""
     tool_versions: dict[str, str] = Field(default_factory=dict)
+
+
+# ---------- golden_check: CE3's pure-Python self-check of a drafted golden model ----------
+GoldenCheckStatus = Literal["pass", "fail", "timeout", "input_error", "internal_error"]
+
+
+class GoldenCheckFailure(_Result):
+    name: str
+    expected: str
+    got: str
+    step: int | None = None
+
+
+class GoldenCheckResult(_Result):
+    schema_: Literal["verity.golden_check/1"] = Field(default="verity.golden_check/1", alias="schema")
+    status: GoldenCheckStatus
+    total: int = 0
+    passed: int = 0
+    failure_count: int = 0
+    failures: list[GoldenCheckFailure] = Field(default_factory=list)
+    message: str = ""
+    duration_ms: int = 0
+
+    def passed_all(self, expected_total: int) -> bool:
+        return self.status == "pass" and self.total == expected_total and self.passed == expected_total

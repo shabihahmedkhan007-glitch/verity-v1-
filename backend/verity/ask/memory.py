@@ -49,7 +49,11 @@ SUMMARY_MAX_WORDS = 40
 SUMMARY_TAG = "memory"
 MAX_RUN_IDS = 20
 TOOLS_RUN = "Yosys, OpenSTA, Verilator, Icarus with cocotb, Yosys EQY"
-CUSTOM_BLOCKS = "Not available yet. They are coming next; offer the nearest block above."
+CUSTOM_BLOCKS = (
+    "draft_custom_block builds a small block outside the four families above, within fixed limits: one module; "
+    "combinational, or one clock with a synchronous reset; latency 0 to 8 cycles; at most 8 ports of 1 to 64 bits; "
+    "no handshake, memory or second clock. Outside those limits, offer the nearest block above instead."
+)
 NO_ARCHITECTURE_CHOICE = (
     "Verity has no architecture choice: Nemotron picks the structure of each version inside a run; "
     "the user steers only with the block settings and the priority (area, speed or power)."

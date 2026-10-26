@@ -235,9 +235,10 @@ class NebiusSandboxRunner(SandboxRunner):
             image = await self._resolve_image()
 
             paths: dict[str, bytes] = {f"/work/{name}": data for name, data in call.work_files.items()}
-            pack_files = await asyncio.to_thread(call.pack.sandbox_files)  # re-verifies the manifest first
-            for rel, data in pack_files.items():
-                paths[f"/pack/{rel.replace(chr(92), '/')}"] = data
+            if call.pack is not None:
+                pack_files = await asyncio.to_thread(call.pack.sandbox_files)  # re-verifies the manifest first
+                for rel, data in pack_files.items():
+                    paths[f"/pack/{rel.replace(chr(92), '/')}"] = data
             uuids = await asyncio.gather(*(self._upload(data) for data in paths.values()))
             # UNVERIFIED: running as root (uid 0, the default) so /work is writable whatever the image sets up.
             files = {

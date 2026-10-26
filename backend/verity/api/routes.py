@@ -18,6 +18,8 @@ from ..contracts import (
     AdminRunsResponse,
     AdminSetCreditsRequest,
     AdminUserUsage,
+    ApproveCustomBlockRequest,
+    ApproveCustomBlockResponse,
     AskRequest,
     AuthMeResponse,
     CreateRunRequest,
@@ -37,6 +39,7 @@ from ..core.errors import AdmissionDenied, Conflict, Forbidden, LLMError, NotFou
 from ..core.family import ParamsError
 from ..core.protocols import RunService
 from ..core.records import ACTIVE_STATUSES, RunRecord
+from ..runs.custom_blocks import ApproveFailed
 from .auth import AdminCreateUserError, AuthService, Principal, anonymous_sid, iso_z
 from .errors import ApiError, rate_limited, unauthorized, validation_summary
 from .ratelimit import TokenBucketLimiter
@@ -330,6 +333,19 @@ async def admin_set_credits_route(request: Request, principal: Principal = Depen
         headers={"Cache-Control": "no-store"},
     )
 
+
+
+@router.post("/custom-blocks/approve")
+async def approve_custom_block_route(request: Request, principal: Principal = Depends(session_guard)) -> JSONResponse:
+    """CE3: locks a drafted custom block in. The draft was already self-checked by draft_custom_block; this
+    re-checks it against exactly what gets written to disk, never trusting a round-tripped payload blindly."""
+    state = _state(request)
+    body = await _read_json(request, ApproveCustomBlockRequest)
+    try:
+        pack = await state.service.approve_custom_block(body.draft)
+    except ApproveFailed as exc:
+        raise ApiError(422, str(exc)) from None
+    return _json(ApproveCustomBlockResponse(ok=True, preset_id=pack.id), status=201)
 
 
 @router.post("/runs")

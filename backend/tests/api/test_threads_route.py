@@ -161,7 +161,7 @@ def test_a_question_gets_no_check_and_the_thread_stays_unchecked(tmp_path, packs
         asked = post(client, "what can you build?").json()
         assert asked["check"] is None and asked["reply"]["kind"] == "answer"
         assert asked["reply"]["toolSteps"] == [{"tool": "list_blocks", "label": "Read the build list", "ok": True}]
-        assert len(asked["reply"]["chips"]) == 4 and "Custom blocks are coming next" in asked["reply"]["text"]
+        assert len(asked["reply"]["chips"]) == 4 and "custom block can often be drafted" in asked["reply"]["text"]
         assert client.provider.purposes == ["parse", "agent", "agent"]  # asked, then the agent: no research for a question
         chip = post(client, "a 16-bit adder").json()  # the first chip request of this thread: now it is fact-checked
         assert chip["check"]["verdict"] == "buildable_now" and client.provider.purposes.count("parse") == 2
@@ -316,7 +316,7 @@ def test_threads_are_owner_only(tmp_path, packs) -> None:
         assert (user["seq"], user["role"], user["text"]) == (1, "user", "what can you build?") and "toolSteps" not in user
         assert (verity["seq"], verity["role"]) == (2, "verity") and verity["createdAt"].endswith("Z")
         assert verity["toolSteps"] == [{"tool": "list_blocks", "label": "Read the build list", "ok": True}]
-        assert "Custom blocks are coming next" in verity["text"]
+        assert "custom block can often be drafted" in verity["text"]
 
         other = client.get(f"/threads/{T1}", headers=b)
         assert other.status_code == 404 and other.json() == {"error": "Thread not found."}  # never a 403: it does not exist for them

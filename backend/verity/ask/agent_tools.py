@@ -30,28 +30,30 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ..config import Settings
-from ..contracts import AskStep, OpenTab, Research, RunProposal
-from ..core.budget import BudgetLimits
+from ..contracts import AskStep, CustomBlockDraft, OpenTab, Research, RunProposal
+from ..core.budget import BudgetLimits, price_usd
 from ..core.family import Knob, ParamsError, render_pack, validate_params
 from ..core.pack import TaskPack
 from ..core.parse import _KNOB_WORDS, _clamped, _prepared, _words
-from ..core.protocols import Store
+from ..core.protocols import LLMProvider, Store, ToolRunner
 from ..core.records import ACTIVE_STATUSES, RunRecord
 from ..research.queries import safe_label, text_sha256
 from ..research.service import ResearchRequest, ResearchService
 from . import memory, prompt, reply
+from .custom_draft import DraftFailed, draft_custom_block
 from .propose import priority_from_words
 from .tools import GOAL_WORDS, RunCard, join_words, load_card
 from .walkthrough import build_walkthrough, eqy_facts, eqy_passes
 
 log = logging.getLogger("verity.ask")
 
-TOOL_NAMES = ("list_blocks", "research", "run_facts", "walkthrough", "propose_run", "open_tab")
+TOOL_NAMES = ("list_blocks", "research", "run_facts", "walkthrough", "propose_run", "open_tab", "draft_custom_block")
+MAX_DESCRIPTION_CHARS = 200
 RUN_FACT_TOPICS = ("overview", "selection", "drop", "timing", "cost", "tests", "rtl")
 TABS = ("result", "versions", "verilog", "architecture", "signoff")
 TAB_NAMES = {"result": "Result", "versions": "Versions", "verilog": "Verilog", "architecture": "Architecture", "signoff": "Sign-off"}
@@ -77,6 +79,7 @@ _PHRASE = {
     "walkthrough": "write the walkthrough",
     "propose_run": "make a chip card",
     "open_tab": "open that tab",
+    "draft_custom_block": "draft that block",
 }
 
 
@@ -105,6 +108,7 @@ class ToolOutcome:
     research: Research | None = None
     fallback_tab: OpenTab | None = None  # the tab the code answer opens (the model's own answer does not get it)
     passes: frozenset[str] = frozenset()  # what EQY proved in the run this result is about: "v1" and/or "human"
+    custom_draft: CustomBlockDraft | None = None  # CE3: self-checked, waiting on the user's Approve
 
     @property
     def shown(self) -> bool:
@@ -257,6 +261,9 @@ class ToolBox:
         focus_version: str | None = None,
         mode: str = "discussion_no_run",
         message: str = "",
+        provider: LLMProvider | None = None,
+        tools: ToolRunner | None = None,
+        record: Callable[[float, str], Awaitable[None]] | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -268,6 +275,9 @@ class ToolBox:
         self._focus = focus_version
         self._mode = mode
         self._message = message  # the user's own words, for the notes that may name a number
+        self._provider = provider  # CE3: draft_custom_block's own nested GLM call
+        self._tools = tools  # CE3: draft_custom_block's self-check (check_golden)
+        self._record = record  # CE3: records the drafting call's real cost (the fake provider spends nothing)
         self._searched = False  # a new (not saved) research has been started in this message
         self._seen: dict[tuple[str, str], ToolOutcome] = {}  # the calls of this message, for a repeat
         self._card_made = False  # a chip card has been made in this message
@@ -305,6 +315,7 @@ class ToolBox:
                 "walkthrough": self._walkthrough,
                 "propose_run": self._propose_run,
                 "open_tab": self._open_tab,
+                "draft_custom_block": self._draft_custom_block,
             }
             outcome = await handlers[name](args)
         except _Refused as exc:
@@ -322,14 +333,14 @@ class ToolBox:
     async def _list_blocks(self, args: dict[str, Any]) -> ToolOutcome:
         _no_extra(args, ())
         lines = memory.buildable_lines(self._packs, self._families)
-        text = "\n".join([*lines, "Custom blocks are coming next."])
+        text = "\n".join([*lines, "A small block outside these families can be drafted with draft_custom_block, within its limits."])
         names = join_words([memory.plain_name(fid, self._packs[fid].title) for fid in sorted(self._families) if fid in self._packs])
         return ToolOutcome(
             tool="list_blocks",
             ok=True,
             label="Read the build list",
             text=text,
-            fallback=f"Verity builds these blocks today: {names}. Custom blocks are coming next.",
+            fallback=f"Verity builds these blocks today: {names}. A small block outside them can often be drafted as a custom block.",
         )
 
     async def _research_tool(self, args: dict[str, Any]) -> ToolOutcome:
@@ -548,4 +559,35 @@ class ToolBox:
             text=f"The {name} tab is open for {where}.",
             fallback=f"I opened the {name} tab for {where}.",
             open_tab=OpenTab(run_id=run.id, tab=tab, version=version),
+        )
+
+    async def _draft_custom_block(self, args: dict[str, Any]) -> ToolOutcome:
+        _no_extra(args, ("description",))
+        description = args.get("description")
+        if not isinstance(description, str) or not description.strip():
+            raise _Refused("description must be one or two sentences about the block.", "the description was missing")
+        description = description.strip()[:MAX_DESCRIPTION_CHARS]
+        if self._provider is None or self._tools is None:
+            raise _Refused("custom blocks are not available on this server.", "custom blocks are not available here")
+        known_ids = set(self._packs)  # the four locked packs plus whatever custom ones existed when this thread started
+        try:
+            draft, usd = await draft_custom_block(self._provider, self._tools, self._settings, description, known_ids)
+        except DraftFailed as exc:
+            if self._record is not None and exc.usd:
+                await self._record(exc.usd, self._session_id)
+            raise _Refused(exc.reason, "it could not draft a working block for that") from None
+        if self._record is not None and usd:
+            await self._record(usd, self._session_id)
+        cases_text = "; ".join(f"{c.name}: {len(c.steps)} step(s)" for c in draft.cases)
+        text = (
+            f"Drafted and self-checked: {draft.title}. {draft.spec_text} Worked examples: {cases_text}. "
+            "Waiting on the user's Approve before this is built."
+        )
+        return ToolOutcome(
+            tool="draft_custom_block",
+            ok=True,
+            label="Drafted a custom block",
+            text=text,
+            fallback=f"I drafted {draft.title} and checked it against its own worked examples. Press Approve to lock it in.",
+            custom_draft=draft,
         )

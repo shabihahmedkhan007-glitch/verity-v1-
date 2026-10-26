@@ -14,6 +14,7 @@ from typing import Any
 from ..contracts import CircuitGraph
 from ..core.results import (
     EquivalenceResult,
+    GoldenCheckResult,
     MeasureResult,
     PowerResult,
     SeedsResult,
@@ -123,6 +124,17 @@ def parse_seeds(payload: dict[str, Any], *, expected_total: int) -> SeedsResult:
 
 def parse_strength(payload: dict[str, Any]) -> StrengthResult:
     return StrengthResult.model_validate(payload)
+
+
+def parse_golden_check(payload: dict[str, Any], *, expected_total: int) -> GoldenCheckResult:
+    """A run that did not execute every case (a bad cases.json, not the draft's fault) is downgraded to
+    internal_error, the same "truncated run never counts as pass" rule verify uses."""
+    result = GoldenCheckResult.model_validate(payload)
+    if result.status == "pass" and result.total != expected_total:
+        return result.model_copy(
+            update={"status": "internal_error", "message": f"golden_check ran {result.total} cases, expected {expected_total}"}
+        )
+    return result
 
 
 def parse_wave(payload: dict[str, Any]) -> WaveResult:

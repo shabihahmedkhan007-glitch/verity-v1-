@@ -46,6 +46,7 @@ State is always a shape plus a word, never colour alone. Amber stays earned: onl
 | | half-filled square | Not buildable here |
 | | hollow square | Not a chip |
 | | dashed square | Could not check |
+| | square with a plus | Custom block (CE3, D5x): a small block outside the four families, within the custom limits |
 | Step rail, progress, sign-off | filled amber square | Passed, Clean, Proven, Signed off |
 | | filled ink-2 square | Done (the step ran to its end; no verdict) |
 | | hollow ink square | Failed, Differs, Not proven, See the sheet |

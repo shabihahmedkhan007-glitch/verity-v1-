@@ -53,7 +53,16 @@ from .records import (
     UserRunRow,
 )
 from .mutants import Mutant
-from .results import EquivalenceResult, MeasureResult, SeedsResult, StrengthResult, VerifyResult, WaveResult, WaveTrace
+from .results import (
+    EquivalenceResult,
+    GoldenCheckResult,
+    MeasureResult,
+    SeedsResult,
+    StrengthResult,
+    VerifyResult,
+    WaveResult,
+    WaveTrace,
+)
 from .rtl import Rtl
 
 # ======================================================================
@@ -211,6 +220,11 @@ class ToolRunner(Protocol):
 
     async def waveform(self, rtl: Rtl, pack: TaskPack, case: str | None = None) -> WaveResult:
         """/verity/bin/wave: one case (None: the first) simulated with a VCD dump, cut around its first mismatch."""
+        ...
+
+    async def check_golden(self, golden_py: str, cases: Sequence[dict]) -> GoldenCheckResult:
+        """/verity/bin/golden_check (CE3): pure-Python self-check of a drafted golden model, before any Verilog
+        exists. No pack mount. `cases`: [{"name", "steps": [{"inputs", "rst", "expected"}, ...]}, ...]."""
         ...
 
     async def image_digest(self) -> str:

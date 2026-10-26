@@ -116,7 +116,10 @@ class LocalDockerRunner(SandboxRunner):
                 work.chmod(0o777)
                 for path in work.iterdir():
                     path.chmod(0o666)
-            await asyncio.to_thread(call.pack.copy_for_sandbox, pack_dir)  # re-verifies the manifest first
+            if call.pack is not None:
+                await asyncio.to_thread(call.pack.copy_for_sandbox, pack_dir)  # re-verifies the manifest first
+            else:
+                pack_dir.mkdir()  # check_golden (CE3): no pack exists yet, mount an empty read-only dir
 
             # UNVERIFIED: Docker Desktop on Windows with bind mounts, --read-only and --user 1000:1000 (CONTRACTS 12.5).
             cmd = self._command(name, work, pack_dir, call)

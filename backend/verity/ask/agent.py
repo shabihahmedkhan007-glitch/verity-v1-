@@ -70,7 +70,7 @@ from ..core.errors import LLMError, NotFound
 from ..core.family import Knob, ParamsError, validate_params
 from ..core.llm_types import LLMRequest
 from ..core.pack import TaskPack
-from ..core.protocols import LLMProvider, Store, ThreadStore
+from ..core.protocols import LLMProvider, Store, ThreadStore, ToolRunner
 from ..core.records import ACTIVE_STATUSES, THREAD_USER_MAX, THREAD_VERITY_MAX, RunRecord, ThreadData, ThreadTurnIn
 from ..research.service import ResearchService
 from . import memory, prompt, reply
@@ -249,9 +249,11 @@ class AgentService:
         families: Mapping[str, list[Knob]],
         research: ResearchService | None,
         *,
+        tools: ToolRunner,
         hold: Hold,
         record: Callable[[float, str], Awaitable[None]],
         parse: Parse,
+        register_custom_pack: Callable[[TaskPack], None],
     ) -> None:
         self._settings = settings
         self._store = store
@@ -261,9 +263,11 @@ class AgentService:
         self._families = dict(families)
         self._titles = {fid: memory.plain_name(fid, packs[fid].title) for fid in families if fid in packs}  # what the user reads instead of a pack id
         self._research = research
+        self._tools = tools  # CE3: draft_custom_block's self-check (check_golden), no RTL involved
         self._hold = hold  # reserves a worst case on the daily and session budgets; raises AdmissionDenied
         self._record = record  # adds a real cost to the daily and session spend (the fake provider spends nothing)
         self._parse = parse
+        self._register_custom_pack = register_custom_pack  # CE3: locks a drafted block in at Approve, no restart needed
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     # ======================================================================
@@ -393,6 +397,9 @@ class AgentService:
             focus_version=prep.focus_version,
             mode=prep.mode,
             message=text,
+            provider=self._provider,
+            tools=self._tools,
+            record=self._record,
         )
         deadline = time.monotonic() + self._settings.agent.turn_deadline_s
         steps: list[ToolOutcome] = []

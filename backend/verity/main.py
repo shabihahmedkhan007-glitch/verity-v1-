@@ -18,7 +18,7 @@ from .api.app import create_app
 from .api.redact import RedactFilter, log_config
 from .config import Settings, load_settings
 from .core.errors import VerityError
-from .core.pack import load_packs
+from .core.pack import load_custom_packs, load_packs
 from .core.parse import live_families
 from .llm.factory import build_provider
 from .research import ResearchService, build_search_adapter
@@ -34,6 +34,10 @@ log = logging.getLogger("verity.main")
 def build_app(settings: Settings) -> FastAPI:
     """Wire every builder's module into one app. Raises VerityError for a broken task pack."""
     packs = load_packs(settings.tasks_dir)  # fail fast on a missing or tampered pack
+    custom_packs = load_custom_packs(settings.data_dir / "custom_packs")  # CE3: approved in an earlier session
+    packs.update(custom_packs)
+    if custom_packs:
+        log.info("loaded %d custom block(s) from an earlier session", len(custom_packs))
     if not any(pack.live_preset for pack in packs.values()):
         log.warning("no live task packs found under %s: POST /runs will reject every preset", settings.tasks_dir)
 

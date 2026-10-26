@@ -3,7 +3,7 @@
 import re
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from .base import WireModel, opt
 from .events import Priority
@@ -158,7 +158,13 @@ class ParseClosest(WireModel):
 # Fact check (plan claim 1). The verdict is set by code from the class and the validated family and knobs, never by
 # a model. The intent class is the parser model's answer after code checks (the hardware-word guard turns a
 # "not_chip" answer on a sentence with a hardware word into "unsure").
-Verdict = Literal["buildable_now", "buildable_with_changes", "not_buildable_here", "not_a_chip", "could_not_check"]
+Verdict = Literal[
+    "buildable_now", "buildable_with_changes", "not_buildable_here", "not_a_chip", "could_not_check", "custom_block"
+]
+# "custom_block" (CE3, D5x): reserved for a small block outside the four families that fits the custom limits.
+# The type carries it end to end (frontend VERDICT record, VERDICTS list) so the wire shape is ready; POST /parse
+# does not produce it yet (that needs its own classification work in the parser prompt, not done in this pass).
+# draft_custom_block (the thread agent's own tool, backend/verity/ask/custom_draft.py) is the live CE3 path today.
 IntentClass = Literal["not_chip", "question", "not_digital", "too_big", "in_family", "near_family", "unsure"]
 SourceTier = Literal["A", "B", "C", "P"]  # A papers and standards, B vendors and universities, C open-edit, P patents
 SearchEndpoint = Literal["search", "scholar", "patents"]
@@ -293,6 +299,57 @@ class AskProposal(WireModel):
     proposal: RunProposal
 
 
+# ---------- CE3: custom blocks ----------
+CustomBlockElementType = Literal["int4", "uint4", "int8", "uint8", "none"]
+
+
+class CustomBlockPort(WireModel):
+    name: str
+    dir: Literal["in", "out"]
+    width: int = Field(ge=1, le=64)  # CE3 limit: narrower than a locked pack's 1024
+    count: int = Field(default=1, ge=1, le=1)  # CE3 limit: no lane ports
+    signed: bool = False
+
+
+class CustomBlockStep(WireModel):
+    inputs: dict[str, int]
+    rst: bool = False
+    expected: dict[str, int]
+
+
+class CustomBlockCase(WireModel):
+    name: str
+    steps: list[CustomBlockStep] = Field(min_length=1)
+
+
+class CustomBlockDraft(WireModel):
+    """GLM's drafted spec, worked examples and golden model for one custom block (CE3). Round-trips through the
+    browser between draft_custom_block and POST /custom-blocks/approve; the server re-validates and re-runs the
+    self-check at Approve regardless of what the browser sends back."""
+
+    id: str = Field(pattern=r"^[a-z0-9_]+$")
+    title: str
+    summary: str
+    spec_text: str
+    top: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    element_type: CustomBlockElementType = "none"
+    latency_cycles: int = Field(ge=0, le=8)  # CE3 limit
+    ports: list[CustomBlockPort] = Field(min_length=1, max_length=8)  # CE3 limit
+    clock_name: str = ""  # "" for a purely combinational block
+    reset_name: str = ""  # "" for no reset
+    golden_py: str
+    cases: list[CustomBlockCase] = Field(min_length=1)
+
+
+class ApproveCustomBlockRequest(WireModel):
+    draft: CustomBlockDraft
+
+
+class ApproveCustomBlockResponse(WireModel):
+    ok: bool = True
+    preset_id: str
+
+
 class AskNewChip(WireModel):
     kind: Literal["new_chip"] = "new_chip"  # a different chip: the UI offers a new thread and fact-checks it there
     text: str
@@ -309,7 +366,7 @@ AskReply = AskAnswer | AskProposal | AskNewChip | AskRefused
 # POST /threads/{threadId}/messages: every message after the first chip request is a conversation with the agent
 # (backend ARCHITECTURE 17.4). The first message of a thread still runs the fact check, inside the same call.
 THREAD_MAX_CHARS = 300
-ToolName = Literal["list_blocks", "research", "run_facts", "walkthrough", "propose_run", "open_tab"]
+ToolName = Literal["list_blocks", "research", "run_facts", "walkthrough", "propose_run", "open_tab", "draft_custom_block"]
 TabName = Literal["result", "versions", "verilog", "architecture", "signoff"]
 
 

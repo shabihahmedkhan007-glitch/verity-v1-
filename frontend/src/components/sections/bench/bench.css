@@ -126,6 +126,11 @@
 .vs .b-vsq[data-shape="full"] { background: var(--rk-ink); }
 .vs .b-vsq[data-shape="dot"] { background: linear-gradient(var(--rk-ink), var(--rk-ink)) center / 5px 5px no-repeat; }
 .vs .b-vsq[data-shape="dashed"] { border-style: dashed; }
+.vs .b-vsq[data-shape="plus"] {
+  background:
+    linear-gradient(var(--rk-ink), var(--rk-ink)) center / 7px 1.5px no-repeat,
+    linear-gradient(var(--rk-ink), var(--rk-ink)) center / 1.5px 7px no-repeat;
+}
 .vs .b-research { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; min-width: 0; }
 .vs .b-research > p { margin: 0; max-width: 65ch; overflow-wrap: anywhere; }
 /* A sentence and, under it, its citation chips as a row of their own: S1 S2 never sit glued to the last word. */

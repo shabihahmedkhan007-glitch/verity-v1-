@@ -24,6 +24,8 @@ from verity.core.records import RunRecord
 from verity.core.results import (
     ContractResult,
     EquivalenceResult,
+    GoldenCheckFailure,
+    GoldenCheckResult,
     LintResult,
     MeasureResult,
     MutantRun,
@@ -189,6 +191,37 @@ class FakeToolRunner:
             note="Fake waveform.",
         )
         return WaveResult(status="ok", wave=trace, duration_ms=5)
+
+    async def check_golden(self, golden_py: str, cases) -> GoldenCheckResult:
+        """Runs the draft in-process (no Docker in a unit test) with the same contract as the real sandbox script:
+        golden_step(state, inputs, rst) -> (next_state, outputs), state reset to {} at the start of each case."""
+        namespace: dict = {}
+        try:
+            exec(compile(golden_py, "<golden.py>", "exec"), namespace)  # noqa: S102  (test-only, no untrusted input)
+            golden_step = namespace["golden_step"]
+        except Exception as exc:  # noqa: BLE001
+            return GoldenCheckResult(status="fail", message=f"{type(exc).__name__}: {exc}")
+        failures = []
+        passed = 0
+        for case in cases:
+            state: dict = {}
+            ok = True
+            for n, step in enumerate(case.get("steps", []), start=1):
+                try:
+                    state, outputs = golden_step(state, step.get("inputs", {}), bool(step.get("rst", False)))
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(GoldenCheckFailure(name=case.get("name", ""), expected="no exception", got=str(exc), step=n))
+                    ok = False
+                    break
+                expected = step.get("expected", {})
+                if any(outputs.get(k) != v for k, v in expected.items()):
+                    failures.append(GoldenCheckFailure(name=case.get("name", ""), expected=str(expected), got=str(outputs), step=n))
+                    ok = False
+                    break
+            if ok:
+                passed += 1
+        total = len(cases)
+        return GoldenCheckResult(status="pass" if passed == total else "fail", total=total, passed=passed, failure_count=total - passed, failures=failures)
 
 
 @dataclass(slots=True)

@@ -7,6 +7,7 @@ the SHA-256 of the MANIFEST.sha256 bytes (also LF-normalized).
 """
 
 import hashlib
+import logging
 import shutil
 import tomllib
 from pathlib import Path
@@ -17,6 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError,
 from ..contracts import Port, Priority, Spec
 from .errors import PackFormatError, PackIntegrityError
 from .rtl import DEFAULT_MAX_BYTES, Rtl
+
+log = logging.getLogger("verity.main")
 
 MANIFEST_NAME = "MANIFEST.sha256"
 TASK_FILE = "task.toml"
@@ -121,6 +124,7 @@ class TaskPack(BaseModel):
     target_clock_ns: float = Field(default=10.0, gt=0)
     max_plan_blocks: int = Field(default=8, ge=1)
     eval_only: bool = False  # true: not offered as a live preset
+    is_custom: bool = False  # true: a GLM-drafted custom block (CE3), locked by code at Approve, never a locked pack
     coding_rules: list[str] = Field(default_factory=list)  # extra pack-specific rules, appended to CODING_RULES
     clock: ClockSpec = Field(default_factory=ClockSpec)
     reset: ResetSpec = Field(default_factory=ResetSpec)
@@ -394,4 +398,23 @@ def load_packs(tasks_dir: Path) -> dict[str, TaskPack]:
         if child.is_dir() and (child / TASK_FILE).is_file():
             pack = TaskPack.load(child)
             packs[pack.id] = pack
+    return packs
+
+
+def load_custom_packs(custom_dir: Path) -> dict[str, TaskPack]:
+    """Load every custom_packs/<id>/ approved in an earlier session (CE3), so one survives a restart. Unlike
+    load_packs, a pack that fails to load is skipped and logged, never aborts startup: a custom pack is not a
+    locked one, and one bad folder must not take the whole server down."""
+    packs: dict[str, TaskPack] = {}
+    if not custom_dir.is_dir():
+        return packs
+    for child in sorted(custom_dir.iterdir()):
+        if not (child.is_dir() and (child / TASK_FILE).is_file()):
+            continue
+        try:
+            pack = TaskPack.load(child)
+        except (PackFormatError, PackIntegrityError) as exc:
+            log.warning("custom pack %s could not be loaded, skipped: %s", child.name, exc)
+            continue
+        packs[pack.id] = pack
     return packs

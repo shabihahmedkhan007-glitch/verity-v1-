@@ -43,7 +43,7 @@ from verity.llm.openai_compat import OpenAICompatProvider, _ModelDown
 from verity.research import FakeSearchAdapter, ResearchService
 from verity.research.service import ResearchOutcome
 from verity.store import SqliteStore
-from verity_test_support import make_settings
+from verity_test_support import FakeToolRunner, make_settings
 
 TID = "11111111-2222-4333-8444-555555555555"
 ME = "me"
@@ -169,7 +169,18 @@ async def make_harness(tmp_path, packs, provider, *, settings=None, research="fa
         return parse_reply or QUESTION
 
     h.service = AgentService(
-        settings, store, store, provider, packs, live_families(packs), research, hold=hold, record=record, parse=parse
+        settings,
+        store,
+        store,
+        provider,
+        packs,
+        live_families(packs),
+        research,
+        tools=FakeToolRunner(),
+        hold=hold,
+        record=record,
+        parse=parse,
+        register_custom_pack=lambda pack: None,
     )
     return h
 
@@ -208,8 +219,8 @@ async def test_a_tool_runs_and_its_result_reaches_the_next_call(h) -> None:
     assert '<verity_facts source="code">' in system and "<mode>discussion_no_run</mode>" in system
     assert "- adder with carry (id for propose_run: add8)" in system and "width: whole number 4 to 32 (default 8)" in system
     assert "- 8-bit" not in system and "- 4-lane" not in system  # a block's name carries no size
-    assert "<custom_blocks>Not available yet." in system and "Hard rules." in system
-    assert '<tool_result tool="list_blocks">' in second.user and "Custom blocks are coming next." in second.user
+    assert "<custom_blocks>draft_custom_block builds" in system and "Hard rules." in system
+    assert '<tool_result tool="list_blocks">' in second.user and "draft_custom_block" in second.user
     # the data blocks come in the documented order, with the message last
     order = [second.user.index(tag) for tag in ("<earlier_summary>", "<earlier_turns>", "<steps_so_far>", "<message>")]
     assert order == sorted(order) and second.user.rstrip().endswith("</message>")

@@ -191,6 +191,7 @@ class TimeoutsConfig(BaseModel):
     synth_s: int = 120
     sta_s: int = 60
     eqy_s: int = 180
+    golden_check_s: int = 20  # CE3: pure Python, no tool startup, so a short timeout
     sandbox_overhead_s: int = 15
     llm_ultra_s: int = 120
     llm_super_s: int = 120

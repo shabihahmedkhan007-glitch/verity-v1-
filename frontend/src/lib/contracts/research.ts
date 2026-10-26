@@ -3,7 +3,14 @@
 
 import { z } from "zod";
 
-export const VERDICTS = ["buildable_now", "buildable_with_changes", "not_buildable_here", "not_a_chip", "could_not_check"] as const;
+export const VERDICTS = [
+  "buildable_now",
+  "buildable_with_changes",
+  "not_buildable_here",
+  "not_a_chip",
+  "could_not_check",
+  "custom_block",
+] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 const SourceSchema = z.object({

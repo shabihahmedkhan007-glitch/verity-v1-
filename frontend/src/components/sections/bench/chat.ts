@@ -142,12 +142,13 @@ function checkOf(reply: ParseReply): Check | undefined {
 }
 
 /** Each verdict is a shape and a word, never colour alone: a hollow, dashed, dotted, half or filled square (ink, not amber). */
-export const VERDICT: Record<Verdict, { word: string; shape: "hollow" | "dashed" | "dot" | "half" | "full" }> = {
+export const VERDICT: Record<Verdict, { word: string; shape: "hollow" | "dashed" | "dot" | "half" | "full" | "plus" }> = {
   not_a_chip: { word: "Not a chip", shape: "hollow" },
   not_buildable_here: { word: "Not buildable here", shape: "half" },
   buildable_now: { word: "Buildable now", shape: "full" },
   buildable_with_changes: { word: "Buildable with changes", shape: "dot" },
   could_not_check: { word: "Could not check", shape: "dashed" },
+  custom_block: { word: "Custom block", shape: "plus" },
 };
 
 /** Whether the reply says its facts could not be checked (a "Try again" is offered, and a chip card is marked unchecked). */

@@ -31,6 +31,7 @@ from ..contracts import (
     AskReply,
     AutopilotSteer,
     CaptionEvent,
+    CustomBlockDraft,
     EventBase,
     GateSteer,
     HealthResponse,
@@ -86,6 +87,7 @@ from ..research.outcomes import record_run_outcome
 from ..research.queries import canonical_key, text_sha256
 from ..research.service import ResearchRequest, ResearchService, RunReferences
 from ..roles import default_roles
+from .custom_blocks import approve_custom_block as approve_custom_block_files
 from .hub import EventHub
 from .ledger import RunLedger
 from .live import LiveRun
@@ -143,9 +145,11 @@ class RunManager:
             self._packs,
             self._families,
             research,
+            tools=tools,
             hold=self._spend_hold,
             record=self._record_usd,
             parse=lambda text, session_id: self.parse(text, session_id=session_id),
+            register_custom_pack=self.register_custom_pack,
         )
         self._hub = EventHub(store, settings)
         self._sem = asyncio.Semaphore(settings.limits.concurrent_global)
@@ -244,6 +248,23 @@ class RunManager:
         A store that cannot be reached raises StoreUnavailable (the route answers 502)."""
         runs = await self._runs_for_owner(spend_owner(session_id), limit)
         return MyRunsResponse(runs=runs)
+
+    def register_custom_pack(self, pack: TaskPack) -> None:
+        """CE3: add a just-approved custom block to the live preset table, no restart needed. `presets()` and
+        `create_run()` read `self._packs` directly, so it is runnable right after this call returns."""
+        self._packs[pack.id] = pack
+
+    async def approve_custom_block(self, draft: CustomBlockDraft) -> TaskPack:
+        """CE3: locks a drafted block in (writes its pack, re-checks it, loads it) and registers it. Raises
+        ApproveFailed on any problem; nothing is left on disk and nothing is registered."""
+        pack = await approve_custom_block_files(
+            draft,
+            tools=self._tools,
+            custom_dir=self._settings.data_dir / "custom_packs",
+            tasks_dir=self._settings.tasks_dir,
+        )
+        self.register_custom_pack(pack)
+        return pack
 
     async def list_runs_for_owner(self, owner: str, limit: int = 50) -> list[MyRun]:
         """Same as list_my_runs but for any owner string directly (admin use: looking at another user's runs)."""

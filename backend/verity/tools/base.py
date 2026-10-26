@@ -27,14 +27,22 @@ from ..config import Settings
 from ..core.errors import ToolInfraError
 from ..core.mutants import Mutant
 from ..core.pack import TaskPack
-from ..core.results import EquivalenceResult, MeasureResult, SeedsResult, StrengthResult, VerifyResult, WaveResult
+from ..core.results import (
+    EquivalenceResult,
+    GoldenCheckResult,
+    MeasureResult,
+    SeedsResult,
+    StrengthResult,
+    VerifyResult,
+    WaveResult,
+)
 from ..core.rtl import Rtl
 from .parse import SandboxOutputError, parse_stdout_json
-from .parsers import parse_eqy, parse_measure, parse_seeds, parse_strength, parse_verify, parse_wave
+from .parsers import parse_eqy, parse_golden_check, parse_measure, parse_seeds, parse_strength, parse_verify, parse_wave
 
 log = logging.getLogger("verity.tools")
 
-Script = Literal["verify", "measure", "eqy", "seeds", "strength", "wave"]
+Script = Literal["verify", "measure", "eqy", "seeds", "strength", "wave", "check_golden"]
 # Fixed command templates. Nothing derived from model output ever reaches a command line.
 SCRIPT_PATHS: dict[Script, str] = {
     "verify": "/verity/bin/verify",
@@ -43,6 +51,7 @@ SCRIPT_PATHS: dict[Script, str] = {
     "seeds": "/verity/bin/seeds",
     "strength": "/verity/bin/strength",
     "wave": "/verity/bin/wave",
+    "check_golden": "/verity/bin/check_golden",
 }
 SEED_WORKERS = 2  # /verity/bin/seeds runs two seeds at a time
 COMPILE_MARGIN_S = 10
@@ -63,7 +72,7 @@ class FatalToolError(ToolInfraError):
 class SandboxCall:
     script: Script
     work_files: Mapping[str, bytes]  # file name under /work -> content
-    pack: TaskPack
+    pack: TaskPack | None  # None for check_golden: no pack exists yet at the self-check stage
     env: Mapping[str, str]
     timeout_s: int  # outer timeout: inner stage budgets plus sandbox_overhead_s
 
@@ -251,11 +260,28 @@ class SandboxRunner(ABC):
             extra_env={"VERITY_WAVE_CASE": case or ""},
         )
 
+    # ---------- CE3: self-check of a drafted golden model, before any Verilog exists ----------
+    async def check_golden(self, golden_py: str, cases: Sequence[dict]) -> GoldenCheckResult:
+        inner = self._settings.timeouts.golden_check_s
+
+        def on_timeout(raw: RawOutput) -> GoldenCheckResult:
+            return GoldenCheckResult(status="timeout", message=f"the self-check did not finish within {inner} s", duration_ms=raw.duration_ms)
+
+        body = json.dumps({"cases": list(cases)}).encode("utf-8")
+        return await self._run(
+            "check_golden",
+            None,
+            {"golden.py": golden_py.encode("utf-8"), "cases.json": body},
+            inner,
+            lambda payload: parse_golden_check(payload, expected_total=len(cases)),
+            on_timeout,
+        )
+
     # ---------- one sandbox call with retry ----------
     async def _run(
         self,
         script: Script,
-        pack: TaskPack,
+        pack: TaskPack | None,
         work_files: Mapping[str, bytes],
         inner_s: int,
         parse: Callable[[dict[str, Any]], T],

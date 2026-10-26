@@ -285,7 +285,7 @@ def _fake_agent_json(system: str, user: str) -> str:
         if "list_blocks" not in used:
             return tool("list_blocks", {})
         chips = [m.group(1) for line in user.splitlines() if (m := _FAKE_BLOCK_LINE.match(line.strip()))]
-        return answer("These are the blocks I can build today. Custom blocks are coming next.", chips=chips[:5])
+        return answer("These are the blocks I can build today. A small custom block can often be drafted too.", chips=chips[:5])
     if any(w in low for w in ("walk me through", "walkthrough", "step by step", "how was this built")):
         if run is None:
             return answer("There is no finished run in this thread yet, so there is nothing to walk through.")
@@ -305,6 +305,10 @@ def _fake_agent_json(system: str, user: str) -> str:
         result = re.search(r'<tool_result tool="run_facts">\n(.*?)\n</tool_result>', user, re.DOTALL)
         facts = [ln.strip() for ln in (result.group(1) if result else "").splitlines() if ln.strip()]
         return answer("Here is what this run's data shows.", bullets=facts[:2])
+    if mode != "first_message" and any(w in low for w in ("custom block", "draft a block", "draft_custom_block")):
+        if "draft_custom_block" not in used:
+            return tool("draft_custom_block", {"description": (found.group(1) if found else low)[:200]})
+        return answer("I drafted it and checked it against its own worked examples. Press Approve to lock it in.")
     named = _fake_named_family(low, system)
     target = named or family  # a family the message names wins over the thread's own
     # a family the message names is a request for it, unless the message is a question
@@ -333,6 +337,36 @@ def _fake_memory_json(user: str) -> str:
     said = [line[len("User: "):] for line in user.splitlines() if line.startswith("User: ")]
     words = " ".join(([previous.group(1)] if previous and previous.group(1).strip() else []) + said).split()
     return json.dumps({"summary": "Earlier in this thread the user asked about: " + " ".join(words[:24])})
+
+
+def _fake_custom_draft_json(_user: str) -> str:
+    """A deterministic stand-in draft (CE3): always a correct, self-check-passing 8-bit popcount, whatever the
+    description said. Real language understanding is Nemotron/GLM's job, not the fake provider's; this exercises
+    the full draft -> validate -> self-check pipeline for $0."""
+    return json.dumps(
+        {
+            "id": "popcount8",
+            "title": "8-bit popcount",
+            "summary": "Counts the set bits of an 8-bit input, combinational",
+            "specText": "Output count is the number of 1 bits in input x, an 8-bit unsigned value. Combinational, no clock.",
+            "top": "popcount8",
+            "elementType": "uint8",
+            "latencyCycles": 0,
+            "ports": [
+                {"name": "x", "dir": "in", "width": 8, "signed": False},
+                {"name": "count", "dir": "out", "width": 4, "signed": False},
+            ],
+            "clockName": "",
+            "resetName": "",
+            "goldenPy": "def golden_step(state, inputs, rst):\n    x = inputs.get('x', 0) & 0xFF\n    return {}, {'count': bin(x).count('1')}\n",
+            "cases": [
+                {"name": "zero", "steps": [{"inputs": {"x": 0}, "rst": False, "expected": {"count": 0}}]},
+                {"name": "all_ones", "steps": [{"inputs": {"x": 255}, "rst": False, "expected": {"count": 8}}]},
+                {"name": "single_bit", "steps": [{"inputs": {"x": 16}, "rst": False, "expected": {"count": 1}}]},
+                {"name": "two_bits", "steps": [{"inputs": {"x": 17}, "rst": False, "expected": {"count": 2}}]},
+            ],
+        }
+    )
 
 
 class FakeProvider:
@@ -372,6 +406,8 @@ class FakeProvider:
             return await self._short_answer(req, _fake_agent_json(req.system, req.user), "fake-agent")
         if tags.get("purpose") == "memory":
             return await self._short_answer(req, _fake_memory_json(req.user), "fake-memory")
+        if tags.get("purpose") == "custom_draft":
+            return await self._short_answer(req, _fake_custom_draft_json(req.user), "fake-custom-draft")
         task_id = tags.get("task_id", "")
         if not task_id:
             raise LLMError("fake provider needs the task_id tag", retryable=False)
