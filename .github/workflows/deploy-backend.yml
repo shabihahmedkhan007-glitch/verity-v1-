@@ -51,6 +51,9 @@ jobs:
           TAVILY_API_KEY: "${{ secrets.TAVILY_API_KEY }}"
           SERPER_API_KEY: "${{ secrets.SERPER_API_KEY }}"
           SANDBOX_PROJECT_ID: "${{ secrets.SANDBOX_PROJECT_ID }}"
+          SUPABASE_URL: "${{ secrets.SUPABASE_URL }}"
+          SUPABASE_SECRET_KEY: "${{ secrets.SUPABASE_SECRET_KEY }}"
+          SUPABASE_PUBLISHABLE_KEY: "${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
           EOF
 
       - name: Deploy to Cloud Run
