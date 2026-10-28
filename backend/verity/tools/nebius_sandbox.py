@@ -91,7 +91,7 @@ class NebiusSandboxRunner(SandboxRunner):
     def __init__(self, settings: Settings, *, client: httpx.AsyncClient | None = None) -> None:
         super().__init__(settings, max_parallel=MAX_PARALLEL_INSTANCES)
         cfg = settings.tools.nebius_sandbox
-        key = settings.sandbox_api_key
+        key = settings.sandbox_api_key()
         self._base_url = (cfg.base_url or DEFAULT_BASE_URL).rstrip("/")
         self._token = key.get_secret_value() if key else ""
         self._project = _project_id()

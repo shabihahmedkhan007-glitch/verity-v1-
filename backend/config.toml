@@ -274,5 +274,9 @@ output_cap_bytes = 65_536
 infra_retries = 1              # sandbox retries on infrastructure errors only, never on a test failure
 
 [tools.nebius_sandbox]
-base_url = ""                  # SANDBOX_BASE_URL. UNVERIFIED: confirm the Sandboxes endpoint on day 1 (M0).
-image_ref = ""                 # registry reference of the imported tool image
+# Set explicitly (not left empty): RunManager._maintenance() checks this field directly and forces maintenance
+# mode when it is blank, even though NebiusSandboxRunner itself falls back to the same default. Confirmed live
+# 2026-10-28: this host answers (400/403, not 404).
+base_url = "https://api.tokenfactory.nebius.com/sandboxes/v1"  # SANDBOX_BASE_URL
+# Public (allUsers: artifactregistry.reader granted 2026-10-28) so Nebius Sandboxes can pull it with no credentials.
+image_ref = "us-central1-docker.pkg.dev/synthion-demo-call/verity-backend/verity-tools:0.1"
